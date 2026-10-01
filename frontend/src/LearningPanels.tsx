@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from "react";
+import { Icon } from "./ChatUI";
 type API = (path: string, method?: string, body?: unknown) => Promise<any>;
 type Props = {
   api: API;
@@ -339,10 +340,12 @@ export function PrivateUploads({
   api,
   chat,
   notify,
+  ensureChat,
 }: {
   api: API;
   chat: string;
   notify: (s: string) => void;
+  ensureChat: () => Promise<string | undefined>;
 }) {
   const [rows, setRows] = useState<any[]>([]);
   const { go, busy } = useAction(notify);
@@ -350,55 +353,77 @@ export function PrivateUploads({
     setRows((await api(`/api/conversations/${chat}/uploads`)).items);
   useEffect(() => {
     if (chat) go(refresh);
+    else setRows([]);
   }, [chat]);
-  if (!chat)
-    return <p className="muted">افتح محادثة جديدة لإرفاق ملفات خاصة مؤقتة.</p>;
   return (
-    <details className="private-files">
-      <summary>إرفاق ملف خاص مؤقتًا · 24 ساعة</summary>
-      <p>
-        PDF حتى 20 صفحة أو صورة أو TXT، حتى 10 MB، خمسة ملفات. لا يُنشر ولا
-        يُفهرس. قراءة الصور تتطلب نموذجًا بصريًا وقد تُحتسب من رصيد المزوّد عند
-        إرسال سؤالك.
-      </p>
-      <label>
-        الملف الخاص
-        <input
-          type="file"
-          accept=".pdf,.png,.jpg,.jpeg,.webp,.txt"
-          disabled={busy}
-          onChange={(e) => {
-            const f = e.target.files?.[0];
-            e.target.value = "";
-            if (f)
-              go(async () => {
-                const data = new FormData();
-                data.set("file", f);
-                await api(`/api/conversations/${chat}/upload`, "POST", data);
-                await refresh();
-              });
-          }}
-        />
-      </label>
-      {rows.map((f) => (
-        <div className="private-file-row" key={f.id}>
-          <span>
-            {f.name} · {f.pages} صفحة · ينتهي{" "}
-            {new Date(f.expires_at * 1000).toLocaleString()}
-          </span>
-          <a href={`/api/private/${f.id}/original`}>تحميل الأصل</a>
-          <button
-            onClick={() =>
-              go(async () => {
-                await api("/api/private/" + f.id, "DELETE");
-                await refresh();
-              })
-            }
-          >
-            حذف الملف
-          </button>
-        </div>
-      ))}
+    <details
+      className="private-files"
+      onKeyDown={(e) => {
+        if (e.key === "Escape") {
+          e.currentTarget.removeAttribute("open");
+          e.currentTarget.querySelector<HTMLElement>("summary")?.focus();
+        }
+      }}
+    >
+      <summary
+        aria-label="إرفاق ملف خاص مؤقتًا · 24 ساعة"
+        title="إرفاق ملف خاص مؤقتًا · 24 ساعة"
+      >
+        <Icon name="attach" />
+        <span className="attachment-count">{rows.length || ""}</span>
+      </summary>
+      <div className="attachment-panel">
+        <strong>إرفاق ملف خاص مؤقتًا · 24 ساعة</strong>
+        <p>
+          PDF حتى 20 صفحة أو صورة أو TXT، حتى 10 MB، خمسة ملفات. لا يُنشر ولا
+          يُفهرس. قراءة الصور تتطلب نموذجًا بصريًا وقد تُحتسب من رصيد المزوّد
+          عند إرسال سؤالك.
+        </p>
+        <label>
+          الملف الخاص
+          <input
+            type="file"
+            accept=".pdf,.png,.jpg,.jpeg,.webp,.txt"
+            disabled={busy}
+            onChange={(e) => {
+              const f = e.target.files?.[0];
+              e.target.value = "";
+              if (f)
+                go(async () => {
+                  const data = new FormData();
+                  data.set("file", f);
+                  const id = chat || (await ensureChat());
+                  if (!id) return;
+                  await api(`/api/conversations/${id}/upload`, "POST", data);
+                  setRows(
+                    (await api(`/api/conversations/${id}/uploads`)).items,
+                  );
+                });
+            }}
+          />
+        </label>
+        {rows.map((f) => (
+          <div className="private-file-row" key={f.id}>
+            <span>
+              {f.name} · {f.pages} صفحة · ينتهي{" "}
+              {new Date(f.expires_at * 1000).toLocaleString()}
+            </span>
+            <a href={`/api/private/${f.id}/original`}>تحميل الأصل</a>
+            <button
+              type="button"
+              onClick={() =>
+                go(async () => {
+                  await api("/api/private/" + f.id, "DELETE");
+                  await refresh();
+                })
+              }
+            >
+              حذف الملف
+            </button>
+          </div>
+        ))}
+        {busy && <p role="status">جارٍ رفع الملف…</p>}
+      </div>
     </details>
   );
 }

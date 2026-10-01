@@ -1,7 +1,7 @@
 import { test, expect } from "@playwright/test";
 import path from "node:path";
 import { execFileSync } from "node:child_process";
-import { snapshot, assertNoOverflow } from "./helpers";
+import { snapshot, assertNoOverflow, navigate } from "./helpers";
 test("owner upload → extract → review → publish → student tool retrieval, stream, source and mobile", async ({
   page,
   browser,
@@ -22,14 +22,14 @@ test("owner upload → extract → review → publish → student tool retrieval
   await page.getByLabel("كلمة المرور").fill("Test-password-only-1");
   await page.getByRole("button", { name: "دخول", exact: true }).click();
   await expect(
-    page.getByRole("button", { name: "▥ إدارة المحتوى" }),
+    page.getByRole("button", { name: "إعدادات الحساب" }),
   ).toBeVisible();
-  await page.getByRole("button", { name: "⚙ إعداد النماذج" }).click();
+  await navigate(page, "⚙ إعداد النماذج");
   await expect(page.getByLabel("Model", { exact: true })).toHaveValue(
     "offline-test-fixture",
   );
   await snapshot(page, "models-desktop");
-  await page.getByRole("button", { name: "▥ إدارة المحتوى" }).click();
+  await navigate(page, "▥ إدارة المحتوى");
   const initialCount = (
     await (await page.request.get("/api/library/documents")).json()
   ).items.length;
@@ -112,7 +112,7 @@ test("owner upload → extract → review → publish → student tool retrieval
     .getByRole("button", { name: "إنشاء حساب", exact: true })
     .click();
   await expect(
-    student.getByRole("heading", { name: "أين توقفتَ في الدرس؟" }),
+    student.getByRole("heading", { name: "ما الذي تريد أن تفهمه اليوم؟" }),
   ).toBeVisible();
   await snapshot(student, "chat-empty-desktop");
   expect((await student.request.get("/api/owner/documents")).status()).toBe(
@@ -154,7 +154,7 @@ test("owner upload → extract → review → publish → student tool retrieval
   await expect(student.getByRole("dialog")).toBeVisible();
   await assertNoOverflow(student);
   await snapshot(student, "library-mobile");
-  await page.getByRole("button", { name: "◷ الاستخدام" }).click();
+  await navigate(page, "◷ الاستخدام");
   await expect(
     page.getByRole("heading", { name: "استخدام معلَن، لا تقديرات وهمية" }),
   ).toBeVisible();
@@ -164,7 +164,7 @@ test("owner upload → extract → review → publish → student tool retrieval
       .first(),
   ).toBeVisible();
   await snapshot(page, "usage-desktop");
-  await page.getByRole("button", { name: "▥ إدارة المحتوى" }).click();
+  await navigate(page, "▥ إدارة المحتوى");
   await page
     .locator(".document-row")
     .filter({

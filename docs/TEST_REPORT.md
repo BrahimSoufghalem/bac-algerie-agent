@@ -149,3 +149,12 @@ Phase 5 ما زالت مفتوحة: provider capability/educational quality (inc
 دون visual QA، smoke المزود المأذون بعد الحجب، مراجعة كتب حقيقية ومقيّمة، SMTP/TLS في بيئة المالك، ترخيص/native/security review مستقل وacceptance: **لا تسمية عامة Production-ready**. لا دفاع كامل من DNS rebinding/native exploits، ولا VM/seccomp scientifique، ولا ضمان معنى علمي لكل جواب. لا مفاتيح أو بيانات تشغيل أو PDF حقيقي committed.
 
 External client regression: whole serialized payload budget (not text alone), deduplicated metadata/assets, no double copy of full Markdown and part contents. Oversized response refuses instead of claiming complete coverage.
+
+## إعادة تصميم المحادثة — تحقق مستقل عن اختبار المزوّد
+
+- 124 اختبار backend ناجحًا؛ لا تغيير في extraction/retrieval/agent/security backend، و26 hash في manifest BookForge دون اختلاف. Ruff F وpip check نجحا.
+- strict TypeScript وVite production build ناجحان. لا حزم runtime جديدة ولا اعتماد على chat framework خارجي.
+- **17 مسار متصفح ناجحًا** في التشغيل الشامل الأخير (1.1 دقيقة) تحت Chromium بمزوّد محلي وهمي **صريح داخل tests فقط**. بقيت جميع assertions للنشر/الأذونات/الاستدعاء/المصادر/الحساب العلمي والأمن فعالة بعد تعديل طريقة التنقل للإعدادات الجديدة.
+- أُضيفت فحوص للمظهر/persistence/system media، sidebar/rail، keyboard focus/inert/Escape، rename/delete محفوظين بالخادم، slow-create draft race، إرفاق من محادثة فارغة دون محو المسودة، حذف الملف دون submit، IME/Shift+Enter، textarea cap، نسخ فعلّي من clipboard، edit/retry، scroll pin/late resize والرجوع إلى أحدث رسالة.
+- تتولد لقطات PNG وHTML من **DOM الحقيقي دون layout overrides** داخل browser-results/previews. أداة عرض الصور لم تعد نتيجة صالحة سابقًا؛ المراجعة البصرية النهائية/قبول المالك ما زالا غير مثبتين.
+- 0 استدعاءات مزوّد مدفوعة لهذه المهمة؛ اختبار المزوّد مؤجل بطلب المستخدم.

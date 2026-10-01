@@ -26,13 +26,17 @@ export async function snapshot(page: Page, name: string) {
       });
       img.setAttribute("src", data);
     }
-    const s = document.createElement("style");
-    s.textContent =
-      ".workspace{max-height:none;overflow:visible}.composer-wrap{position:static}.sidebar{position:fixed;inset-inline-start:0}.workspace{margin-inline-start:268px}@media(max-width:700px){.workspace{margin-inline-start:0}}";
-    clone.querySelector("head")?.appendChild(s);
+    // Never retain secret input values in offline snapshots.
+    clone
+      .querySelectorAll('input[type="password"]')
+      .forEach((x) => x.removeAttribute("value"));
     return "<!doctype html>" + clone.outerHTML;
   });
   await mkdir(qa, { recursive: true });
+  await page.screenshot({
+    path: path.join(qa, name + ".png"),
+    mask: [page.locator('input[type="password"]')],
+  });
   let offline = html;
   for (const link of [...html.matchAll(/<link[^>]*rel="stylesheet"[^>]*>/g)]) {
     const href = link[0].match(/href="([^"]+)"/);
@@ -64,4 +68,37 @@ export async function assertNoOverflow(page: Page) {
       () => document.documentElement.scrollWidth <= innerWidth + 1,
     ),
   ).toBe(true);
+}
+
+// Account and owner destinations are deliberately out of the primary chat nav.
+export async function navigate(page: Page, name: string) {
+  await expect(page.locator(".workspace")).toBeVisible();
+  const target = page.getByRole("button", { name, exact: true });
+  if (await target.isVisible()) {
+    await target.click();
+    return;
+  }
+  const mobileToggle = page.getByRole("button", {
+    name: "فتح القائمة",
+    exact: true,
+  });
+  if (
+    (await mobileToggle.isVisible()) &&
+    !(await page
+      .locator(".sidebar")
+      .evaluate((x) => x.classList.contains("open")))
+  )
+    await mobileToggle.click();
+  if (!(await target.isVisible())) {
+    const expand = page.getByRole("button", {
+      name: "توسيع الشريط الجانبي",
+      exact: true,
+    });
+    if (await expand.isVisible()) await expand.click();
+  }
+  if (!(await target.isVisible()))
+    await page
+      .getByRole("button", { name: "إعدادات الحساب", exact: true })
+      .click();
+  await target.click();
 }
