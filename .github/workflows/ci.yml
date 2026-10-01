@@ -33,6 +33,15 @@ jobs:
           sudo apt-get update && sudo apt-get install -y fonts-dejavu-core
           npx playwright install --with-deps chromium
           npm run test:browser 2>&1 | tee .ci-logs/browser.log
+      - name: Save UI design previews
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ui-design-previews
+          path: browser-results/previews/*.png
+          retention-days: 14
+          if-no-files-found: ignore
+
       - name: Save failure evidence
         if: failure()
         uses: actions/upload-artifact@v4

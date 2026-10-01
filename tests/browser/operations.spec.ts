@@ -1,5 +1,5 @@
 import { test, expect, Page } from "@playwright/test";
-import { snapshot, assertNoOverflow } from "./helpers";
+import { snapshot, assertNoOverflow, navigate } from "./helpers";
 async function signIn(page: Page, email: string, password: string) {
   await page.goto("/");
   await page.getByLabel("البريد الإلكتروني").fill(email);
@@ -15,7 +15,7 @@ test("security: password change invalidates second browser session, mobile-safe 
   const other = await browser.newContext();
   const p = await other.newPage();
   await signIn(p, "security@test.invalid", "Test-security-password-1");
-  await page.getByRole("button", { name: "أمان الحساب", exact: true }).click();
+  await navigate(page, "أمان الحساب");
   await assertNoOverflow(page);
   await snapshot(page, "security-desktop");
   await page.setViewportSize({ width: 390, height: 844 });
@@ -67,7 +67,7 @@ test("owner: scoped read credential works, private APIs denied, then immediate r
   page,
 }) => {
   await signIn(page, "owner@test.invalid", "Test-password-only-1");
-  await page.getByRole("button", { name: "وصول الوكلاء", exact: true }).click();
+  await navigate(page, "وصول الوكلاء");
   await page.getByLabel("اسم الوكيل").fill("Browser test reader");
   const checks = page.locator("fieldset input[type=checkbox]");
   await expect(checks.first()).toBeVisible();

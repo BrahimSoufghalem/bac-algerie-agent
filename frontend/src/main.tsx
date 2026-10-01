@@ -10,6 +10,15 @@ import "@fontsource/noto-sans-arabic/600.css";
 import "@fontsource/noto-sans-arabic/700.css";
 import "./style.css";
 import {
+  Icon,
+  Mark,
+  Dialog,
+  CopyAnswer,
+  useAppearance,
+  useSidebar,
+  type IconName,
+} from "./ChatUI";
+import {
   PreferencesPanel,
   NotesPanel,
   PrivateUploads,
@@ -184,6 +193,19 @@ function Content({ blocks }: { blocks: Block[] }) {
   );
 }
 function App() {
+  const { appearance, setAppearance } = useAppearance();
+  const { collapsed, setCollapsed } = useSidebar();
+  const [accountOpen, setAccountOpen] = useState(false);
+  const [chatDialog, setChatDialog] = useState<{
+    kind: "rename" | "delete";
+    chat: Chat;
+  } | null>(null);
+  const [renameTitle, setRenameTitle] = useState("");
+  const [showLatest, setShowLatest] = useState(false);
+  const scrollArea = useRef<HTMLDivElement>(null);
+  const composerInput = useRef<HTMLTextAreaElement>(null);
+  const pinned = useRef(true);
+  const accountRef = useRef<HTMLDivElement>(null);
   const [recovery, setRecovery] = useState(() => {
     if (location.hash.startsWith("#auth=")) {
       const link = location.hash.slice(6);
@@ -317,6 +339,7 @@ function App() {
     return d.items as Chat[];
   }
   async function openChat(id: string) {
+    setText("");
     stream.current?.close();
     setRun("");
     setDelta("");
@@ -329,6 +352,9 @@ function App() {
     setEditing("");
     setView("chat");
     setMenu(false);
+    setAccountOpen(false);
+    pinned.current = true;
+    setShowLatest(false);
     if (c.active_run) subscribe(c.active_run.id);
   }
   function subscribe(id: string) {
@@ -413,9 +439,54 @@ function App() {
       return () => clearTimeout(t);
     }
   }, [query, user?.id]);
+  function jumpToLatest() {
+    pinned.current = true;
+    setShowLatest(false);
+    const area = scrollArea.current;
+    if (area) area.scrollTop = area.scrollHeight;
+  }
   useEffect(() => {
-    bottom.current?.scrollIntoView({ behavior: "auto", block: "end" });
-  }, [delta, messages.length]);
+    if (pinned.current) jumpToLatest();
+  }, [delta, messages.length, view, chatId]);
+  useEffect(() => {
+    const area = scrollArea.current;
+    const content = area?.querySelector(".conversation");
+    if (!content) return;
+    const observer = new ResizeObserver(() => {
+      if (pinned.current) jumpToLatest();
+    });
+    observer.observe(content);
+    return () => observer.disconnect();
+  }, [view, chatId, messages.length]);
+  useEffect(() => {
+    const input = composerInput.current;
+    if (input) {
+      input.style.height = "auto";
+      input.style.height =
+        Math.min(180, Math.max(54, input.scrollHeight)) + "px";
+    }
+  }, [text, view]);
+  useEffect(() => {
+    if (!accountOpen) return;
+    const outside = (e: PointerEvent) => {
+      if (!accountRef.current?.contains(e.target as Node))
+        setAccountOpen(false);
+    };
+    const keydown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        setAccountOpen(false);
+        accountRef.current
+          ?.querySelector<HTMLButtonElement>(".profile-button")
+          ?.focus();
+      }
+    };
+    document.addEventListener("pointerdown", outside);
+    document.addEventListener("keydown", keydown);
+    return () => {
+      document.removeEventListener("pointerdown", outside);
+      document.removeEventListener("keydown", keydown);
+    };
+  }, [accountOpen]);
   useEffect(() => {
     if (
       !version ||
@@ -440,6 +511,11 @@ function App() {
       const body: any = { email: f.get("email"), password: f.get("password") };
       if (authMode === "register") body.name = f.get("name");
       const d = await api("/api/auth/" + authMode, "POST", body);
+      if (d.verification_required) {
+        setAuthMode("login");
+        setError("راجع بريدك لتأكيد الحساب قبل الدخول.");
+        return;
+      }
       csrf = d.csrf;
       setUser(d.user);
       await refreshChats();
@@ -448,13 +524,42 @@ function App() {
     }
   }
   async function createChat() {
+    // Clear synchronously, not after network I/O: typing during creation must survive.
+    stream.current?.close();
+    setRun("");
+    setDelta("");
+    setActivities([]);
+    setWarnings([]);
+    setChatId("");
+    setMessages([]);
+    setText("");
+    setEditing("");
+    setView("chat");
+    setMenu(false);
+    setAccountOpen(false);
+    setSource(null);
+    pinned.current = true;
+    setShowLatest(false);
     const c = await api("/api/conversations", "POST", {});
+    setChatId(c.id);
+    location.hash = "chat=" + c.id;
     await refreshChats();
-    await openChat(c.id);
+    return c.id as string;
   }
+  // Uploading from the empty composer creates a conversation without clearing its draft.
+  const ensureAttachmentChat = () =>
+    action(async () => {
+      if (chatId) return chatId;
+      const c = await api("/api/conversations", "POST", {});
+      setChatId(c.id);
+      location.hash = "chat=" + c.id;
+      await refreshChats();
+      return c.id as string;
+    });
   async function send(e?: React.FormEvent) {
     e?.preventDefault();
-    if (!text.trim() || run) return;
+    if (!text.trim() || run || busy) return;
+    pinned.current = true;
     setBusy(true);
     try {
       let id = chatId;
@@ -486,6 +591,7 @@ function App() {
   async function navigate(next: string) {
     setView(next);
     setMenu(false);
+    setAccountOpen(false);
     setSource(null);
     setNotice("");
     try {
@@ -507,7 +613,7 @@ function App() {
   async function action(fn: () => Promise<any>) {
     setBusy(true);
     try {
-      await fn();
+      return await fn();
     } catch (e) {
       setNotice((e as Error).message);
     } finally {
@@ -574,6 +680,86 @@ function App() {
       setNotice("حُفظت نسخة خام. عاين المصدر قبل بدء Vision؛ لم تُنشر للطلاب.");
     });
   }
+  const isEmpty = messages.length === 0 && !run;
+  const titles: Record<string, string> = {
+    chat: "مسار",
+    library: "المكتبة المنشورة",
+    "owner-library": "مراجعة المحتوى ونشره",
+    models: "نماذج التدريس والاستخراج",
+    usage: "الاستخدام والمحاسبة",
+    security: "أمان الحساب",
+    "service-tokens": "وصول الوكلاء",
+    preferences: "تفضيلات وخصوصية",
+    notes: "ملاحظاتي التعليمية",
+    materials: "المسودات التعليمية",
+    accounts: "الحسابات والحدود",
+    "personal-usage": "استخدامي وحدودي",
+  };
+  const navItem = (
+    next: string,
+    label: string,
+    icon: IconName,
+    accessible = label,
+  ) => (
+    <button
+      key={next}
+      title={label}
+      aria-label={accessible}
+      aria-current={view === next ? "page" : undefined}
+      className={view === next ? "active" : ""}
+      onClick={() => navigate(next)}
+    >
+      <Icon name={icon} />
+      <span>{label}</span>
+    </button>
+  );
+  const retryAnswer = () =>
+    action(async () => {
+      const d = await api(
+        "/api/conversations/" + chatId + "/retry",
+        "POST",
+        {},
+      );
+      setMessages((await api("/api/conversations/" + chatId)).messages);
+      pinned.current = true;
+      subscribe(d.run_id);
+    });
+  const starters =
+    user?.role === "teacher"
+      ? [
+          {
+            icon: "book" as IconName,
+            label: "حضّر درسًا",
+            prompt: "حضّر خطة درس اعتمادًا على المكتبة",
+          },
+          {
+            icon: "practice" as IconName,
+            label: "أنشئ تدريبًا",
+            prompt: "أنشئ اختبارًا تدريبيًا غير رسمي مع سلم تصحيح",
+          },
+          {
+            icon: "note" as IconName,
+            label: "راجع شرحي",
+            prompt: "راجع شرحًا أعددته للطلاب",
+          },
+        ]
+      : [
+          {
+            icon: "book" as IconName,
+            label: "افهم درسًا",
+            prompt: "اشرح لي درسًا من المكتبة خطوة بخطوة",
+          },
+          {
+            icon: "write" as IconName,
+            label: "راجع حلي",
+            prompt: "ساعدني على فهم خطئي في الحل",
+          },
+          {
+            icon: "practice" as IconName,
+            label: "تدرّب معي",
+            prompt: "أريد تدريبًا على مفهوم لم أتقنه",
+          },
+        ];
   if (recovery)
     return (
       <Recovery
@@ -587,8 +773,10 @@ function App() {
     return (
       <main className="auth-page">
         <div className="auth-intro">
-          <div className="logo">
-            مَسار<span>البكالوريا الجزائرية</span>
+          <div className="brand">
+            <Mark />
+            <strong>مسار</strong>
+            <span>مساحة التعلّم</span>
           </div>
           <h1>
             افهم الفكرة.
@@ -600,7 +788,7 @@ function App() {
             للدروس.
           </p>
           <div className="auth-note">
-            مكتبة يراجعها المالك · مصادر وصفحات واضحة · بياناتك التعليمية خاصة
+            <Icon name="book" /> من المصدر إلى الفهم، خطوة بخطوة.
           </div>
         </div>
         <form className="auth-form" onSubmit={authenticate}>
@@ -669,7 +857,18 @@ function App() {
       </main>
     );
   return (
-    <div className="app">
+    <div className={"app " + (collapsed ? "sidebar-collapsed" : "")}>
+      <a
+        className="skip-link"
+        href="#workspace-content"
+        onClick={(e) => {
+          e.preventDefault();
+          if (view === "chat") composerInput.current?.focus();
+          else document.getElementById("workspace-content")?.focus();
+        }}
+      >
+        انتقل إلى المحتوى
+      </a>
       {menu && (
         <div
           className="drawer-backdrop"
@@ -677,423 +876,566 @@ function App() {
           onClick={() => setMenu(false)}
         />
       )}
-      <aside className={"sidebar " + (menu ? "open" : "")}>
+      <aside
+        id="conversation-sidebar"
+        aria-label="الشريط الجانبي"
+        className={"sidebar " + (menu ? "open" : "")}
+        inert={Boolean(source || chatDialog)}
+      >
         <div className="sidebar-top">
-          <div className="logo">
-            مَسار<span>وكيل البكالوريا</span>
-          </div>
           <button
-            className="drawer-close"
+            className="brand"
+            aria-label="مسار · المحادثة"
+            onClick={() => navigate("chat")}
+          >
+            <Mark small />
+            <strong>مسار</strong>
+          </button>
+          <button
+            className="icon-button sidebar-toggle"
+            aria-label={
+              collapsed ? "توسيع الشريط الجانبي" : "طي الشريط الجانبي"
+            }
+            title={collapsed ? "توسيع الشريط" : "طي الشريط"}
+            onClick={() => {
+              setCollapsed(!collapsed);
+              setAccountOpen(false);
+            }}
+          >
+            <Icon name="panel" />
+          </button>
+          <button
+            className="icon-button drawer-close"
             aria-label="إغلاق القائمة"
             onClick={() => setMenu(false)}
           >
-            ×
+            <Icon name="close" />
           </button>
         </div>
-        <button className="new-chat" onClick={() => action(createChat)}>
-          ＋ محادثة جديدة
-        </button>
-        <nav>
+        <nav aria-label="مساحة التعلّم" className="primary-nav">
           <button
-            className={view === "chat" ? "active" : ""}
-            onClick={() => navigate("chat")}
+            className="new-chat"
+            aria-label="＋ محادثة جديدة"
+            title="محادثة جديدة"
+            onClick={() => action(createChat)}
+            disabled={busy}
           >
-            ◌ المحادثة
+            <Icon name="write" />
+            <span>محادثة جديدة</span>
+            <kbd>جديد</kbd>
           </button>
-          <button
-            className={view === "library" ? "active" : ""}
-            onClick={() => navigate("library")}
-          >
-            ▤ المكتبة المنشورة
-          </button>
-          {user.role === "owner" && (
-            <>
-              <p className="nav-caption">إدارة المالك</p>
-              <button
-                className={view === "owner-library" ? "active" : ""}
-                onClick={() => navigate("owner-library")}
-              >
-                ▥ إدارة المحتوى
-              </button>
-              <button
-                className={view === "models" ? "active" : ""}
-                onClick={() => navigate("models")}
-              >
-                ⚙ إعداد النماذج
-              </button>
-              <button
-                className={view === "usage" ? "active" : ""}
-                onClick={() => navigate("usage")}
-              >
-                ◷ الاستخدام
-              </button>
-            </>
-          )}
-        </nav>
-        <nav className="learning-nav">
-          <button onClick={() => navigate("security")}>أمان الحساب</button>
-          {user.role === "owner" && (
-            <button onClick={() => navigate("service-tokens")}>
-              وصول الوكلاء
-            </button>
-          )}
-          <button onClick={() => navigate("preferences")}>
-            تفضيلات وخصوصية
-          </button>
-          <button onClick={() => navigate("notes")}>ملاحظاتي التعليمية</button>
-          <button onClick={() => navigate("materials")}>
-            {user.role === "student" ? "تدريبي الذاتي" : "مساحة إعداد الأستاذ"}
-          </button>
-          <button onClick={() => navigate("personal-usage")}>
-            استخدامي وحدودي
-          </button>
-          {user.role === "owner" && (
-            <button onClick={() => navigate("accounts")}>
-              الحسابات والحدود
-            </button>
+          {navItem("library", "المكتبة", "book", "▤ المكتبة المنشورة")}
+          {navItem("notes", "ملاحظاتي التعليمية", "note")}
+          {navItem(
+            "materials",
+            user.role === "student" ? "تدريبي الذاتي" : "مساحة إعداد الأستاذ",
+            "practice",
           )}
         </nav>
         <label className="chat-search">
+          <Icon name="search" size={17} />
           <input
-            placeholder="البحث في المحادثات"
+            placeholder="ابحث في محادثاتك"
             aria-label="البحث في المحادثات"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
           />
         </label>
+        <div className="history-caption">محادثاتك</div>
         <div className="chat-history">
+          {!chats.length && (
+            <p className="history-empty">
+              {query
+                ? "لا توجد محادثات بهذا العنوان."
+                : "سؤالك الأول يبدأ مسارًا جديدًا."}
+            </p>
+          )}
           {chats.map((c) => (
             <div
               key={c.id}
               className={"history-item " + (c.id === chatId ? "selected" : "")}
             >
-              <button onClick={() => action(() => openChat(c.id))}>
+              <button
+                aria-current={
+                  c.id === chatId && view === "chat" ? "page" : undefined
+                }
+                onClick={() => action(() => openChat(c.id))}
+                title={c.title}
+              >
                 {c.title}
               </button>
               <details>
-                <summary aria-label="خيارات المحادثة">⋯</summary>
-                <button
-                  onClick={() => {
-                    const title = prompt("عنوان المحادثة", c.title);
-                    if (title)
-                      action(async () => {
-                        await api("/api/conversations/" + c.id, "PATCH", {
-                          title,
-                        });
-                        await refreshChats();
-                      });
-                  }}
-                >
-                  إعادة تسمية
-                </button>
-                <button
-                  onClick={() => {
-                    if (confirm("حذف هذه المحادثة ورسائلها؟"))
-                      action(async () => {
-                        await api("/api/conversations/" + c.id, "DELETE");
-                        if (chatId === c.id) {
-                          setChatId("");
-                          setMessages([]);
-                          location.hash = "";
-                        }
-                        await refreshChats();
-                      });
-                  }}
-                >
-                  حذف
-                </button>
+                <summary aria-label="خيارات المحادثة">
+                  <Icon name="more" size={18} />
+                </summary>
+                <div className="history-actions">
+                  <button
+                    onClick={(e) => {
+                      e.currentTarget
+                        .closest("details")
+                        ?.removeAttribute("open");
+                      setRenameTitle(c.title);
+                      setChatDialog({ kind: "rename", chat: c });
+                    }}
+                  >
+                    <Icon name="write" size={16} /> إعادة تسمية
+                  </button>
+                  <button
+                    className="destructive-text"
+                    onClick={(e) => {
+                      e.currentTarget
+                        .closest("details")
+                        ?.removeAttribute("open");
+                      setChatDialog({ kind: "delete", chat: c });
+                    }}
+                  >
+                    <Icon name="trash" size={16} /> حذف
+                  </button>
+                </div>
               </details>
             </div>
           ))}
         </div>
-        <div className="profile">
-          <div>
-            <strong>{user.name}</strong>
-            <span>
-              {user.role === "owner"
-                ? "المالك"
-                : user.role === "teacher"
-                  ? "أستاذ"
-                  : "طالب"}
-            </span>
-          </div>
+        <div className="profile" ref={accountRef}>
           <button
-            onClick={() =>
-              action(async () => {
-                await api("/api/auth/logout", "POST", {});
-                stream.current?.close();
-                setUser(null);
-                setMessages([]);
-                setChats([]);
-                setChatId("");
-                csrf = "";
-              })
-            }
+            className="profile-button"
+            aria-label="إعدادات الحساب"
+            aria-expanded={accountOpen}
+            aria-controls="account-panel"
+            onClick={() => {
+              setCollapsed(false);
+              setAccountOpen(!accountOpen);
+            }}
           >
-            خروج
+            <span className="avatar">{user.name.trim().slice(0, 1)}</span>
+            <span className="profile-text">
+              <strong>{user.name}</strong>
+              <small>
+                {user.role === "owner"
+                  ? "مساحة المالك"
+                  : user.role === "teacher"
+                    ? "مساحة الأستاذ"
+                    : "مساحة الطالب"}
+              </small>
+            </span>
+            <Icon name="chevron" size={16} />
           </button>
+          {accountOpen && (
+            <div
+              id="account-panel"
+              className="account-panel"
+              aria-label="إعدادات ومساحات الحساب"
+            >
+              <div className="account-heading">إعدادات مساحتك</div>
+              <nav aria-label="إعدادات الحساب والتنقل">
+                {navItem("preferences", "تفضيلات وخصوصية", "settings")}
+                {navItem("security", "أمان الحساب", "shield")}
+                {navItem("personal-usage", "استخدامي وحدودي", "chart")}
+                {user.role === "owner" && (
+                  <>
+                    <div className="account-heading">إدارة المالك</div>
+                    {navItem(
+                      "owner-library",
+                      "إدارة المحتوى",
+                      "book",
+                      "▥ إدارة المحتوى",
+                    )}
+                    {navItem(
+                      "models",
+                      "إعداد النماذج",
+                      "settings",
+                      "⚙ إعداد النماذج",
+                    )}
+                    {navItem("usage", "الاستخدام", "chart", "◷ الاستخدام")}
+                    {navItem("service-tokens", "وصول الوكلاء", "key")}
+                    {navItem("accounts", "الحسابات والحدود", "users")}
+                  </>
+                )}
+              </nav>
+              <div
+                className="appearance-controls"
+                role="group"
+                aria-label="مظهر الواجهة"
+              >
+                {(
+                  [
+                    ["light", "فاتح", "sun"],
+                    ["dark", "داكن", "moon"],
+                    ["system", "تلقائي", "monitor"],
+                  ] as const
+                ).map(([value, label, icon]) => (
+                  <button
+                    key={value}
+                    title={label}
+                    aria-label={"مظهر " + label}
+                    aria-pressed={appearance === value}
+                    onClick={() => setAppearance(value)}
+                  >
+                    <Icon name={icon} size={17} />
+                    <span>{label}</span>
+                  </button>
+                ))}
+              </div>
+              <button
+                className="logout-button"
+                onClick={() =>
+                  action(async () => {
+                    await api("/api/auth/logout", "POST", {});
+                    stream.current?.close();
+                    setUser(null);
+                    setMessages([]);
+                    setChats([]);
+                    setChatId("");
+                    setAccountOpen(false);
+                    setText("");
+                    setMenu(false);
+                    csrf = "";
+                  })
+                }
+              >
+                <Icon name="logout" size={18} /> خروج
+              </button>
+            </div>
+          )}
         </div>
       </aside>
-      <div className="workspace">
-        <header>
-          <button
-            className="menu-button"
-            onClick={() => setMenu(!menu)}
-            aria-label="فتح القائمة"
-          >
-            <svg
-              aria-hidden="true"
-              width="22"
-              height="22"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-              strokeLinecap="round"
+      <div
+        id="workspace-content"
+        tabIndex={-1}
+        className="workspace"
+        inert={Boolean(menu || source || chatDialog)}
+      >
+        <header className="topbar">
+          <div className="topbar-start">
+            <button
+              className="icon-button menu-button"
+              onClick={() => setMenu(!menu)}
+              aria-label="فتح القائمة"
+              aria-controls="conversation-sidebar"
+              aria-expanded={menu}
             >
-              <path d="M4 6h16M4 12h16M4 18h16" />
-            </svg>
-          </button>
-          <strong>
-            {[
-              "security",
-              "service-tokens",
-              "preferences",
-              "notes",
-              "materials",
-              "accounts",
-              "personal-usage",
-            ].includes(view)
-              ? (
-                  {
-                    security: "أمان الحساب",
-                    "service-tokens": "وصول الوكلاء",
-                    preferences: "تفضيلات وخصوصية",
-                    notes: "ملاحظاتي التعليمية",
-                    materials: "المسودات التعليمية",
-                    accounts: "الحسابات والحدود",
-                    "personal-usage": "استخدامي وحدودي",
-                  } as Record<string, string>
-                )[view]
-              : view === "chat"
-                ? user.role === "teacher"
-                  ? "مساحة الأستاذ"
-                  : "محادثة تعليمية"
-                : view === "library"
-                  ? "المكتبة المنشورة"
-                  : view === "owner-library"
-                    ? "مراجعة المحتوى ونشره"
-                    : view === "models"
-                      ? "نماذج التدريس والاستخراج"
-                      : "الاستخدام والمحاسبة"}
-          </strong>
-          <span className="header-note">مصادر واضحة · بلا خطوات وهمية</span>
+              <Icon name="menu" />
+            </button>
+            <button
+              className="workspace-brand"
+              aria-label="مسار · العودة للمحادثة"
+              onClick={() => navigate("chat")}
+            >
+              {view === "chat" ? "مسار" : titles[view]}
+              {view === "chat" && (
+                <span className="assistant-badge">مساعد التعلّم</span>
+              )}
+            </button>
+          </div>
+          <div className="topbar-actions">
+            <span
+              className="chat-title"
+              title={chats.find((c) => c.id === chatId)?.title}
+            >
+              {view === "chat"
+                ? chats.find((c) => c.id === chatId)?.title || "محادثة جديدة"
+                : "مساحة خاصة"}
+            </span>
+            <button
+              className="icon-button"
+              title="محادثة جديدة"
+              aria-label="بدء محادثة جديدة"
+              onClick={() => action(createChat)}
+              disabled={busy}
+            >
+              <Icon name="write" />
+            </button>
+          </div>
         </header>
         {notice && (
           <div className="notice" role="status">
-            {notice}
-            <button onClick={() => setNotice("")} aria-label="إغلاق التنبيه">
-              ×
+            <span>{notice}</span>
+            <button
+              className="icon-button"
+              onClick={() => setNotice("")}
+              aria-label="إغلاق التنبيه"
+            >
+              <Icon name="close" size={18} />
             </button>
           </div>
         )}
-        {view === "chat" ? (
-          <>
-            <section className="conversation">
-              {!messages.length && !run ? (
-                <div className="welcome">
-                  <span className="eyebrow">التعلّم يبدأ بسؤال جيد</span>
-                  <h1>
-                    {user.role === "teacher"
-                      ? "ما الذي نحضّره اليوم؟"
-                      : "أين توقفتَ في الدرس؟"}
-                  </h1>
-                  <p>
-                    اختر فكرة، أو اكتب المسألة كما وردت.
-                    <br />
-                    سأستخدم المصادر المنشورة عندما تكون متاحة، وأوضح ما لم أتمكن
-                    من تأكيده.
-                  </p>
-                  <div className="starters">
-                    {(user.role === "teacher"
-                      ? [
-                          "حضّر خطة درس اعتمادًا على المكتبة",
-                          "أنشئ اختبارًا تدريبيًا غير رسمي مع سلم تصحيح",
-                          "راجع شرحًا أعددته للطلاب",
-                        ]
-                      : [
-                          "اشرح لي درسًا من المكتبة خطوة بخطوة",
-                          "ساعدني على فهم خطئي في الحل",
-                          "أريد تدريبًا على مفهوم لم أتقنه",
-                        ]
-                    ).map((x) => (
-                      <button key={x} onClick={() => setText(x)}>
-                        {x}
-                        <span>←</span>
-                      </button>
-                    ))}
+        {view === "chat" && (
+          <div className={"chat-stage " + (isEmpty ? "empty" : "")}>
+            <div
+              className="chat-scroll"
+              ref={scrollArea}
+              onScroll={() => {
+                const a = scrollArea.current;
+                if (a) {
+                  const near =
+                    a.scrollHeight - a.scrollTop - a.clientHeight < 96;
+                  pinned.current = near;
+                  setShowLatest(!near);
+                }
+              }}
+            >
+              <section className="conversation" aria-label="المحادثة">
+                {isEmpty ? (
+                  <div className="welcome">
+                    <Mark />
+                    <p className="welcome-greeting">
+                      أهلًا {user.name.split(" ")[0]}
+                    </p>
+                    <h1>
+                      {user.role === "teacher"
+                        ? "ما الذي نحضّره اليوم؟"
+                        : "ما الذي تريد أن تفهمه اليوم؟"}
+                    </h1>
+                    <p className="welcome-caption">
+                      فكرة، درس، أو مسألة. لنأخذها خطوة بخطوة.
+                    </p>
                   </div>
-                  <p className="muted small">
-                    المكتبة الخام لا تظهر هنا قبل مراجعتها ونشرها من المالك.
-                  </p>
-                </div>
-              ) : (
-                messages.map((m) => (
-                  <article className={"message " + m.role} key={m.id}>
-                    <div className="message-label">
-                      {m.role === "user" ? "أنت" : "مسار"}
-                      {m.role === "user" && !run && (
-                        <button
-                          className="text-button"
-                          onClick={() => {
-                            setEditing(m.id);
-                            setText(m.content);
-                          }}
-                        >
-                          تعديل
-                        </button>
+                ) : (
+                  messages.map((m, index) => (
+                    <article className={"message " + m.role} key={m.id}>
+                      {m.role === "assistant" && (
+                        <div className="message-label">
+                          <Mark small /> مسار
+                        </div>
                       )}
+                      <div className="message-body" dir="auto">
+                        {m.blocks.length ? (
+                          <Content blocks={m.blocks} />
+                        ) : m.role === "user" ? (
+                          <p className="user-text">{m.content}</p>
+                        ) : (
+                          <Md text={m.content} />
+                        )}
+                      </div>
+                      {m.sources.length > 0 && (
+                        <div className="sources">
+                          <span>
+                            <Icon name="book" size={15} /> المصادر
+                          </span>
+                          {m.sources.map((src, i) => (
+                            <button
+                              key={i}
+                              onClick={() =>
+                                src.scope === "private"
+                                  ? privateSource(src)
+                                  : src.source_id?.includes(":part:")
+                                    ? readPart(src.source_id)
+                                    : readSource(src.node_id)
+                              }
+                            >
+                              {src.title} · ص <bdi>{src.pages.join("–")}</bdi>
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                      <div className="message-actions">
+                        {m.role === "user" ? (
+                          !run && (
+                            <button
+                              className="icon-button"
+                              aria-label="تعديل"
+                              title="تعديل الرسالة"
+                              onClick={() => {
+                                setEditing(m.id);
+                                setText(m.content);
+                                composerInput.current?.focus();
+                              }}
+                            >
+                              <Icon name="write" size={17} />
+                            </button>
+                          )
+                        ) : (
+                          <>
+                            <CopyAnswer
+                              text={
+                                m.content ||
+                                m.blocks
+                                  .map(
+                                    (b) =>
+                                      b.text ||
+                                      b.latex ||
+                                      (b.headers
+                                        ? [b.headers, ...(b.rows || [])]
+                                            .map((row) => row.join(" | "))
+                                            .join("\n")
+                                        : b.caption || ""),
+                                  )
+                                  .join("\n\n")
+                              }
+                              notify={setNotice}
+                            />
+                            {!run && index === messages.length - 1 && (
+                              <button
+                                className="icon-button"
+                                aria-label="إعادة محاولة الرسالة الأخيرة"
+                                title="إعادة محاولة الرسالة الأخيرة"
+                                onClick={retryAnswer}
+                                disabled={busy}
+                              >
+                                <Icon name="retry" size={17} />
+                              </button>
+                            )}
+                          </>
+                        )}
+                      </div>
+                    </article>
+                  ))
+                )}
+                {activities.length > 0 && (
+                  <details className="activity" open={Boolean(run)}>
+                    <summary>
+                      <Icon name={run ? "settings" : "check"} size={16} />
+                      {run ? "نشاط الوكيل الفعلي" : "الأدوات المستخدمة"}
+                    </summary>
+                    {activities.map((a) => (
+                      <div
+                        key={a.id}
+                        className={a.success === false ? "error" : ""}
+                      >
+                        {a.success === true
+                          ? "✓ "
+                          : a.success === false
+                            ? "! "
+                            : "· "}
+                        {a.label}
+                      </div>
+                    ))}
+                  </details>
+                )}
+                {delta && (
+                  <article className="message assistant streaming">
+                    <div className="message-label">
+                      <Mark small /> مسار{" "}
+                      <span className="stream-label">بث مباشر</span>
                     </div>
                     <div className="message-body">
-                      {m.blocks.length ? (
-                        <Content blocks={m.blocks} />
-                      ) : (
-                        <Md text={m.content} />
-                      )}
+                      <Md text={delta} />
                     </div>
-                    {m.sources.length > 0 && (
-                      <div className="sources">
-                        <span>المصادر</span>
-                        {m.sources.map((src, i) => (
-                          <button
-                            key={i}
-                            onClick={() =>
-                              src.scope === "private"
-                                ? privateSource(src)
-                                : src.source_id?.includes(":part:")
-                                  ? readPart(src.source_id)
-                                  : readSource(src.node_id)
-                            }
-                          >
-                            {src.title} · ص {src.pages.join("–")}
-                          </button>
-                        ))}
-                      </div>
-                    )}
                   </article>
-                ))
-              )}
-              {activities.length > 0 && (
-                <details className="activity" open={Boolean(run)}>
-                  <summary>
-                    {run ? "نشاط الوكيل الفعلي" : "الأدوات المستخدمة"}
-                  </summary>
-                  {activities.map((a) => (
-                    <div
-                      key={a.id}
-                      className={a.success === false ? "error" : ""}
-                    >
-                      {a.success === true
-                        ? "✓ "
-                        : a.success === false
-                          ? "! "
-                          : "· "}
-                      {a.label}
-                    </div>
-                  ))}
-                </details>
-              )}
-              {delta && (
-                <article className="message assistant">
-                  <div className="message-label">مسار · بث مباشر</div>
-                  <div className="message-body">
-                    <Md text={delta} />
+                )}
+                {run && !delta && (
+                  <div className="run-status" role="status">
+                    <span className="pulse-dot" /> جارٍ تنفيذ طلبك…
                   </div>
-                </article>
-              )}
-              {warnings.map((w, i) => (
-                <p className="warning" key={i}>
-                  {w}
-                </p>
-              ))}
-              <div ref={bottom} />
-            </section>
+                )}
+                {warnings.map((w, i) => (
+                  <p className="warning" key={i}>
+                    {w}
+                  </p>
+                ))}
+                <div ref={bottom} />
+              </section>
+            </div>
             <div className="composer-wrap">
+              {showLatest && !isEmpty && (
+                <button
+                  className="jump-latest"
+                  aria-label="العودة إلى أحدث رسالة"
+                  onClick={jumpToLatest}
+                >
+                  <Icon name="down" size={18} />
+                </button>
+              )}
               {editing && (
                 <div className="editing">
-                  تعديل رسالة سابقة؛ ستُحفظ الردود التالية كنسخة غير نشطة.
+                  <span>تعديل الرسالة · سيُنشأ مسار جديد للردود التالية.</span>
                   <button
+                    className="icon-button"
+                    aria-label="إلغاء التعديل"
                     onClick={() => {
                       setEditing("");
                       setText("");
                     }}
                   >
-                    إلغاء التعديل
+                    <Icon name="close" size={17} />
                   </button>
                 </div>
               )}
-              <PrivateUploads api={api} chat={chatId} notify={setNotice} />
               <form className="composer" onSubmit={send}>
                 <textarea
+                  id="chat-input"
+                  ref={composerInput}
                   aria-label="رسالتك"
-                  placeholder="اكتب سؤالك أو المسألة…"
+                  placeholder={isEmpty ? "اسأل مسار…" : "تابع المحادثة…"}
                   value={text}
                   onChange={(e) => setText(e.target.value)}
                   maxLength={8000}
-                  rows={2}
+                  rows={1}
                   onKeyDown={(e) => {
-                    if (e.key === "Enter" && !e.shiftKey) {
+                    if (
+                      e.key === "Enter" &&
+                      !e.shiftKey &&
+                      !e.nativeEvent.isComposing &&
+                      e.keyCode !== 229
+                    ) {
                       e.preventDefault();
                       send();
                     }
                   }}
                 />
                 <div className="composer-controls">
-                  <span>Enter للإرسال · Shift + Enter لسطر جديد</span>
-                  {run ? (
-                    <button
-                      type="button"
-                      onClick={() =>
-                        action(() =>
-                          api("/api/runs/" + run + "/cancel", "POST", {}),
-                        )
-                      }
-                    >
-                      ■ إيقاف
-                    </button>
-                  ) : (
-                    <button className="primary" disabled={busy || !text.trim()}>
-                      إرسال ↑
-                    </button>
-                  )}
+                  <div className="composer-tools">
+                    <PrivateUploads
+                      api={api}
+                      chat={chatId}
+                      ensureChat={ensureAttachmentChat}
+                      notify={setNotice}
+                    />
+                    <span className="context-label">
+                      <Icon name="shield" size={14} /> مساحة خاصة
+                    </span>
+                  </div>
+                  <div className="send-controls">
+                    <span className="key-hint">Shift + Enter لسطر جديد</span>
+                    {run ? (
+                      <button
+                        className="send-button"
+                        type="button"
+                        aria-label="■ إيقاف"
+                        title="إيقاف"
+                        onClick={() =>
+                          action(() =>
+                            api("/api/runs/" + run + "/cancel", "POST", {}),
+                          )
+                        }
+                      >
+                        <Icon name="stop" size={18} />
+                      </button>
+                    ) : (
+                      <button
+                        className="send-button"
+                        aria-label="إرسال ↑"
+                        title="إرسال"
+                        disabled={busy || !text.trim()}
+                      >
+                        <Icon name="arrow" size={21} />
+                      </button>
+                    )}
+                  </div>
                 </div>
               </form>
-              {chatId && !run && messages.length > 0 && (
-                <button
-                  className="text-button retry"
-                  onClick={() =>
-                    action(async () => {
-                      const d = await api(
-                        "/api/conversations/" + chatId + "/retry",
-                        "POST",
-                        {},
-                      );
-                      const c = await api("/api/conversations/" + chatId);
-                      setMessages(c.messages);
-                      subscribe(d.run_id);
-                    })
-                  }
-                >
-                  إعادة محاولة الرسالة الأخيرة
-                </button>
-              )}
               <p className="composer-note">
-                الإجابة قد تتضمن خطأ. راجع المصادر والتحذيرات، خصوصًا شروط
-                المسائل والمعادلات.
+                قد يخطئ مسار. تحقّق من المصادر والنتائج المهمة.
               </p>
             </div>
-          </>
-        ) : null}
+            {isEmpty && (
+              <div className="starter-bar">
+                {starters.map((s) => (
+                  <button
+                    key={s.label}
+                    onClick={() => {
+                      setText(s.prompt);
+                      composerInput.current?.focus();
+                    }}
+                  >
+                    <Icon name={s.icon} size={17} />
+                    {s.label}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
         {view === "library" && (
           <section className="page-content">
             <h1>مصادر جاهزة للتعلّم</h1>
@@ -1890,6 +2232,77 @@ function App() {
           </section>
         )}
       </div>
+      {chatDialog && (
+        <Dialog
+          title={
+            chatDialog.kind === "rename"
+              ? "إعادة تسمية المحادثة"
+              : "حذف المحادثة"
+          }
+          close={() => setChatDialog(null)}
+        >
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              action(async () => {
+                const c = chatDialog.chat;
+                if (chatDialog.kind === "rename")
+                  await api("/api/conversations/" + c.id, "PATCH", {
+                    title: renameTitle.trim(),
+                  });
+                else {
+                  await api("/api/conversations/" + c.id, "DELETE");
+                  if (chatId === c.id) {
+                    setChatId("");
+                    setMessages([]);
+                    setText("");
+                    location.hash = "";
+                  }
+                }
+                await refreshChats();
+                setChatDialog(null);
+              });
+            }}
+          >
+            {chatDialog.kind === "rename" ? (
+              <label>
+                عنوان المحادثة
+                <input
+                  value={renameTitle}
+                  maxLength={150}
+                  required
+                  onChange={(e) => setRenameTitle(e.target.value)}
+                />
+              </label>
+            ) : (
+              <p>
+                سيُحذف «{chatDialog.chat.title}» ورسائله. لا يمكنك التراجع عن
+                هذا الإجراء.
+              </p>
+            )}
+            <div className="actions">
+              <button
+                className={
+                  chatDialog.kind === "delete" ? "danger-button" : "primary"
+                }
+                disabled={
+                  busy || (chatDialog.kind === "rename" && !renameTitle.trim())
+                }
+              >
+                {chatDialog.kind === "rename" ? "حفظ العنوان" : "حذف نهائيًا"}
+              </button>
+              <button type="button" onClick={() => setChatDialog(null)}>
+                إلغاء
+              </button>
+            </div>
+            {notice && (
+              <p role="alert" className="error">
+                {notice}
+              </p>
+            )}
+          </form>
+        </Dialog>
+      )}
       {source && (
         <div className="modal-backdrop" onClick={() => setSource(null)}>
           <section

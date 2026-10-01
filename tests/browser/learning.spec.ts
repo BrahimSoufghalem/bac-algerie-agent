@@ -1,5 +1,5 @@
 import { test, expect, Page } from "@playwright/test";
-import { snapshot, assertNoOverflow } from "./helpers";
+import { snapshot, assertNoOverflow, navigate } from "./helpers";
 async function signIn(
   page: Page,
   email: string,
@@ -10,7 +10,7 @@ async function signIn(
   await page.getByLabel("كلمة المرور").fill(password);
   await page.getByRole("button", { name: "دخول", exact: true }).click();
   await expect(
-    page.getByRole("button", { name: "تفضيلات وخصوصية", exact: true }),
+    page.getByRole("button", { name: "إعدادات الحساب", exact: true }),
   ).toBeVisible();
 }
 async function mobile(page: Page, name: string) {
@@ -20,18 +20,6 @@ async function mobile(page: Page, name: string) {
   await assertNoOverflow(page);
   await snapshot(page, name + "-mobile");
 }
-async function nav(page: Page, name: string) {
-  await expect(page.locator(".workspace")).toBeVisible();
-  if (
-    await page
-      .getByRole("button", { name: "فتح القائمة", exact: true })
-      .isVisible()
-  )
-    await page
-      .getByRole("button", { name: "فتح القائمة", exact: true })
-      .click();
-  await page.getByRole("button", { name, exact: true }).click();
-}
 
 test("student: preferences → own private image pixels → pending note → explicit edited consent → export/delete", async ({
   page,
@@ -39,7 +27,7 @@ test("student: preferences → own private image pixels → pending note → exp
   const errors: string[] = [];
   page.on("pageerror", (e) => errors.push(e.message));
   await signIn(page, "learning@test.invalid");
-  await nav(page, "تفضيلات وخصوصية");
+  await navigate(page, "تفضيلات وخصوصية");
   await page.getByLabel("الشعبة", { exact: true }).fill("علوم تجريبية");
   await page.getByLabel("لغة الشرح").selectOption("fr");
   await page
@@ -48,9 +36,9 @@ test("student: preferences → own private image pixels → pending note → exp
   await expect(page.getByRole("status")).toContainText("حُفظت التفضيلات");
   await mobile(page, "learning-preferences");
   await page.setViewportSize({ width: 1440, height: 1000 });
-  await nav(page, "＋ محادثة جديدة");
+  await navigate(page, "＋ محادثة جديدة");
   await page
-    .getByText("إرفاق ملف خاص مؤقتًا · 24 ساعة", { exact: true })
+    .locator('summary[aria-label="إرفاق ملف خاص مؤقتًا · 24 ساعة"]')
     .click();
   // Fixture image from the original synthetic renderer; no remote provider.
   const image = Buffer.from(
@@ -74,7 +62,7 @@ test("student: preferences → own private image pixels → pending note → exp
   const src = await page.locator(".message.assistant img").getAttribute("src");
   expect(src).toMatch(/^\/api\/private\//);
   await mobile(page, "learning-private-answer");
-  await nav(page, "ملاحظاتي التعليمية");
+  await navigate(page, "ملاحظاتي التعليمية");
   await expect(
     page.getByText("هدف · اقتراح غير معتمد", { exact: true }),
   ).toBeVisible();
@@ -99,7 +87,7 @@ test("student: preferences → own private image pixels → pending note → exp
   await expect(
     page.getByText("هدفي المعتمد: مراجعة الوحدات", { exact: true }),
   ).toHaveCount(0);
-  await nav(page, "تفضيلات وخصوصية");
+  await navigate(page, "تفضيلات وخصوصية");
   const download = page.waitForEvent("download");
   await page.getByRole("button", { name: "تصدير بياناتي JSON" }).click();
   expect((await download).suggestedFilename()).toContain("export");
@@ -112,7 +100,7 @@ for (const who of ["teacher", "practice"])
     const errors: string[] = [];
     page.on("pageerror", (e) => errors.push(e.message));
     await signIn(page, who + "@test.invalid");
-    await nav(
+    await navigate(
       page,
       who === "teacher" ? "مساحة إعداد الأستاذ" : "تدريبي الذاتي",
     );
@@ -128,7 +116,7 @@ for (const who of ["teacher", "practice"])
     await expect(
       page.getByRole("heading", { name: "حُفظت المسودة الخاصة" }),
     ).toBeVisible({ timeout: 30000 });
-    await nav(
+    await navigate(
       page,
       who === "teacher" ? "مساحة إعداد الأستاذ" : "تدريبي الذاتي",
     );
@@ -147,7 +135,7 @@ for (const who of ["teacher", "practice"])
     const materials = await (await page.request.get("/api/materials")).json();
     expect(materials.items.at(-1).payload.official).toBe(false);
     await page.reload();
-    await nav(
+    await navigate(
       page,
       who === "teacher" ? "مساحة إعداد الأستاذ" : "تدريبي الذاتي",
     );
@@ -162,7 +150,7 @@ test("owner: accounts limits and immutable model prices; no implicit paid connec
   const errors: string[] = [];
   page.on("pageerror", (e) => errors.push(e.message));
   await signIn(page, "owner@test.invalid", "Test-password-only-1");
-  await nav(page, "الحسابات والحدود");
+  await navigate(page, "الحسابات والحدود");
   await page.getByLabel("اسم الحساب", { exact: true }).fill("أستاذ جديد");
   await page.getByLabel("بريد الحساب").fill("created-teacher@test.invalid");
   await page
@@ -179,7 +167,7 @@ test("owner: accounts limits and immutable model prices; no implicit paid connec
   await form.getByRole("button", { name: "حفظ حدود أستاذ جديد" }).click();
   await expect(page.getByRole("status")).toContainText("حُفظت حدود الحساب");
   await mobile(page, "learning-accounts");
-  await nav(page, "⚙ إعداد النماذج");
+  await navigate(page, "⚙ إعداد النماذج");
   await page.getByLabel("سعر الإدخال", { exact: true }).fill("1");
   await expect(page.getByLabel("سعر الإدخال", { exact: true })).toHaveValue(
     "1",

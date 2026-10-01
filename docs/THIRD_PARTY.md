@@ -16,3 +16,10 @@
 ## اعتماد المرحلة الثالثة
 
 SymPy **1.14.0** وmpmath **1.3.0**: BSD-3-Clause؛ قُرئت ملفات LICENSE في distributions المثبتة. الاعتماد الرمزي يعمل من AST مبني يدويًا في child process محدود، وليس parser eval للمُدخل. هذا فحص ترخيص وتوافق وظيفي للاختبارات، **لا تدقيقًا أمنيًا مستقلًا أو إثبات غياب ثغرات**. لا نسخ كود من agent frameworks في هذه المرحلة.
+
+## مراجعة إعادة تصميم المحادثة
+
+- **Hugging Face Chat UI — Apache-2.0**: قُرئ [الترخيص](https://github.com/huggingface/chat-ui/blob/3f4b78dfe1ebf2870fbad8a64d6eb39273923eae/LICENSE) و[NavMenu.svelte](https://github.com/huggingface/chat-ui/blob/3f4b78dfe1ebf2870fbad8a64d6eb39273923eae/src/lib/components/NavMenu.svelte). استُلهم الفصل بين سجل المحادثات، إعدادات الحساب، والمظهر.
+- **assistant-ui — MIT**: قُرئ [الترخيص](https://github.com/assistant-ui/assistant-ui/blob/c0fc01067497e71e74b5b24bb5f1221b0c2319be/LICENSE) و[assistant.tsx](https://github.com/assistant-ui/assistant-ui/blob/c0fc01067497e71e74b5b24bb5f1221b0c2319be/templates/default/app/assistant.tsx). استُلهم shell مستقل مع thread ومنطقة كتابة ثابتة داخل viewport.
+
+لم يُنسخ كود هذين المشروعين، ولم تُضف SDK أو UI runtime أو dependencies منهما. المكونات وSVG وCSS أصلية لهذا المشروع. هذه مراجعة عينات وأنماط وليست مراجعة أمنية للمستودعين. لا شعارات ChatGPT/Claude/DeepSeek/Notion ولا ادعاء انتساب إليها.

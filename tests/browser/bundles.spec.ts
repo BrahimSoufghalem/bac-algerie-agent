@@ -1,7 +1,7 @@
 import { test, expect } from "@playwright/test";
 import path from "node:path";
 import { execFileSync } from "node:child_process";
-import { snapshot, assertNoOverflow } from "./helpers";
+import { snapshot, assertNoOverflow, navigate } from "./helpers";
 test("whole exam + explicit matched solution ranges → publish → role-scoped sources and bundle tool", async ({
   page,
   browser,
@@ -12,7 +12,7 @@ test("whole exam + explicit matched solution ranges → publish → role-scoped 
   await page.getByLabel("البريد الإلكتروني").fill("owner@test.invalid");
   await page.getByLabel("كلمة المرور").fill("Test-password-only-1");
   await page.getByRole("button", { name: "دخول", exact: true }).click();
-  await page.getByRole("button", { name: "▥ إدارة المحتوى" }).click();
+  await navigate(page, "▥ إدارة المحتوى");
   const pdf = path.join(process.env.TEST_DATA_DIR!, "exam_heat.pdf");
   execFileSync(process.env.BAC_PYTHON || "python", [
     "tests/fixture_book.py",
@@ -153,7 +153,7 @@ test("whole exam + explicit matched solution ranges → publish → role-scoped 
   await student.getByRole("button", { name: "إغلاق المصدر" }).click();
   await student.getByRole("button", { name: "فتح القائمة" }).click();
   await student
-    .getByRole("button", { name: "◌ المحادثة", exact: true })
+    .getByRole("button", { name: "مسار · المحادثة", exact: true })
     .click();
   await student
     .getByRole("textbox", { name: "رسالتك" })
@@ -176,7 +176,7 @@ test("exercise collection stays whole and missing solution is explicit", async (
   await page.getByLabel("البريد الإلكتروني").fill("owner@test.invalid");
   await page.getByLabel("كلمة المرور").fill("Test-password-only-1");
   await page.getByRole("button", { name: "دخول", exact: true }).click();
-  await page.getByRole("button", { name: "▥ إدارة المحتوى" }).click();
+  await navigate(page, "▥ إدارة المحتوى");
   const pdf = path.join(process.env.TEST_DATA_DIR!, "exercises_heat.pdf");
   execFileSync(process.env.BAC_PYTHON || "python", [
     "tests/fixture_book.py",
@@ -251,7 +251,7 @@ test("exercise collection stays whole and missing solution is explicit", async (
   await student.getByRole("button", { name: "إغلاق المصدر" }).click();
   await student.getByRole("button", { name: "فتح القائمة" }).click();
   await student
-    .getByRole("button", { name: "◌ المحادثة", exact: true })
+    .getByRole("button", { name: "مسار · المحادثة", exact: true })
     .click();
   await student
     .getByRole("textbox", { name: "رسالتك" })
