@@ -1,0 +1,69 @@
+{
+  "generated_at_utc": "2026-10-01T18:51:36.203218+00:00",
+  "source_commit": "47078011b52663e37fd0309efafe6d206ddca7f9",
+  "status": "BLOCKED_NOT_PRODUCTION_ACCEPTED",
+  "provider": {
+    "base_url": "https://tokenharbor.ai/v1",
+    "model": "deepseek-v4.1-flash:free",
+    "catalog_pricing": {
+      "input_usd_per_1m": 0,
+      "output_usd_per_1m": 0
+    },
+    "paid_fallback_used": false,
+    "invoice_or_billing_verified": false
+  },
+  "generation_calls": 3,
+  "automatic_retries": 0,
+  "requested_pdf": {
+    "downloaded": false,
+    "direct_http_status": 403,
+    "browser_http_status": 403,
+    "blocker": "Cloudflare verification did not complete; user upload required"
+  },
+  "input_used": "Synthetic Arabic/English compatibility page; NOT the requested DZExams PDF",
+  "components_verified_by_git_blob_hash": [
+    "bac/agent/provider.py",
+    "bac/vendor/bookforge/vision/provider.py",
+    "bac/vendor/bookforge/models/page.py",
+    "config/extraction.yaml"
+  ],
+  "checks": {
+    "teaching_tool_compatibility": {
+      "tool_call_valid": true,
+      "source_ids_exact": true,
+      "expected_number_present": true,
+      "not_scientific_quality_proof": true
+    },
+    "vision_1600_output_tokens": {
+      "error": "OUTPUT_TRUNCATED"
+    },
+    "vision_6000_output_tokens": {
+      "error": "OUTPUT_TRUNCATED",
+      "elapsed_ms": 67764
+    },
+    "provider_regression_tests": {
+      "passed": 4,
+      "model_api_calls": 0
+    }
+  },
+  "usage_reported": [
+    {
+      "prompt_tokens": 385,
+      "completion_tokens": 172,
+      "total_tokens": 557
+    }
+  ],
+  "usage_limitations": "Usage for truncated Vision requests is not persisted by the current provider error path; complete aggregate usage is unknown, not zero.",
+  "not_completed": [
+    "Requested real PDF extraction and source comparison",
+    "Valid page JSON and model-driven crops/Markdown for the real PDF",
+    "Published lesson/student/external-agent end-to-end acceptance",
+    "Live restart/resume and backup/restore drill",
+    "Public deployment TLS/SMTP/network load acceptance"
+  ],
+  "secret_handling": {
+    "key_committed": false,
+    "key_logged_to_output": false,
+    "temporary_local_key_removed": true
+  }
+}
