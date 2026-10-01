@@ -96,7 +96,9 @@ jobs:
           docker run --rm -e DATA_DIR=/restore/new-data -v masar-ci-restore:/restore masar-bac:ci python -m bac.cli migrate
       - name: Failure container logs
         if: failure()
-        run: docker logs masar-ci-api 2>/dev/null || true
+        run: |
+          { docker inspect --format="{{json .State}}" masar-ci-api; docker logs masar-ci-api; } > .ci-logs/container-process.log 2>&1 || true
+          cat .ci-logs/container-process.log
 
       - name: Report container failure diagnostics to internal PR
         if: failure() && github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
@@ -105,7 +107,7 @@ jobs:
           script: |
             const fs = require('fs');
             let body = `Container failure for ${context.payload.pull_request.head.sha}\nRun: ${process.env.GITHUB_SERVER_URL}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}\n`;
-            for (const name of ['container-build', 'container-runtime']) {
+            for (const name of ['container-build', 'container-runtime', 'container-process']) {
               const path = `.ci-logs/${name}.log`;
               if (!fs.existsSync(path)) continue;
               const text = fs.readFileSync(path, 'utf8').split('\n').slice(-90).join('\n').replace(/(?:sk-[a-zA-Z0-9-]{25,}|gh[pousr]_[a-zA-Z0-9]{25,})/g, '[REDACTED]').replace(/```/g, '~~~');

@@ -15,7 +15,7 @@ docker compose run --rm api python -m bac.cli bootstrap --email owner@example.or
 
 افتح `http://127.0.0.1:8090` وسجّل الدخول بحساب المالك. في المرة التالية: `docker compose up -d` وافتح الرابط نفسه. الخدمات تعمل حتى لو أغلقت المتصفح. `docker compose stop` يحفظ volume `library`؛ **لا تستخدم down -v** لأنه يحذف البيانات. تعيد وظائف الاستخراج حالة الطابور المحفوظة، ولا تعيد الصفحات الناجحة؛ تشغيل تدريس مدفوع انقطع يُعلَّم INTERRUPTED دون إعادة تلقائية مدفوعة.
 
-النتائج في volume داخل `/app/data`: `platform.sqlite3` للحسابات/الدردشة/المراجعة، `extraction/state.sqlite3` للاستخراج، `extraction/...` للأصل وصور الصفحات وJSON/crops/Markdown، `snapshots/...` للنشر الثابت، `private/...` للملفات المؤقتة. التشغيل دون Docker يستخدم `DATA_DIR` (افتراضي `./data`). احتفظ بالأصول وبـ **مفتاحي** `.encryption.key`؛ لا تكفي قاعدة البيانات وحدها. بيانات الدردشة ليست مشفّرة end-to-end، والنسخة الاحتياطية تحتوي مفاتيح التشفير والبيانات الخاصة.
+النتائج في volume داخل `/app/data`: `platform.sqlite3` للحسابات/الدردشة/المراجعة، `extraction/state.sqlite3` للاستخراج، `extraction/...` للأصل وصور الصفحات وJSON/crops/Markdown، `snapshots/...` للنشر الثابت، `private/...` للملفات المؤقتة. المدخل API الفعلي هو `uvicorn bac.api.main:create_app --factory --host 127.0.0.1 --port 8090`؛ التشغيل دون Docker يستخدم `DATA_DIR` (افتراضي `./data`). احتفظ بالأصول وبـ **مفتاحي** `.encryption.key`؛ لا تكفي قاعدة البيانات وحدها. بيانات الدردشة ليست مشفّرة end-to-end، والنسخة الاحتياطية تحتوي مفاتيح التشفير والبيانات الخاصة.
 
 ## نشر HTTPS
 

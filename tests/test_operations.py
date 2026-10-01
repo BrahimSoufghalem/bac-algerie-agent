@@ -657,3 +657,64 @@ async def test_agent_oversize_manifest_never_returns_truncated_text(services):
         and full["pages"] == [1]
         and full["chapter"] is None
     )
+
+
+def test_real_production_uvicorn_factory_starts_and_protects_library(tmp_path):
+    import socket, subprocess, sys, urllib.request, urllib.error
+
+    with socket.socket() as sock:
+        sock.bind(("127.0.0.1", 0))
+        port = sock.getsockname()[1]
+    env = os.environ.copy()
+    env.update(
+        {
+            "DATA_DIR": str(tmp_path),
+            "SECURE_COOKIES": "false",
+            "TRUSTED_HOSTS": "",
+            "SMTP_HOST": "",
+            "REQUIRE_VERIFIED_EMAIL": "false",
+        }
+    )
+    proc = subprocess.Popen(
+        [
+            sys.executable,
+            "-m",
+            "uvicorn",
+            "bac.api.main:create_app",
+            "--factory",
+            "--host",
+            "127.0.0.1",
+            "--port",
+            str(port),
+        ],
+        env=env,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    )
+    try:
+        ready = False
+        for _ in range(100):
+            if proc.poll() is not None:
+                break
+            try:
+                with urllib.request.urlopen(
+                    f"http://127.0.0.1:{port}/health", timeout=0.5
+                ) as r:
+                    ready = r.status == 200
+                if ready:
+                    break
+            except (OSError, urllib.error.URLError):
+                time.sleep(0.05)
+        assert ready, "Real documented production entry point must start"
+        with pytest.raises(urllib.error.HTTPError) as err:
+            urllib.request.urlopen(
+                f"http://127.0.0.1:{port}/api/agent/books", timeout=2
+            )
+        assert err.value.code == 401
+        with pytest.raises(RuntimeError):
+            DataGuard(tmp_path, exclusive=True)
+    finally:
+        proc.terminate()
+        proc.wait(timeout=10)
+    with DataGuard(tmp_path, exclusive=True):
+        pass

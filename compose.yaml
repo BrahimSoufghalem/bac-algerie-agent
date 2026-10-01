@@ -17,7 +17,7 @@ services:
     pids_limit: 128
     cap_drop: [ALL]
     security_opt: ["no-new-privileges:true"]
-    command: ["uvicorn", "bac.api.main:app", "--host", "0.0.0.0", "--port", "8090", "--limit-concurrency", "96", "--timeout-keep-alive", "5", "--proxy-headers", "--forwarded-allow-ips", "*"]
+    command: ["uvicorn", "bac.api.main:create_app","--factory", "--host", "0.0.0.0", "--port", "8090", "--limit-concurrency", "96", "--timeout-keep-alive", "5", "--proxy-headers", "--forwarded-allow-ips", "*"]
     stop_grace_period: 60s
   worker:
     image: masar-bac:local

@@ -14,17 +14,8 @@ from bac.agent.engine import AgentEngine
 
 async def benchmark(requests=200, concurrency=8, runs=40):
     with tempfile.TemporaryDirectory(prefix="masar-load-") as root:
-        import os
+        from bac.api.main import create_app
 
-        previous = os.environ.get("DATA_DIR")
-        os.environ["DATA_DIR"] = root
-        try:
-            from bac.api.main import create_app
-        finally:
-            if previous is None:
-                os.environ.pop("DATA_DIR", None)
-            else:
-                os.environ["DATA_DIR"] = previous
         s = Services(
             replace(Settings(), data_dir=Path(root), agent_workers=concurrency)
         )

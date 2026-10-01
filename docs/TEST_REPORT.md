@@ -118,7 +118,7 @@ Phase 5 ما زالت مفتوحة: provider capability/educational quality (inc
 
 | الفحص المحلي | النتيجة |
 |---|---|
-| Backend النهائي | **122 passed**؛ 23 حالة تشغيل/أمان جديدة مع parameterization |
+| Backend النهائي | **123 passed**؛ 24 حالة تشغيل/أمان جديدة مع parameterization |
 | المتصفح | **13 passed**: 10 السابقة + password/second-session، recovery/hash/no-SMTP، scoped token/revoke، desktop/390px/no overflow |
 | Ruff F / strict TypeScript / Vite / pip check | نجح |
 | BookForge vendor | **صفر ملفات معدلة**؛ manifest 26 ملفًا محفوظًا |
@@ -142,7 +142,7 @@ Phase 5 ما زالت مفتوحة: provider capability/educational quality (inc
 
 ## إصلاحات أثناء التطوير
 
-اختبار byte cap الأول اختار260000bytes وهو أقل من256KiB؛ أصبح300000 وتأكد413. تنقل نفس الوثيقة إلى fragment recovery لم يعِد mount التطبيق؛ أضيف hashchange handler وتمحو الواجهة الرابط ثم تعرض النموذج. Docker backup/restore يحتاج writable owned mount points، أصبحت /backup و/restore و/data مهيأة UID10001. ولا توجد نتيجة نجاح مدّعاة بعد فشل غير محلول.
+اختبار byte cap الأول اختار260000bytes وهو أقل من256KiB؛ أصبح300000 وتأكد413. تنقل نفس الوثيقة إلى fragment recovery لم يعِد mount التطبيق؛ أضيف hashchange handler وتمحو الواجهة الرابط ثم تعرض النموذج. Docker backup/restore يحتاج writable owned mount points، أصبحت /backup و/restore و/data مهيأة UID10001. فحص الحاوية كشف مدخل Uvicorn مكسورًا (`bac.api.main:app` بلا object مُصدّر): أصبح `bac.api.main:create_app --factory` في Docker/Compose/README، واختبار subprocess يبدأ الخادم الفعلي ويثبت health/401/live maintenance lock/shutdown release. لا اعتماد نتائج factory-injection وحدها كدليل تشغيل للإنتاج. لا توجد نتيجة نجاح مدّعاة بعد فشل غير محلول.
 
 ## بوابة الإصدار
 

@@ -25,7 +25,7 @@ npm run build
 cp .env.example .env
 python -m bac.cli bootstrap --email YOUR_OWNER_EMAIL --name 'المالك'
 # سيطلب كلمة مرور 12 حرفًا أو أكثر دون إظهارها.
-uvicorn bac.api.main:app --host 127.0.0.1 --port 8090
+uvicorn bac.api.main:create_app --factory --host 127.0.0.1 --port 8090
 ```
 
 في طرفية ثانية، بنفس البيئة والمجلد:

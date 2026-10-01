@@ -20,4 +20,4 @@ RUN mkdir -p /app/data /backup /restore && chown bac:bac /app/data /backup /rest
 USER bac
 EXPOSE 8090
 HEALTHCHECK --interval=30s --timeout=5s --retries=3 CMD python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8090/health', timeout=3)"
-CMD ["uvicorn","bac.api.main:app","--host","0.0.0.0","--port","8090"]
+CMD ["uvicorn","bac.api.main:create_app","--factory","--host","0.0.0.0","--port","8090"]

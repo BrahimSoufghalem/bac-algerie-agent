@@ -1,3 +1,4 @@
+from contextlib import asynccontextmanager
 from pathlib import Path
 import asyncio, hashlib, json, os, tempfile, time
 from fastapi import FastAPI, Request, HTTPException, Depends, UploadFile, File, Form
@@ -86,8 +87,18 @@ class StatusUpdate(Strict):
 
 def create_app(services=None):
     s = services or Services()
+
+    @asynccontextmanager
+    async def lifespan(app):
+        try:
+            yield
+        finally:
+            if services is None:
+                s.close()
+
     app = FastAPI(
         title="Masar BAC Agent",
+        lifespan=lifespan,
         version="0.5.0",
         docs_url=None,
         redoc_url=None,
