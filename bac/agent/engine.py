@@ -165,11 +165,15 @@ class AgentEngine:
         )
         for row in loaded:
             try:
-                payload = tools.load(row["node_id"])
+                scope = row.get("scope", "full")
+                payload = tools.load(
+                    row.get("scope_id") or row["node_id"], remember=False, scope=scope
+                )
             except (HTTPException, ValueError):
                 continue
             text = js(payload)
-            if len(text) < remaining // 2:
+            if "error" not in payload and len(text) < remaining // 2:
+                tools.remember(payload, scope, row.get("scope_id") or row["node_id"])
                 messages.append(
                     {
                         "role": "user",

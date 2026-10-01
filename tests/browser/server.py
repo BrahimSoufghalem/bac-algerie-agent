@@ -32,16 +32,39 @@ class FixtureChat:
         self.step += 1
         await asyncio.sleep(0.15)
         if self.step == 1:
-            name, args = "search_library", {"query": "الحرارة"}
+            question = next(
+                m["content"] for m in reversed(messages) if m["role"] == "user"
+            )
+            self.mode = (
+                "exam"
+                if "امتحان" in question
+                else "exercise_collection"
+                if "سلسلة" in question
+                else "lesson"
+            )
+            name, args = (
+                "search_library",
+                {
+                    "query": "الحرارة",
+                    **({"kind": self.mode} if self.mode != "lesson" else {}),
+                },
+            )
         elif self.step == 2:
             hits = json.loads(messages[-1]["content"])["items"]
-            hit = next(x for x in hits if x["kind"] == "lesson")
-            name, args = "get_lesson_full", {"node_id": hit["node_id"]}
+            hit = next(x for x in hits if x["kind"] == self.mode)
+            name, args = (
+                {
+                    "lesson": "get_lesson_full",
+                    "exam": "get_exam_with_solution",
+                    "exercise_collection": "get_exercise_collection",
+                }[self.mode],
+                {"node_id": hit["node_id"]},
+            )
         else:
             result = json.loads(messages[-1]["content"])
             node = result["node"]["id"]
             figure = next(a for a in result["assets"] if a["type"] == "figure")
-            yield {"type": "delta", "text": "قرأت الدرس المنشور. "}
+            yield {"type": "delta", "text": "قرأت المصدر المنشور. "}
             name, args = (
                 "render_answer",
                 {
@@ -62,8 +85,12 @@ class FixtureChat:
                             "rows": [["Temperature", "25 °C"], ["Pressure", "1.2 MPa"]],
                         },
                     ],
-                    "source_ids": [node],
+                    "source_ids": [x.get("source_id", node) for x in result["sources"]],
                 },
+            )
+        if self.step == 3 and self.mode != "lesson":
+            args["blocks"][0]["text"] = (
+                "## الحزمة الكاملة من المصدر\n\nاستدعيت الموضوع كاملًا مع الحل المطابق إن وُجد. هذا اختبار محلي، وليس حلًا رسميًا مولّدًا."
             )
         yield {"type": "usage", "data": {"prompt_tokens": 0, "completion_tokens": 0}}
         yield {
