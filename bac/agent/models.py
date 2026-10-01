@@ -3,7 +3,7 @@ from pydantic import BaseModel, Field, ConfigDict, model_validator
 
 
 class Strict(BaseModel):
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="forbid", allow_inf_nan=False)
 
 
 class TextBlock(Strict):
@@ -21,6 +21,13 @@ class ImageBlock(Strict):
     type: Literal["image"] = "image"
     asset_id: str = Field(max_length=200)
     caption: str = Field(default="", max_length=2000)
+    asset_url: str | None = None
+
+    @model_validator(mode="after")
+    def server_url(self):
+        if self.asset_url is not None:
+            raise ValueError("Asset URL is server-owned; supply only asset_id")
+        return self
 
 
 class TableBlock(Strict):

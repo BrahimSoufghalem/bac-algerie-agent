@@ -42,6 +42,14 @@ class DB:
             c.close()
 
     def migrate(self):
+        # Single-host SQLite deployment: serialize API/worker startup before checking versions.
+        import fcntl
+
+        with open(str(self.path) + ".migration.lock", "a") as lock:
+            fcntl.flock(lock, fcntl.LOCK_EX)
+            self._migrate_locked()
+
+    def _migrate_locked(self):
         c = self.connect()
         try:
             c.execute(

@@ -7,6 +7,13 @@ from pydantic import Field
 from bac.core.db import js
 from bac.agent.models import Strict, Answer, VerificationBlock
 from bac.library.service import Library
+from bac.learning.service import Learning
+from bac.learning.private import PrivateFiles
+from bac.learning.contracts import Note, Material, PrivatePage
+
+
+class EmptyArgs(Strict):
+    pass
 
 
 class SearchArgs(Strict):
@@ -47,6 +54,10 @@ class Tools:
         self.run_id = run_id
         self.scientific = {}
         self.runner = ScienceRunner(s.settings)
+        self.learning = Learning(s)
+        self.private = PrivateFiles(s)
+        self.pending_private = None
+        self.private_assets = {}
 
     def definitions(self):
         entries = [
@@ -116,6 +127,49 @@ class Tools:
                 PlotFromResult,
             )
         )
+        entries.extend(
+            [
+                (
+                    "propose_note",
+                    "Propose a pending educational note only; user review and explicit consent are required. Never automatically remember messages.",
+                    Note,
+                ),
+                (
+                    "list_private_uploads",
+                    "List only this user's unexpired private files in this conversation; never search/index them into the shared library.",
+                    EmptyArgs,
+                ),
+                (
+                    "read_private_page",
+                    "Read one own temporary page: text or actual image pixels delivered separately. Private/untrusted, not official; unreadable text remains unknown.",
+                    PrivatePage,
+                ),
+            ]
+        )
+        if self.learning.preferences(self.user)["include_approved_notes"]:
+            entries.append(
+                (
+                    "list_my_notes",
+                    "Read only own explicitly approved notes when user opted in; tentative context, not permanent facts.",
+                    EmptyArgs,
+                )
+            )
+        if self.user["role"] in ("teacher", "owner"):
+            entries.append(
+                (
+                    "save_teaching_material",
+                    "Save a private generated draft: lesson plan, exercises, test with full solution/rubric, grading or reference review. Use actually loaded source IDs and actual science results; never official by default.",
+                    Material,
+                )
+            )
+        else:
+            entries.append(
+                (
+                    "save_practice_test",
+                    "Save only self_practice: generated test, full separate solution and marks summing to total; private and not official.",
+                    Material,
+                )
+            )
         return [
             {
                 "type": "function",
@@ -212,6 +266,14 @@ class Tools:
             self.remember(result, scope, id)
         return result
 
+    def credit_private(self, payload):
+        source = payload["source"]
+        self.private.row(self.user, source["node_id"], self.chat)
+        self.sources[source["source_id"]] = source
+        if payload.get("asset_id"):
+            self.assets.add(payload["asset_id"])
+            self.private_assets[payload["asset_id"]] = source
+
     def science(self, name, args):
         if name == "plot_from_result":
             p = PlotFromResult.model_validate(args)
@@ -288,6 +350,47 @@ class Tools:
         return result
 
     def execute(self, name, args):
+        if name in (
+            "propose_note",
+            "list_my_notes",
+            "list_private_uploads",
+            "read_private_page",
+            "save_teaching_material",
+            "save_practice_test",
+        ):
+            live = self.s.db.one("SELECT * FROM users WHERE id=?", (self.user["id"],))
+            if not live or not live["active"]:
+                raise ValueError("Account disabled")
+            if name == "propose_note":
+                return self.learning.propose(live, self.run_id, args)
+            if name == "list_my_notes":
+                EmptyArgs.model_validate(args)
+                if not self.learning.preferences(live)["include_approved_notes"]:
+                    raise ValueError("Note context consent is disabled")
+                return {
+                    "items": [
+                        n
+                        for n in self.learning.notes(live)
+                        if n["status"] == "approved"
+                    ][:6]
+                }
+            if name == "list_private_uploads":
+                EmptyArgs.model_validate(args)
+                return {"items": self.private.list(live, self.chat)}
+            if name == "read_private_page":
+                p = PrivatePage.model_validate(args)
+                result, image = self.private.page(live, p.upload_id, p.page, self.chat)
+                self.pending_private = (result, image)
+                return result
+            if name == "save_teaching_material" and live["role"] not in (
+                "teacher",
+                "owner",
+            ):
+                raise ValueError("Teacher permission required")
+            if name == "save_practice_test" and args.get("kind") != "self_practice":
+                raise ValueError("Only self_practice may be saved by this tool")
+            return self.learning.material(self, args)
+
         if name in CONTRACTS or name == "plot_from_result":
             return self.science(name, args)
         if name == "search_library":
@@ -354,7 +457,10 @@ class Tools:
             if id not in self.sources:
                 raise ValueError("Citation was not actually loaded")
             source = self.sources[id]
-            self.library._node(source["node_id"])
+            if source.get("scope") == "private":
+                self.private.row(self.user, source["node_id"], self.chat)
+            else:
+                self.library._node(source["node_id"])
         blocks = []
         for block in answer.blocks:
             if block.type in ("verification", "graph"):
@@ -386,10 +492,22 @@ class Tools:
             if block.type == "image":
                 if block.asset_id not in self.assets:
                     raise ValueError("Image was not loaded from the published source")
-                try:
-                    self.library.asset(block.asset_id)
-                except Exception:
-                    raise ValueError("Image publication was revoked") from None
+                if block.asset_id in self.private_assets:
+                    source = self.private_assets[block.asset_id]
+                    self.private.row(self.user, source["node_id"], self.chat)
+                    blocks[-1] = block.model_copy(
+                        update={
+                            "asset_url": "/api/private/"
+                            + source["node_id"]
+                            + "/pages/"
+                            + str(source["pages"][0])
+                        }
+                    )
+                else:
+                    try:
+                        self.library.asset(block.asset_id)
+                    except Exception:
+                        raise ValueError("Image publication was revoked") from None
         displayed = {b.result_id for b in blocks if b.type == "verification"}
         for id, result in self.scientific.items():
             if (

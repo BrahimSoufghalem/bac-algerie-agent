@@ -310,3 +310,42 @@ for mode in ("line", "bar", "scatter"):
     email = f"science-{mode}@test.invalid"
     if not s.db.one("SELECT 1 FROM users WHERE email=?", (email,)):
         create_user(s.db, email, "Test-science-password-1", "طالب الحساب العلمي")
+
+class FixtureLearning:
+    """Explicit no-network private-page/note/material test driver, never a production fallback."""
+    def __init__(self):self.step=0;self.question='';self.file=None;self.source=None;self.image=None
+    async def stream(self,messages,definitions):
+        self.step+=1
+        if self.step==1:
+            self.question=next(m['content'] for m in reversed(messages) if m['role']=='user' and isinstance(m['content'],str))
+        if 'مهمة تعليمية' in self.question:
+            if self.step==1:
+                name='save_practice_test' if any(d['function']['name']=='save_practice_test' for d in definitions) else 'save_teaching_material'
+                kind=next((k for k in ('self_practice','lesson_plan','exercise_set','exam','grading','reference_review') if 'النوع '+k in self.question),'self_practice')
+                args={'kind':kind,'title':'مسودة اختبار محلي صريح','answer':{'blocks':[{'type':'text','text':'## سؤال مولّد تجريبي\n\nاحسب 2 + 3. هذا اختبار أدوات محلي، وليس حلًا رسميًا.'}]},'rubric':[{'title':'الناتج','maximum':2,'awarded':2 if kind=='grading' else None}],'total':2,'solution':'5؛ حل مولّد للاختبار فقط.'}
+            else:name,args='render_answer',{'blocks':[{'type':'text','text':'## حُفظت المسودة الخاصة\n\nمسودة مولّدة غير رسمية، للاختبار المحلي دون مزوّد خارجي.'}]}
+        elif self.step==1:name,args='list_private_uploads',{}
+        elif self.step==2:
+            files=json.loads(messages[-1]['content'])['items'];self.file=files[0]['id'];name,args='read_private_page',{'upload_id':self.file,'page':1}
+        elif self.step==3:
+            payload=next(json.loads(m['content']) for m in reversed(messages) if m['role']=='tool');self.source=payload['source'];self.image=payload.get('asset_id')
+            name,args='propose_note',{'category':'goal','content':'مراجعة الملف الخاص — اقتراح ينتظر موافقتك'}
+        else:
+            blocks=[{'type':'text','text':'## قرأت الملف الخاص\n\nهذا اختبار محلي صريح للخصوصية، لا تقييم لمقدرة نموذج بصري خارجي.'}]
+            if self.image:blocks.append({'type':'image','asset_id':self.image,'caption':'صورة الملف الخاص المؤقت'})
+            name,args='render_answer',{'blocks':blocks,'source_ids':[self.source['source_id']]}
+        yield {'type':'usage','data':{'prompt_tokens':0,'completion_tokens':0}}
+        yield {'type':'result','message':{'role':'assistant','content':None,'tool_calls':[{'id':f'learning{self.step}','type':'function','function':{'name':name,'arguments':js(args)}}]}}
+
+# Override routing in tests only: scientific/public-library flows remain unchanged.
+class Phase4RoutedFixture:
+    def __init__(self):self.delegate=None
+    async def stream(self,messages,tools):
+        if not self.delegate:
+            question=next(m['content'] for m in reversed(messages) if m['role']=='user' and isinstance(m['content'],str))
+            self.delegate=FixtureLearning() if 'مهمة تعليمية' in question or 'ملف خاص' in question else RoutedFixture()
+        async for item in self.delegate.stream(messages,tools):yield item
+s.chat_factory=lambda cfg,key:Phase4RoutedFixture()
+for name,role in [('learning','student'),('teacher','teacher'),('practice','student')]:
+    email=name+'@test.invalid'
+    if not s.db.one('SELECT 1 FROM users WHERE email=?',(email,)):create_user(s.db,email,'Test-learning-password-1','حساب '+name,role)

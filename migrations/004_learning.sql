@@ -1,0 +1,14 @@
+ALTER TABLE users ADD COLUMN daily_tokens INTEGER;
+ALTER TABLE users ADD COLUMN messages_per_minute INTEGER NOT NULL DEFAULT 12;
+ALTER TABLE users ADD COLUMN max_active_runs INTEGER NOT NULL DEFAULT 1;
+ALTER TABLE users ADD COLUMN budget_alert REAL;
+ALTER TABLE model_usage ADD COLUMN feature TEXT NOT NULL DEFAULT 'teaching';
+ALTER TABLE model_usage ADD COLUMN status TEXT NOT NULL DEFAULT 'ok';
+ALTER TABLE model_usage ADD COLUMN target TEXT;
+CREATE INDEX usage_user_date ON model_usage(user_id,created_at);
+CREATE TABLE run_contexts(run_id TEXT PRIMARY KEY REFERENCES agent_runs(id) ON DELETE CASCADE,preferences TEXT NOT NULL,notes TEXT NOT NULL);
+CREATE TABLE learning_notes(id TEXT PRIMARY KEY,user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,category TEXT NOT NULL,content TEXT NOT NULL,status TEXT NOT NULL CHECK(status IN ('pending','approved')),message_id TEXT REFERENCES messages(id) ON DELETE SET NULL,created_at REAL NOT NULL,updated_at REAL NOT NULL);
+CREATE INDEX notes_user ON learning_notes(user_id,updated_at);
+CREATE TABLE private_uploads(id TEXT PRIMARY KEY,user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,conversation_id TEXT NOT NULL REFERENCES conversations(id) ON DELETE CASCADE,name TEXT NOT NULL,kind TEXT NOT NULL,pages INTEGER NOT NULL,bytes INTEGER NOT NULL,file TEXT NOT NULL,expires_at REAL NOT NULL,created_at REAL NOT NULL);
+CREATE INDEX uploads_expiry ON private_uploads(expires_at);
+CREATE TABLE teaching_materials(id TEXT PRIMARY KEY,user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,run_id TEXT REFERENCES agent_runs(id) ON DELETE SET NULL,kind TEXT NOT NULL,title TEXT NOT NULL,payload TEXT NOT NULL,created_at REAL NOT NULL,updated_at REAL NOT NULL);

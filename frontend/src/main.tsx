@@ -9,6 +9,14 @@ import "@fontsource/noto-sans-arabic/400.css";
 import "@fontsource/noto-sans-arabic/600.css";
 import "@fontsource/noto-sans-arabic/700.css";
 import "./style.css";
+import {
+  PreferencesPanel,
+  NotesPanel,
+  PrivateUploads,
+  MaterialsPanel,
+  AccountsPanel,
+  PersonalUsage,
+} from "./LearningPanels";
 import BundleEditor from "./BundleEditor";
 import {
   Verification,
@@ -24,6 +32,7 @@ type Source = {
   pages: number[];
   file_id?: string;
   source_id?: string;
+  scope?: string;
   role?: string;
 };
 type Block = {
@@ -31,6 +40,7 @@ type Block = {
   text?: string;
   latex?: string;
   asset_id?: string;
+  asset_url?: string;
   caption?: string;
   headers?: string[];
   rows?: string[][];
@@ -121,7 +131,11 @@ function Content({ blocks }: { blocks: Block[] }) {
         ) : b.type === "image" ? (
           <figure key={i}>
             <img
-              src={"/api/library/assets/" + b.asset_id}
+              src={
+                b.asset_url?.startsWith("/api/private/")
+                  ? b.asset_url
+                  : "/api/library/assets/" + b.asset_id
+              }
               alt={b.caption || "صورة من المصدر"}
             />
             <figcaption>{b.caption}</figcaption>
@@ -207,6 +221,9 @@ function App() {
       max_tokens: 4000,
       timeout: 90,
       output_mode: "json_object",
+      input_price_per_million: null as number | null,
+      output_price_per_million: null as number | null,
+      cached_price_per_million: null as number | null,
     }),
     [key, setKey] = useState(""),
     [usage, setUsage] = useState<any>(null);
@@ -472,6 +489,30 @@ function App() {
       setBusy(false);
     }
   }
+  async function privateSource(src: Source) {
+    await action(async () => {
+      const path = `/api/private/${src.node_id}/pages/${src.pages[0]}`;
+      const response = await fetch(path);
+      if (!response.ok) throw new Error("انتهت صلاحية المصدر الخاص أو حُذف");
+      if (response.headers.get("content-type")?.includes("application/json")) {
+        const data = await response.json();
+        setSource({ node: { title: src.title }, content: data.content });
+      } else setSource({ node: { title: src.title }, private_image: path });
+    });
+  }
+  async function requestMaterial(prompt: string) {
+    const c = await api("/api/conversations", "POST", {
+      title: "مسودة تعليمية",
+    });
+    await refreshChats();
+    await openChat(c.id);
+    const result = await api(`/api/conversations/${c.id}/messages`, "POST", {
+      text: prompt,
+    });
+    const loaded = await api(`/api/conversations/${c.id}`);
+    setMessages(loaded.messages);
+    subscribe(result.run_id);
+  }
   async function readSource(id: string) {
     await action(async () => {
       let payload = await api("/api/library/nodes/" + encodeURIComponent(id));
@@ -649,6 +690,23 @@ function App() {
             </>
           )}
         </nav>
+        <nav className="learning-nav">
+          <button onClick={() => navigate("preferences")}>
+            تفضيلات وخصوصية
+          </button>
+          <button onClick={() => navigate("notes")}>ملاحظاتي التعليمية</button>
+          <button onClick={() => navigate("materials")}>
+            {user.role === "student" ? "تدريبي الذاتي" : "مساحة إعداد الأستاذ"}
+          </button>
+          <button onClick={() => navigate("personal-usage")}>
+            استخدامي وحدودي
+          </button>
+          {user.role === "owner" && (
+            <button onClick={() => navigate("accounts")}>
+              الحسابات والحدود
+            </button>
+          )}
+        </nav>
         <label className="chat-search">
           <input
             placeholder="البحث في المحادثات"
@@ -751,17 +809,33 @@ function App() {
             </svg>
           </button>
           <strong>
-            {view === "chat"
-              ? user.role === "teacher"
-                ? "مساحة الأستاذ"
-                : "محادثة تعليمية"
-              : view === "library"
-                ? "المكتبة المنشورة"
-                : view === "owner-library"
-                  ? "مراجعة المحتوى ونشره"
-                  : view === "models"
-                    ? "نماذج التدريس والاستخراج"
-                    : "الاستخدام والمحاسبة"}
+            {[
+              "preferences",
+              "notes",
+              "materials",
+              "accounts",
+              "personal-usage",
+            ].includes(view)
+              ? (
+                  {
+                    preferences: "تفضيلات وخصوصية",
+                    notes: "ملاحظاتي التعليمية",
+                    materials: "المسودات التعليمية",
+                    accounts: "الحسابات والحدود",
+                    "personal-usage": "استخدامي وحدودي",
+                  } as Record<string, string>
+                )[view]
+              : view === "chat"
+                ? user.role === "teacher"
+                  ? "مساحة الأستاذ"
+                  : "محادثة تعليمية"
+                : view === "library"
+                  ? "المكتبة المنشورة"
+                  : view === "owner-library"
+                    ? "مراجعة المحتوى ونشره"
+                    : view === "models"
+                      ? "نماذج التدريس والاستخراج"
+                      : "الاستخدام والمحاسبة"}
           </strong>
           <span className="header-note">مصادر واضحة · بلا خطوات وهمية</span>
         </header>
@@ -844,9 +918,11 @@ function App() {
                           <button
                             key={i}
                             onClick={() =>
-                              src.source_id?.includes(":part:")
-                                ? readPart(src.source_id)
-                                : readSource(src.node_id)
+                              src.scope === "private"
+                                ? privateSource(src)
+                                : src.source_id?.includes(":part:")
+                                  ? readPart(src.source_id)
+                                  : readSource(src.node_id)
                             }
                           >
                             {src.title} · ص {src.pages.join("–")}
@@ -906,6 +982,7 @@ function App() {
                   </button>
                 </div>
               )}
+              <PrivateUploads api={api} chat={chatId} notify={setNotice} />
               <form className="composer" onSubmit={send}>
                 <textarea
                   aria-label="رسالتك"
@@ -1094,10 +1171,10 @@ function App() {
                     api_key: key,
                   });
                   setKey("");
+                  await navigate("models");
                   setNotice(
                     "حُفظ الإعداد مشفرًا. لم يُرسل طلب تدريس أو Vision.",
                   );
-                  await navigate("models");
                 });
               }}
             >
@@ -1184,6 +1261,73 @@ function App() {
                   />
                 </label>
               </div>
+              <fieldset>
+                <legend>
+                  أسعار تقديرية لكل مليون رمز — وحدة العملة التي تعتمدها
+                </legend>
+                <p>
+                  اتركها فارغة إن لم تعرف السعر. لن نفترض تكلفة صفرًا أو خصم
+                  Cache غير مبلّغ.
+                </p>
+                {(
+                  [
+                    "input_price_per_million",
+                    "output_price_per_million",
+                    "cached_price_per_million",
+                  ] as const
+                ).map((k, i) => (
+                  <label key={k}>
+                    {
+                      [
+                        "سعر الإدخال",
+                        "سعر الإخراج",
+                        "سعر الإدخال المخزّن Cache",
+                      ][i]
+                    }
+                    <input
+                      type="number"
+                      min="0"
+                      step="any"
+                      value={model[k] ?? ""}
+                      onChange={(e) =>
+                        setModel({
+                          ...model,
+                          [k]:
+                            e.target.value === ""
+                              ? null
+                              : Number(e.target.value),
+                        })
+                      }
+                    />
+                  </label>
+                ))}
+              </fieldset>
+              <button
+                type="button"
+                disabled={busy}
+                onClick={() => {
+                  if (
+                    confirm(
+                      "طلب اتصال صريح إلى GET /models فقط، بلا توليد نص أو صورة. هل تتابع؟",
+                    )
+                  )
+                    action(async () => {
+                      const r = await api(
+                        `/api/owner/models/${slot}/test`,
+                        "POST",
+                        { confirm: true },
+                      );
+                      setNotice(
+                        r.connected
+                          ? "الاتصال نجح؛ هذا لا يثبت دعم الرؤية أو جودة أدوات النموذج. ظهور النموذج: " +
+                              r.model_advertised
+                          : "تعذر الاتصال",
+                      );
+                    });
+                }}
+              >
+                اختبار الاتصال المحفوظ
+              </button>
               {slot === "extraction" && (
                 <label>
                   Structured output
@@ -1205,6 +1349,34 @@ function App() {
             </form>
           </section>
         )}
+        {[
+          "preferences",
+          "notes",
+          "materials",
+          "accounts",
+          "personal-usage",
+        ].includes(view) &&
+          (() => {
+            const props = {
+              api,
+              role: user.role,
+              chat: chatId,
+              notify: setNotice,
+              request: requestMaterial,
+              render: (blocks: any[]) => <Content blocks={blocks} />,
+            };
+            return view === "preferences" ? (
+              <PreferencesPanel {...props} />
+            ) : view === "notes" ? (
+              <NotesPanel {...props} />
+            ) : view === "materials" ? (
+              <MaterialsPanel {...props} />
+            ) : view === "accounts" ? (
+              <AccountsPanel {...props} />
+            ) : (
+              <PersonalUsage {...props} />
+            );
+          })()}
         {view === "owner-library" && (
           <section className="page-content">
             <h1>من المصدر إلى نسخة معتمدة</h1>
@@ -1599,12 +1771,35 @@ function App() {
             {usage && (
               <>
                 <p>طلبات بلا بيانات استخدام: {usage.missing_usage_calls}</p>
+                <p>
+                  المحاسبة آخر {usage.days} يومًا. بيانات Cache والأسعار
+                  المفقودة ليست صفرًا؛ مجموعات جزئية تُعرض أدناه.
+                </p>
+                <pre className="material-solution" dir="ltr">
+                  {JSON.stringify(
+                    {
+                      file_cache: usage.file_cache,
+                      runs: usage.runs,
+                      reporting: usage.items.map((u: any) => ({
+                        model: u.model,
+                        feature: u.feature,
+                        errors: u.errors,
+                        missing_usage: u.missing_usage,
+                        missing_cache: u.missing_cache,
+                        missing_cost: u.missing_cost,
+                      })),
+                    },
+                    null,
+                    2,
+                  )}
+                </pre>
                 <div className="table-scroll">
                   <table>
                     <thead>
                       <tr>
                         {[
                           "النموذج",
+                          "الميزة",
                           "الطلبات",
                           "رموز الإدخال",
                           "رموز الإخراج",
@@ -1618,9 +1813,10 @@ function App() {
                     </thead>
                     <tbody>
                       {usage.items.map((u: any) => (
-                        <tr key={u.model}>
+                        <tr key={u.model + ":" + u.feature}>
                           {[
                             "model",
+                            "feature",
                             "calls",
                             "input_tokens",
                             "output_tokens",
@@ -1683,6 +1879,9 @@ function App() {
                   </button>
                 ))}
               </details>
+            )}
+            {source.private_image && (
+              <img src={source.private_image} alt="المصدر الخاص المؤقت" />
             )}
             {source.content && <Md text={source.content} />}
             {source.atomic_bundle &&

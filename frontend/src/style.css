@@ -1017,3 +1017,9 @@ a {
     font-size: 13px;
   }
 }
+.learning-nav{border-top:1px solid var(--border,#dce0e8);margin-top:12px;padding-top:12px}
+.private-files{padding:12px 0;font-size:.85rem;color:var(--muted,#667085)}
+.private-file-row{display:flex;gap:12px;flex-wrap:wrap;align-items:center;border-bottom:1px solid #dce0e8;padding:10px 0;overflow-wrap:anywhere}
+.material-solution{white-space:pre-wrap;overflow-wrap:anywhere;max-width:100%;font-size:.85rem;background:#f5f7fa;padding:16px;border-radius:8px}
+.page-content fieldset{border:1px solid #dce0e8;border-radius:8px;min-width:0;padding:16px}
+.learning-nav button{font-size:.85rem}

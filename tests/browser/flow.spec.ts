@@ -159,7 +159,9 @@ test("owner upload → extract → review → publish → student tool retrieval
     page.getByRole("heading", { name: "استخدام معلَن، لا تقديرات وهمية" }),
   ).toBeVisible();
   await expect(
-    page.getByRole("cell", { name: "offline-test-fixture", exact: true }),
+    page
+      .getByRole("cell", { name: "offline-test-fixture", exact: true })
+      .first(),
   ).toBeVisible();
   await snapshot(page, "usage-desktop");
   await page.getByRole("button", { name: "▥ إدارة المحتوى" }).click();

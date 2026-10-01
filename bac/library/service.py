@@ -431,7 +431,7 @@ class Library(Reader):
             try:
                 run = self.s.extraction_queue.start(
                     list(dict.fromkeys(f["bookforge_id"] for f in v["files"])),
-                    json.loads(row["config"]),
+                    json.loads(row["config"]) | {"_platform_config_id": row["id"], "_platform_actor_id": actor},
                     self.s.vault.decrypt(row["encrypted_key"]),
                     self.s.extraction_engine.vault,
                     self.s.settings.extraction_workers,
