@@ -84,7 +84,7 @@ def create_app(services=None):
     s = services or Services()
     app = FastAPI(
         title="Masar BAC Agent",
-        version="0.2.0",
+        version="0.3.0",
         docs_url=None,
         redoc_url=None,
         openapi_url=None,
@@ -315,6 +315,26 @@ def create_app(services=None):
                 "created_at",
                 "finished_at",
             )
+        }
+
+    @app.get("/api/science/results/{id}")
+    def scientific_result(id: str, user=Depends(current)):
+        r = s.db.one(
+            "SELECT * FROM scientific_results WHERE id=? AND user_id=?",
+            (id, user["id"]),
+        )
+        if not r:
+            raise HTTPException(404, "Scientific result not found")
+        owned_chat(s.db, r["conversation_id"], user)
+        if hashlib.sha256(r["output"].encode()).hexdigest() != r["output_sha256"]:
+            raise HTTPException(409, "Scientific record integrity mismatch")
+        return {
+            "result_id": r["id"],
+            "tool": r["tool"],
+            "inputs": json.loads(r["inputs"]),
+            "output": json.loads(r["output"]),
+            "run_id": r["run_id"],
+            "created_at": r["created_at"],
         }
 
     @app.post("/api/runs/{id}/cancel")

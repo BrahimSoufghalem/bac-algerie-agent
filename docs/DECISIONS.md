@@ -20,4 +20,13 @@
 - lesson parts حدود عناصر كاملة هدفها 8000 حرف لا حد مضمون للعنصر الطويل؛ JSON النهائي يخضع لميزانية الأداة. لا بتر للعنصر الزائد ولا تفتيت للحزم.
 - cache محدود للملفات المعتمدة، authorization قبل lookup؛ sources لا تحصل على credit إلا بعد دخول السياق.
 - BM25 فهرسة نص مباشر بدل تكرار جميع طبقات الكتاب. adapters المستقبلية لا تفرض قاعدة vector. لا ادعاء تفوق بلا evaluation حقيقي.
-- بديل rendering محلي عند غياب سكربت capture المجمّع بعد إعادة تشغيل البيئة؛ تُفحص الصور الناتجة فعلًا، والاختبارات تعاد بعد الاستعادة.
+- بديل rendering محلي عند غياب سكربت capture المجمّع بعد إعادة تشغيل البيئة؛ تم توليد صور فعلية، لكن أداة عرضها تعطلت؛ المراجعة البصرية الجديدة معلقة ولا تُستبدل بنجاح الاختبارات.
+
+## قرارات المرحلة الثالثة
+
+- SymPy 1.14.0/mpmath 1.3.0 مع pinned versions وتراخيص BSD. Build من AST allowlist دون eval/sympify للنص غير الموثوق.
+- numeric Python-shaped interpreter بدل arbitrary Python: أبسط حد قدرات قابل للمراجعة. resource/isolated child limits لا تعني sandbox نظام كامل؛ إذا توسع التنفيذ يجب sandbox خارجي مع security evaluation.
+- calculator rational/50digits، programs binary64، affine temperature منفصلة عن delta؛ assumptions/domain ولا verification شامل من النجاح العددي.
+- server-owned immutable results مرتبطة بالrun/user/chat. Failed/inconclusive تبقى مرئية ولو أغفلها النموذج. لا إعادة استعمال result ID قديم كشهادة جديدة.
+- SVG مكوّنات React من JSON bounded، لا executable chart markup. plotted program arrays مرجع مباشر، diagram equal scales. مصدر البيانات/حدود التحقق يظهران.
+- لا dependency chart كبيرة أو vector service. API typed blocks/storage والقدرات العلمية modular؛ vendor BookForge لا يتغير.
