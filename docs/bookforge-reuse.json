@@ -1,0 +1,184 @@
+[
+  {
+    "source": "app/__init__.py",
+    "target": "bac/vendor/bookforge/__init__.py",
+    "source_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "adapted_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "changes": "namespace/subprocess module paths only"
+  },
+  {
+    "source": "app/core/__init__.py",
+    "target": "bac/vendor/bookforge/core/__init__.py",
+    "source_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "adapted_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "changes": "namespace/subprocess module paths only"
+  },
+  {
+    "source": "app/core/config.py",
+    "target": "bac/vendor/bookforge/core/config.py",
+    "source_sha256": "6e8c1ea335b068752ef8d4d29d90623e8c147c4655d0fb42af072b859cb8cf9d",
+    "adapted_sha256": "6e8c1ea335b068752ef8d4d29d90623e8c147c4655d0fb42af072b859cb8cf9d",
+    "changes": "namespace/subprocess module paths only"
+  },
+  {
+    "source": "app/core/storage.py",
+    "target": "bac/vendor/bookforge/core/storage.py",
+    "source_sha256": "6ebd7e803e13fccfcc1ed57e13bf614b5b9af042d831a8b8a4e34d50f876aca6",
+    "adapted_sha256": "6ebd7e803e13fccfcc1ed57e13bf614b5b9af042d831a8b8a4e34d50f876aca6",
+    "changes": "namespace/subprocess module paths only"
+  },
+  {
+    "source": "app/core/secrets.py",
+    "target": "bac/vendor/bookforge/core/secrets.py",
+    "source_sha256": "6aa8d00b149ad22adbea720a6abc582d7eddbd3fba8d47af76e5909917c0cd30",
+    "adapted_sha256": "6aa8d00b149ad22adbea720a6abc582d7eddbd3fba8d47af76e5909917c0cd30",
+    "changes": "namespace/subprocess module paths only"
+  },
+  {
+    "source": "app/database/__init__.py",
+    "target": "bac/vendor/bookforge/database/__init__.py",
+    "source_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "adapted_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "changes": "namespace/subprocess module paths only"
+  },
+  {
+    "source": "app/database/db.py",
+    "target": "bac/vendor/bookforge/database/db.py",
+    "source_sha256": "efa5e8a54914ff8f0aa6867a227295d89645542edcabfdb3d67b621641ce79f7",
+    "adapted_sha256": "efa5e8a54914ff8f0aa6867a227295d89645542edcabfdb3d67b621641ce79f7",
+    "changes": "namespace/subprocess module paths only"
+  },
+  {
+    "source": "app/workers/__init__.py",
+    "target": "bac/vendor/bookforge/workers/__init__.py",
+    "source_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "adapted_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "changes": "namespace/subprocess module paths only"
+  },
+  {
+    "source": "app/workers/queue.py",
+    "target": "bac/vendor/bookforge/workers/queue.py",
+    "source_sha256": "39e5c35a2b7ad7400f3b313d7477972e24496e6a34c4e016e3e50b060605beb8",
+    "adapted_sha256": "3503f4d0789dc3429851ca1ca52af315a1f8bd6afad4b1112b70a2b432620c3a",
+    "changes": "namespace/subprocess module paths only"
+  },
+  {
+    "source": "app/workers/engine.py",
+    "target": "bac/vendor/bookforge/workers/engine.py",
+    "source_sha256": "3a4742a4b903177b68a1b0134c90f60443e5ce9688b244d715ce8a44a432a21b",
+    "adapted_sha256": "3726954a5c1328f3503648b59926a4f845b36c63fd902c98189ff8c291788e47",
+    "changes": "namespace/subprocess module paths only"
+  },
+  {
+    "source": "app/pipeline/__init__.py",
+    "target": "bac/vendor/bookforge/pipeline/__init__.py",
+    "source_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "adapted_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "changes": "namespace/subprocess module paths only"
+  },
+  {
+    "source": "app/pipeline/pdf.py",
+    "target": "bac/vendor/bookforge/pipeline/pdf.py",
+    "source_sha256": "c641985817a7b4404eb25604cb83aff792bb7ecee860632f0669a50aca7e30a7",
+    "adapted_sha256": "a9a8485c07dfc30e9d4102da192ec44960abefdfeac978285a4ba9cdcba4c1f4",
+    "changes": "namespace/subprocess module paths only"
+  },
+  {
+    "source": "app/vision/__init__.py",
+    "target": "bac/vendor/bookforge/vision/__init__.py",
+    "source_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "adapted_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "changes": "namespace/subprocess module paths only"
+  },
+  {
+    "source": "app/vision/provider.py",
+    "target": "bac/vendor/bookforge/vision/provider.py",
+    "source_sha256": "4dc372fde45f71fb9d2973d11891151dc4950463d8d384e6653a678ed03b17b1",
+    "adapted_sha256": "e92c2f14ca44d1f5010828583c7e76dab284fb4c987d7a6965b4f10e091540fd",
+    "changes": "namespace/subprocess module paths only"
+  },
+  {
+    "source": "app/extraction/__init__.py",
+    "target": "bac/vendor/bookforge/extraction/__init__.py",
+    "source_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "adapted_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "changes": "namespace/subprocess module paths only"
+  },
+  {
+    "source": "app/extraction/assets.py",
+    "target": "bac/vendor/bookforge/extraction/assets.py",
+    "source_sha256": "e3c66dc767eb4d9da26d2db9966c39918839b6001627269d1b67f641db95c980",
+    "adapted_sha256": "7d15ad5fdadb32e2ebab23dd423c6f4d2572333eb5788e72ce18cceee7ca1f52",
+    "changes": "namespace/subprocess module paths only"
+  },
+  {
+    "source": "app/markdown/__init__.py",
+    "target": "bac/vendor/bookforge/markdown/__init__.py",
+    "source_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "adapted_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "changes": "namespace/subprocess module paths only"
+  },
+  {
+    "source": "app/markdown/generator.py",
+    "target": "bac/vendor/bookforge/markdown/generator.py",
+    "source_sha256": "19b34f47d4cea56369a61d4e890a9ceac397963352b62d3dde34f1601c184506",
+    "adapted_sha256": "52a593b099a8d2fd2e436b6384bcb26b4f8776b3a0895b840443d84976429bfa",
+    "changes": "namespace/subprocess module paths only"
+  },
+  {
+    "source": "app/library/__init__.py",
+    "target": "bac/vendor/bookforge/library/__init__.py",
+    "source_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "adapted_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "changes": "namespace/subprocess module paths only"
+  },
+  {
+    "source": "app/library/uploads.py",
+    "target": "bac/vendor/bookforge/library/uploads.py",
+    "source_sha256": "788eac3819f08475866b5e9be5a99299b9dc9e19e3a17ffab31d52d0d28a5fea",
+    "adapted_sha256": "82daf6b9036634452c4ded5af3b917d71c06c24c98795b2f131251b79428747d",
+    "changes": "namespace/subprocess module paths only"
+  },
+  {
+    "source": "app/library/structure.py",
+    "target": "bac/vendor/bookforge/library/structure.py",
+    "source_sha256": "9ac180aa76dd3a080a5183171b28a0e97e770e4286393c1799c2d6d99debf62e",
+    "adapted_sha256": "864dde378d8cc9d175f6c8136723f2982bd548357ef905e84b826d1b627306ff",
+    "changes": "namespace/subprocess module paths only"
+  },
+  {
+    "source": "app/search/__init__.py",
+    "target": "bac/vendor/bookforge/search/__init__.py",
+    "source_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "adapted_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "changes": "namespace/subprocess module paths only"
+  },
+  {
+    "source": "app/search/backends.py",
+    "target": "bac/vendor/bookforge/search/backends.py",
+    "source_sha256": "254be69d0c3395124502c58f75551f20c241840665304ab63f4a87ee31de4bee",
+    "adapted_sha256": "254be69d0c3395124502c58f75551f20c241840665304ab63f4a87ee31de4bee",
+    "changes": "namespace/subprocess module paths only"
+  },
+  {
+    "source": "app/models/__init__.py",
+    "target": "bac/vendor/bookforge/models/__init__.py",
+    "source_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "adapted_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "changes": "namespace/subprocess module paths only"
+  },
+  {
+    "source": "app/models/page.py",
+    "target": "bac/vendor/bookforge/models/page.py",
+    "source_sha256": "b4aea58f7eb06ae565cdf6720a52f5c2a672ed46d7373fb6b20c537509555548",
+    "adapted_sha256": "b4aea58f7eb06ae565cdf6720a52f5c2a672ed46d7373fb6b20c537509555548",
+    "changes": "namespace/subprocess module paths only"
+  },
+  {
+    "source": "scripts/make_fixture.py",
+    "target": "tests/fixture_book.py",
+    "source_sha256": "c7a0e88fac9d4703b95265f7ca12fa5b863b3289c202f4285171b4daefcea964",
+    "adapted_sha256": "c7a0e88fac9d4703b95265f7ca12fa5b863b3289c202f4285171b4daefcea964",
+    "changes": "unchanged synthetic fixture generator; test-only, not a Vision benchmark"
+  }
+]

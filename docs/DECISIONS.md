@@ -1,11 +1,13 @@
-# Initial architecture decisions
+# قرارات المرحلة الأولى
 
-- Modular Python monolith, FastAPI, explicit SQLite migrations for the self-hosted MVP, protected local storage and durable workers. Single-host only until PostgreSQL/shared storage are implemented.
-- Reuse and namespace BookForge; do not substitute traditional OCR for its Vision structured JSON pipeline. Keep a source-hash reuse manifest and licensing notices (PyMuPDF AGPL/commercial).
-- Separate extraction revisions from owner-approved published snapshots. Students/tools can retrieve only published snapshots, never draft/archived content.
-- Owner-only durable-library writes. Student chat attachments remain private and temporary.
-- One provider/model per agent run. Real tool events, bounded context/steps/timeout, durable SSE replay and cancellation. No model reasoning trace is exposed.
-- Examination question set and verified associated solution are a logical retrieval bundle; exercise collections are whole bundles. No inferred official solution linkage.
-- Password-based accounts, hashed server-side sessions, CSRF/RBAC/ownership checks. No API keys in browser code.
-- BM25 first. Caching keys include publication revision, permissions and filters. No shared cache of personal answers.
-- Repository research: OpenCode and OpenAI Agents SDK are maintained MIT projects inspected for patterns; Claude Code repository license states all rights reserved/commercial terms, so no implementation code is copied from it. Full security auditing of upstream projects is not claimed.
+1. **Modular monolith** Python/FastAPI + React/TypeScript. خدمات API وworker منفصلة من نفس مصدر الكود؛ أبسط من microservices في هذه المرحلة.
+2. **SQLite/WAL** للتشغيل المحلي مع معاملات `BEGIN IMMEDIATE`، وFilesystem للمصادر والمخرجات. قاعدة platform منفصلة عن state الخاصة بـ BookForge، بما يحافظ على فصل البيانات والصلاحيات.
+3. **إعادة استخدام مثبتة**: نسخة vendor من 25 ملفًا من BookForge بعد اختبار baseline (32 passed)، مع تعديل namespace ومسار subprocess فقط في البداية. `bookforge-reuse.json` يحوي SHA-256 الأصل والمعدل؛ الملف الأصلي لم يتغير. ملف fixture الاصطناعي أيضًا مأخوذ من BookForge مع احتفاظ الترخيص.
+4. **لا حذف ولا auto-publish**: الأصل يبقى، Vision ينتج JSON، Python يقص ويكتب Markdown، ثم اعتماد مالك صريح وsnapshot غير قابل للتغيير. بيانات المسودة لا توجد في فهرس الطلاب. النسخة الحالية مؤشر ذري قابل للتبديل والأرشفة.
+5. **نموذجان بإعداد مستقل**: slot للتدريس وslot للاستخراج. إعداد immutable لكل تشغيل؛ key ciphertext فقط في DB ومفتاح vault خارج المصدر، محمي بصلاحيات filesystem.
+6. **نموذج واحد وحدود حقيقية**: مصدر واحد للموديل في كل run، أدوات فقط من allowlist، stop يعطّل الطلب النشط، step/time/context/tool caps ودليل أحداث محفوظ. لا polling للعرض يوهم بعمليات لا تحدث، ولا chain-of-thought معروض.
+7. **ميزانية الحروف صريحة**: حدود char خفيفة ومحمولة بدل تقدير غير دقيق للتوكن لكل نموذج. الأرقام المالية لا تستنتج إلا من usage الفعلي وأسعار معطاة. مزوّد لا يعيد usage يتركه null.
+8. **الكتب تبقى بهيكلها**: درس/وحدة فقط إذا موجودين. امتحان وحل وحزمة تمارين يحتاجان المرحلة الثانية ولا يُعالجان بصمت على أنهما كتاب بنية دروس؛ الواجهة الحالية تعرض book/reference فقط.
+9. **الأذونات على الخادم**: التسجيل student فقط، كل chat/run مملوك لصاحبه، owner وحده يرفع ويعتمد وينشر. Origin/CSRF للكتابة، cookies HttpOnly، تعليمات الوثائق مدخلات غير موثوقة.
+10. **التخزين المحلي أولًا**: DB وfiles ومفتاح vault نسخة احتياطية واحدة. SQLite ليس قاعدة متعددة المناطق. scale العام وstorage adapters وتوكنات خدمة أدق والتقييم العلمي مراحل لاحقة وليست وعود أداء حالية.
+11. **فصل الاختبار عن الإنتاج**: test factories inject فقط في tests. entry point الإنتاج يستخدم HTTP provider الحقيقي، لا إجابات canned ولا mock implicit. لم نرسل طلبًا مدفوعًا للمزوّد في تنفيذ هذه المرحلة.

@@ -1,14 +1,117 @@
-# BAC Algérie Agent
+# مَسار — وكيل البكالوريا الجزائرية
 
-Arabic-first Algerian Baccalaureate platform under staged implementation. Student/teacher/owner roles, a bounded single-model tool-using agent, and a reviewed versioned library built on the existing BookForge Vision→JSON→source crops→Markdown pipeline.
+منصّة تعليمية عربية، بمكتبة يراجعها المالك وينشرها، ووكيل واحد يستدعي أدوات فعلية لاسترجاع الدروس والمصادر. إعادة استخدام مستقلة لمحرك BookForge؛ لا تُغيّر مشروع BookForge الأصلي أو ملفاته.
 
-## Execution stages
-1. Owner upload→extract→review→publish; authenticated student chat→real library tool→streamed answer with citations and usage.
-2. Exam+verified solution bundles and whole exercise collections.
-3. Deterministic numerical/symbolic verification, constrained scientific execution and inline charts.
-4. Student preferences/consented notes, teacher workflows, owner limits/accounting and version-aware cache.
-5. Security, evaluation, deployment and truthful verification report.
+## حالة التسليم: المرحلة الأولى
 
-Work happens on implementation branches, with tested commits and PRs. No real provider credentials or user data belong in Git. No feature is considered verified until its tests run. The prior one-request provider approval is not authorization for additional paid calls.
+**منفَّذ:** حسابات وجلسات وأدوار، رفع PDF للمالك، معاينة الصفحة دون Vision، استخراج غير متزامن، JSON وصور أصلية وMarkdown، مراجعة ثم نشر نسخة ثابتة، مكتبة وفهرس وبحث BM25، استدعاء درس كامل، محادثات خاصة، بث SSE واستئناف العرض بعد فتح المتصفح، إيقاف/تعديل/إعادة محاولة، صور وجداول وLaTeX ومصادر، إعداد نموذجين مستقلين، مفاتيح مشفرة، استخدام حقيقي عندما يبلّغه المزوّد، اختبارات ووصفة تشغيل.
 
-Initial baseline: the pre-existing BookForge project was located and its 32 tests were rerun successfully. Its original directory and outputs are preserved. This repository is private.
+**ليست المنصّة الكاملة Production-ready بعد.** تجميع امتحان مع حلّ رسمي، حزم التمارين، رفع الطالب المؤقت، التحقق الحسابي والرمزي، الرسوم العلمية، الملاحظات التعليمية، إدارة حسابات الأستاذ، المحاسبة المتقدمة وتقييم النماذج والاختبار الأمني الشامل مراحل مستقلة لاحقة. لا يُنفَّذ كود النموذج حاليًا، ولا نزعم التحقق من صحة الحل حسابيًا. لا توجد حلول رسمية مولّدة أو بيانات منهج وهمية. راجع [التقدم](docs/ROADMAP.md) و[الاختبارات](docs/TEST_REPORT.md).
+
+## تشغيل محلي
+
+يتطلب Python 3.13 وNode 24. جميع الأوامر من جذر المشروع.
+
+```bash
+python -m venv .venv
+source .venv/bin/activate
+pip install -r requirements-dev.txt -c constraints.txt
+npm ci
+npm run build
+cp .env.example .env
+python -m bac.cli bootstrap --email YOUR_OWNER_EMAIL --name 'المالك'
+# سيطلب كلمة مرور 12 حرفًا أو أكثر دون إظهارها.
+uvicorn bac.api.main:app --host 127.0.0.1 --port 8090
+```
+
+في طرفية ثانية، بنفس البيئة والمجلد:
+
+```bash
+source .venv/bin/activate
+python -m bac.worker
+```
+
+افتح **http://127.0.0.1:8090**. لا تُدخِل مفتاح التطبيق القديم BookForge؛ هنا حساب مستقل بكلمة مرور. من «إعداد النماذج» احفظ Base URL واسم النموذج والمفتاح لكل من **التدريس** و**الاستخراج**. الحفظ لا يرسل طلبًا مدفوعًا. التدريس يتطلب نموذجًا متوافقًا مع أدوات Chat Completions؛ الاستخراج يتطلب Vision. اختيار LUNA الظاهر مسبقًا في الواجهة مجرد قيمة مبدئية، وليس تأكيدًا لاختبار أدوات التدريس لهذا المزوّد.
+
+رفع ← معاينة ← بدء المعالجة ← مراجعة تحذيرات وصور المصدر ← اعتماد المراجعة ← نشر. المصادر المسودة لا تصل إلى الطلاب أو أدوات الوكيل. إنشاء الحساب العام ينتج **طالبًا فقط**؛ لا يمكن اختيار owner أو teacher من المتصفح. الحسابات الجديدة ليست تحققًا من البريد الإلكتروني بعد.
+
+### فتحه مرة ثانية والنتائج
+
+شغّل خدمتي API وworker بالأوامر نفسها، ثم افتح العنوان نفسه. أغلق المتصفح دون إيقاف الخادم إن أردت استمرار المعالجة. إيقاف الكمبيوتر يوقف العمل، لكنه يحفظ الحالة. محرك استخراج الكتب يستأنف وظائفه من قاعدة البيانات ولا يعيد الصفحات الناجحة. تشغيل دردشة مدفوع انقطع أثناء التنفيذ يُعلَّم `INTERRUPTED` بدل إعادة طلبه تلقائيًا وإضافة تكلفة غير معلنة؛ يمكن للطالب إعادة المحاولة صراحة.
+
+```text
+data/
+├── platform.sqlite3          # الحسابات، النسخ المنشورة، المحادثات، تشغيلات الوكيل والاستخدام
+├── .encryption.key              # مفتاح التشفير المحلي؛ احتفظ به مع النسخ الاحتياطية
+├── extraction/
+│   ├── state.sqlite3         # طابور الكتب، الصفحات، retries وleases
+│   └── library/<raw-book>/   # الأصل PDF، الصفحات، JSON، Markdown، الصور والهيكل
+└── snapshots/<version>/<review>/
+    ├── manifest.json        # provenance + تحذيرات الجودة + العقد والعناصر
+    ├── nodes/<node>/content.md
+    ├── assets/*.png
+    └── pages/*.png          # صور الصفحات الأصلية للنسخة المعتمدة
+```
+
+اسم مفتاح vault الحقيقي موثّق في `bac/vendor/bookforge/core/secrets.py`؛ لا تعِد توليده عند النقل. لا تنقل هذه البيانات إلى Git. استخدم نسخة احتياطية متناسقة للـ DB والملفات والمفتاح؛ أوقف الخدمتين قبل نسخ كامل المجلد في هذه النسخة الأولى. SQLite على قرص محلي، لا NFS. نشر نسخة جديدة يبدل مؤشر النسخة الحالية ذريًا؛ لا يغير ملفات النسخة القديمة. إلغاء النشر بالأرشفة يمنع الوصول حتى لو سبق تحميل المحتوى في cache.
+
+### Docker
+
+```bash
+cp .env.example .env
+docker compose up --build -d
+docker compose run --rm api python -m bac.cli bootstrap --email YOUR_OWNER_EMAIL
+# لاحقًا:
+docker compose up -d
+```
+
+وصفة Docker مُضافة لكن لم تُبنَ داخل بيئة التطوير التي لا تحتوي Docker. المنفذ مرتبط بـ localhost افتراضيًا. للنشر العام: HTTPS/reverse proxy، `SECURE_COOKIES=true`، سياسة تسجيل/نسخ احتياطي، حدود موارد ومراقبة واختبار أمني. **لا تعرّض النسخة الحالية للعامة بوصفها منتجًا نهائيًا.**
+
+## كيف يصل Agent إلى المكتبة؟
+
+واجهة HTTP محمية بالجلسات وتعمل بنفس صلاحيات المكتبة المنشورة. التسجيل/الدخول يعيدان CSRF؛ تحتفظ المكتبة client بملف cookies. تمرَّر `X-CSRF-Token` مع الطلبات المعدِّلة. لا تعطِ الوكيل الخارجي حساب المالك. في هذه المرحلة حساب طالب مخصص للخدمة يمكنه استخدام القراءة؛ service tokens ذات نطاق محدود مقررة ضمن التقوية.
+
+| المسار | النتيجة |
+|---|---|
+| `POST /api/auth/login` | جلسة HttpOnly + CSRF، كلمة المرور في body |
+| `GET /api/library/documents` | كتب ومراجع منشورة، filters المادة والتخصص والنوع |
+| `GET /api/library/documents/{id}` | بيانات الكتاب مع الفهرس |
+| `GET /api/library/documents/{id}/toc` | الهيكل الفعلي والعقد وأنواعها وصفحاتها |
+| `GET /api/library/nodes/{id}` | المحتوى الكامل، ancestors، children، assets وsources |
+| `GET /api/library/search?q=...` | بحث BM25 مع document_id/subject/track |
+| `GET /api/library/assets/{id}` | الصورة المقصوصة المعتمدة |
+| `GET /api/library/documents/{id}/page/{pdf_page}` | صورة الصفحة الأصلية |
+| `GET /api/openapi.json` | مخطط API، يتطلب جلسة |
+
+مثال أداة `get_lesson_full` في الوكيل الداخلي تستدعي عقدة موجودة من نوع lesson، وتعيد نص الدرس كاملًا ومعادلاته وصوره والفهرس المحيط ومراجع صفحاته. لا تخترع دروسًا في كتاب لا يحتويها. ليس هذا خادم MCP مكتملًا بعد؛ طبقة HTTP والأدوات الداخلية منفصلتان حتى تُضاف adapters دون تغيير التخزين.
+
+الجواب مكوّن من blocks مرتبة: text، equation، image من asset محمّل فعلًا، table، code **للعرض فقط**. `source_ids` المقبولة مصادر قرأتها أداة الوكيل فعليًا، وليست عناوين تخيّلها النموذج. هذه رقابة provenance وليست ضمانًا أن كل ادعاء علمي صحيح؛ التقييم والتحقق العلمي في مراحل لاحقة.
+
+## حدود وتكلفة التشغيل
+
+- نموذج تدريس واحد لكل تشغيل، بلا subagents وبلا ChatGPT/Kilo لإدارة التطبيق.
+- طابور محفوظ في SQLite، claim ذرّي، fencing token، heartbeat وميزانية خطوات/وقت/أدوات/حجم context.
+- محرك Vision: صفحة ناجحة لا تعاد، أخطاء مؤقتة retry/backoff، صفحة مشكوك فيها تبقى صريحة ولا تُوقف الكتاب.
+- التدريس: لا retries خفية لطلب مدفوع، ولا تكلفة مفترضة. الأسعار اختيارية في API ModelConfig؛ عند غيابها cost = null.
+- `input_tokens` و`output_tokens` و`cached_tokens` تحفظ فقط إذا أبلغ المزوّد عنها. لا نسب cache وهمية.
+- حد context في هذه المرحلة **بالحروف**، وليس عدّاد tokens دقيقًا لكل مزود. محتوى زائد يُرفض مع طلب قسم أصغر بدل بتره وتسميته كاملًا.
+- SSE يعرض النص العادي فور وروده والأدوات عند تنفيذها. blocks داخل `render_answer` تظهر بعد اكتمال JSON والتحقق منه؛ لا نعرض JSON جزئيًا بوصفه إجابة صحيحة أو chain-of-thought.
+- مزوّد Chat Completions يجب أن يدعم tools وstream. لا يوجد fallback مدفوع تلقائي إذا رفض `stream_options` أو JSON schemas.
+- PDF ونص الكتاب مدخلات غير موثوقة، لا تعليمات أو كود قابل للتنفيذ.
+
+## الاختبارات
+
+```bash
+pytest -q
+npm run build
+npx playwright install chromium
+npm run test:browser
+```
+
+اختبارات التكامل تستخدم مزودًا وهميًا معلنًا فقط داخل `tests/browser/server.py`، وهو ليس entry point للنشر. تستخدم فعليًا رفع PDF ممسوح اصطناعي متعدد اللغات، محرك render/crop/Markdown والـ queue والنشر وأدوات الاسترجاع وSSE. لا تدّعي هذه الاختبارات جودة Vision حقيقي أو أداء آلاف الطلاب. قياس فعلي صغير للمزوّد يحتاج إذنًا منفصلًا لتجنب استهلاك رصيد غير لازم.
+
+## معمارية وتراخيص
+
+[القرارات](docs/DECISIONS.md) · [تراخيص ومراجعة المشاريع](docs/THIRD_PARTY.md) · [إعادة استخدام BookForge](docs/bookforge-reuse.json).
+
+الكود الجديد MIT. Python PyMuPDF ليس MIT: ترخيص AGPL أو ترخيص تجاري؛ راجع التوافق قبل توزيع/تشغيل الخدمة تجاريًا. لا نسخ لكود Claude Code التجاري. طبقة agent صغيرة مستقلة لا تعتمد SDK واحدًا؛ Vision والتخزين والبحث طبقات قابلة للاستبدال.
