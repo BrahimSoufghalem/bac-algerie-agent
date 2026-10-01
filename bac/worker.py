@@ -11,7 +11,8 @@ async def main():
         loop.add_signal_handler(
             sig, lambda: (agent.stop.set(), s.extraction_engine.stopping.set())
         )
-    await asyncio.gather(agent.run(), s.extraction_engine.run())
+    from bac.learning.private import PrivateFiles
+    await asyncio.gather(agent.run(), s.extraction_engine.run(), PrivateFiles(s).run(agent.stop))
 
 
 if __name__ == "__main__":

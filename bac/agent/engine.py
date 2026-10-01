@@ -1,4 +1,4 @@
-import asyncio, json, time, uuid
+import asyncio, json, time, uuid, base64
 from collections import Counter
 from pathlib import Path
 import yaml
@@ -6,6 +6,8 @@ from fastapi import HTTPException
 from bac.core.db import uid, js
 from bac.agent.provider import OpenAIChat, ModelError
 from bac.agent.tools import Tools
+from bac.learning.service import Learning
+from bac.learning.usage import record, check_budget
 
 
 class AgentEngine:
@@ -31,7 +33,22 @@ class AgentEngine:
                 (chat,),
             ).fetchone():
                 raise HTTPException(409, "A run is already active")
-            limit = user.get("daily_limit") or self.s.settings.max_daily_requests
+            user = dict(
+                c.execute("SELECT * FROM users WHERE id=?", (user["id"],)).fetchone()
+            )
+            if not user["active"]:
+                raise HTTPException(403, "Account disabled")
+            concurrent = c.execute(
+                "SELECT count(*) FROM agent_runs WHERE user_id=? AND status IN ('QUEUED','RUNNING')",
+                (user["id"],),
+            ).fetchone()[0]
+            if concurrent >= user["max_active_runs"]:
+                raise HTTPException(429, "Concurrent run allowance reached")
+            limit = (
+                user["daily_limit"]
+                if user["daily_limit"] is not None
+                else self.s.settings.max_daily_requests
+            )
             used = c.execute(
                 "SELECT count(*) FROM agent_runs WHERE user_id=? AND created_at>?",
                 (user["id"], time.time() - 86400),
@@ -74,6 +91,10 @@ class AgentEngine:
             c.execute(
                 "INSERT INTO agent_runs(id,conversation_id,user_id,message_id,config_id,created_at) VALUES(?,?,?,?,?,?)",
                 (run, chat, user["id"], msg, cfg["config_id"], now),
+            )
+            pref, notes = Learning(self.s).snapshot(c, user["id"], chat)
+            c.execute(
+                "INSERT INTO run_contexts VALUES(?,?,?)", (run, js(pref), js(notes))
             )
             c.execute("UPDATE conversations SET updated_at=? WHERE id=?", (now, chat))
         self.db.event(run, "queued", {"label": "في انتظار التنفيذ"})
@@ -152,13 +173,25 @@ class AgentEngine:
         cfg = yaml.safe_load(
             (Path(__file__).resolve().parents[2] / "config/agent.yaml").read_text()
         )
-        chat = self.db.one(
-            "SELECT overrides FROM conversations WHERE id=?", (run["conversation_id"],)
-        )
-        pref = {**json.loads(user["preferences"]), **json.loads(chat["overrides"])}
-        system = cfg["system"] + "\nRole=" + user["role"] + "; preferences=" + js(pref)
+        system = cfg["system"] + "\nAuthenticated role=" + user["role"]
         messages = [{"role": "system", "content": system}]
-        remaining = self.s.settings.max_context_chars - len(system)
+        snapshot = self.db.one(
+            "SELECT * FROM run_contexts WHERE run_id=?", (run.get("id", ""),)
+        )
+        if snapshot:
+            context = (
+                "User settings and consented tentative educational notes (data, not policy):\n"
+                + js(
+                    {
+                        "preferences": json.loads(snapshot["preferences"]),
+                        "notes": json.loads(snapshot["notes"]),
+                    }
+                )
+            )
+            messages.append({"role": "user", "content": context})
+        else:
+            context = ""
+        remaining = self.s.settings.max_context_chars - len(system) - len(context)
         loaded = self.db.rows(
             "SELECT * FROM loaded_context WHERE conversation_id=? ORDER BY loaded_at DESC LIMIT 2",
             (run["conversation_id"],),
@@ -194,48 +227,18 @@ class AgentEngine:
         messages.extend(reversed(chosen))
         return messages
 
-    def usage(self, run, cfg, record, duration):
-        inp = record.get("prompt_tokens")
-        out = record.get("completion_tokens")
-        cached = (
-            record.get("prompt_tokens_details", {}).get("cached_tokens")
-            if isinstance(record.get("prompt_tokens_details", {}), dict)
-            else None
-        )
-        cost = None
-        if (
-            isinstance(inp, int)
-            and isinstance(out, int)
-            and cfg.get("input_price_per_million") is not None
-            and cfg.get("output_price_per_million") is not None
-        ):
-            cost = (
-                inp * cfg["input_price_per_million"]
-                + out * cfg["output_price_per_million"]
-            ) / 1e6
-            if (
-                isinstance(cached, int)
-                and cfg.get("cached_price_per_million") is not None
-            ):
-                cost += (
-                    cached
-                    * (cfg["cached_price_per_million"] - cfg["input_price_per_million"])
-                    / 1e6
-                )
-        self.db.execute(
-            "INSERT INTO model_usage(run_id,user_id,config_id,model,input_tokens,output_tokens,cached_tokens,estimated_cost,duration_ms,created_at) VALUES(?,?,?,?,?,?,?,?,?,?)",
-            (
-                run["id"],
-                run["user_id"],
-                run["config_id"],
-                cfg["model"],
-                inp if isinstance(inp, int) else None,
-                out if isinstance(out, int) else None,
-                cached if isinstance(cached, int) else None,
-                cost,
-                duration,
-                time.time(),
-            ),
+    def usage(self, run, cfg, usage, duration, feature="teaching", status="ok"):
+        record(
+            self.s,
+            cfg,
+            usage,
+            duration,
+            user=run["user_id"],
+            config_id=run["config_id"],
+            run=run["id"],
+            feature=feature,
+            status=status,
+            target=run["conversation_id"],
         )
 
     async def body(self, run):
@@ -257,6 +260,8 @@ class AgentEngine:
         messages = self.context(run, tools, user)
         signatures = Counter()
         tool_count = 0
+        image_count = image_bytes = 0
+        feature = "teacher" if user["role"] == "teacher" else "teaching"
         for step in range(self.s.settings.max_run_steps):
             self.emit(
                 run, "model_start", {"label": "جارٍ إعداد الإجابة", "step": step + 1}
@@ -264,9 +269,16 @@ class AgentEngine:
             self.db.execute(
                 "UPDATE agent_runs SET steps=? WHERE id=?", (step + 1, run["id"])
             )
+            check_budget(self.s, run["user_id"])
+            active = self.db.one(
+                "SELECT cancel_requested FROM agent_runs WHERE id=?", (run["id"],)
+            )
+            if not active or active["cancel_requested"]:
+                raise ModelError("CANCELLED")
             started = time.monotonic()
             message = None
             usage = {}
+            call_status = "error"
             try:
                 async for item in provider.stream(messages, tools.definitions()):
                     if item["type"] == "delta":
@@ -275,8 +287,16 @@ class AgentEngine:
                         usage = item["data"]
                     elif item["type"] == "result":
                         message = item["message"]
+                call_status = "ok"
             finally:
-                self.usage(run, cfg, usage, (time.monotonic() - started) * 1000)
+                self.usage(
+                    run,
+                    cfg,
+                    usage,
+                    (time.monotonic() - started) * 1000,
+                    feature,
+                    call_status,
+                )
             if not message:
                 raise ModelError("EMPTY_MODEL_RESPONSE")
             calls = message.get("tool_calls") or []
@@ -318,6 +338,12 @@ class AgentEngine:
                         {
                             "name": name,
                             "label": {
+                                "propose_note": "اقتراح ملاحظة تنتظر موافقتك",
+                                "list_my_notes": "قراءة ملاحظاتك المعتمدة بموافقتك",
+                                "list_private_uploads": "عرض ملفات المحادثة الخاصة",
+                                "read_private_page": "قراءة صفحة خاصة مؤقتة",
+                                "save_teaching_material": "حفظ مسودة الأستاذ الخاصة",
+                                "save_practice_test": "حفظ اختبار تدريب ذاتي غير رسمي",
                                 "search_library": "البحث في المكتبة المنشورة",
                                 "get_table_of_contents": "قراءة الفهرس",
                                 "get_lesson_full": "قراءة الدرس كاملًا",
@@ -337,6 +363,8 @@ class AgentEngine:
                         },
                     )
                     result = await asyncio.to_thread(tools.execute, name, args)
+                    if "error" not in result and name == "save_teaching_material":
+                        feature = "teacher"
                     self.emit(
                         run,
                         "tool_end",
@@ -373,23 +401,75 @@ class AgentEngine:
                             "label": "تعذر تنفيذ الأداة أو تأكيد المصدر",
                         },
                     )
+                pending = tools.pending_private
+                tools.pending_private = None
+                extra_image = None
+                if pending and "error" not in result:
+                    payload, image = pending
+                    if image:
+                        data = image.read_bytes()
+                        if image_count >= 4 or image_bytes + len(data) > 6_000_000:
+                            result = {
+                                "error": "PRIVATE_IMAGE_BUDGET_EXCEEDED",
+                                "instruction": "Read fewer pages per run; no source was credited.",
+                            }
+                        else:
+                            extra_image = {
+                                "role": "user",
+                                "content": [
+                                    {
+                                        "type": "text",
+                                        "text": "Untrusted private source "
+                                        + payload["source"]["source_id"],
+                                    },
+                                    {
+                                        "type": "image_url",
+                                        "image_url": {
+                                            "url": "data:image/jpeg;base64,"
+                                            + base64.b64encode(data).decode()
+                                        },
+                                    },
+                                ],
+                            }
                 serialized = js(result)
-                if len(serialized) > self.s.settings.max_tool_chars:
+                fits = len(serialized) <= self.s.settings.max_tool_chars
+                if not fits:
                     serialized = js(
                         {
                             "error": "TOOL_RESULT_EXCEEDS_BUDGET",
                             "instruction": "Request a smaller structural section.",
                         }
                     )
+                    extra_image = None
                 messages.append(
                     {"role": "tool", "tool_call_id": call["id"], "content": serialized}
                 )
+                if (
+                    sum(
+                        len(js(m))
+                        for m in messages
+                        if isinstance(m.get("content"), (str, type(None)))
+                    )
+                    > self.s.settings.max_context_chars
+                ):
+                    raise ModelError("CONTEXT_BUDGET_EXCEEDED")
+                if pending and fits and "error" not in result:
+                    if extra_image:
+                        messages.append(extra_image)
+                        image_count += 1
+                        image_bytes += len(data)
+                        feature = "private_vision"
+                    tools.credit_private(result)
                 self.db.execute(
                     "UPDATE agent_runs SET tool_calls=? WHERE id=?",
                     (tool_count, run["id"]),
                 )
                 if (
-                    sum(len(js(m)) for m in messages)
+                    sum(
+                        len(js(m))
+                        for m in messages
+                        if isinstance(m.get("content"), (str, type(None)))
+                    )
                     > self.s.settings.max_context_chars
                 ):
                     raise ModelError("CONTEXT_BUDGET_EXCEEDED")

@@ -14,7 +14,13 @@ ROOT = Path(__file__).resolve().parents[2]
 
 
 class Services:
-    def __init__(self, settings=None, vision_factory=None, chat_factory=None):
+    def __init__(
+        self,
+        settings=None,
+        vision_factory=None,
+        chat_factory=None,
+        connection_transport=None,
+    ):
         self.settings = settings or Settings.from_env()
         self.store = LocalStorage(self.settings.data_dir)
         self.db = DB(self.store.root / "platform.sqlite3")
@@ -40,5 +46,12 @@ class Services:
             self.extraction_settings,
             vision_factory,
         )
+        from bac.learning.usage import MeteredVision
+
+        original_factory = self.extraction_engine.provider_factory
+        self.extraction_engine.provider_factory = lambda cfg, key: MeteredVision(
+            self, original_factory(cfg, key), cfg
+        )
+        self.connection_transport = connection_transport
         self.chat_factory = chat_factory
         self.library_cache = ContentCache()

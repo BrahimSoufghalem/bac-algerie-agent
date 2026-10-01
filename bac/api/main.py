@@ -17,6 +17,10 @@ from bac.core.auth import (
     owned_chat,
 )
 from bac.core.db import uid, js
+from bac.learning.contracts import Overrides
+from bac.learning.private import PrivateFiles
+from bac.learning.api import router as learning_router
+from bac.learning.usage import report
 from bac.agent.engine import AgentEngine
 from bac.agent.models import ModelConfig
 from bac.library.service import Library
@@ -46,7 +50,7 @@ class Register(Credentials):
 
 class ChatCreate(Strict):
     title: str = Field(default="محادثة جديدة", min_length=1, max_length=150)
-    overrides: dict = Field(default_factory=dict)
+    overrides: Overrides = Field(default_factory=Overrides)
 
 
 class ChatRename(Strict):
@@ -84,7 +88,7 @@ def create_app(services=None):
     s = services or Services()
     app = FastAPI(
         title="Masar BAC Agent",
-        version="0.3.0",
+        version="0.4.0",
         docs_url=None,
         redoc_url=None,
         openapi_url=None,
@@ -118,7 +122,8 @@ def create_app(services=None):
                 length = int(request.headers.get("content-length", "0"))
             except ValueError:
                 return JSONResponse({"detail": "Invalid length"}, 400)
-            if length > s.settings.max_upload_mb * 1024**2 + 1024**2:
+            cap = 11 * 1024**2 if path.startswith("/api/conversations/") else s.settings.max_upload_mb * 1024**2 + 1024**2
+            if length > cap:
                 return JSONResponse({"detail": "File too large"}, 413)
         response = await call_next(request)
         response.headers["X-Content-Type-Options"] = "nosniff"
@@ -144,6 +149,8 @@ def create_app(services=None):
 
     def current(request: Request):
         return request.state.user
+
+    app.include_router(learning_router(s, current))
 
     @app.get("/health")
     def health():
@@ -232,7 +239,7 @@ def create_app(services=None):
         id = uid("chat")
         s.db.execute(
             "INSERT INTO conversations VALUES(?,?,?,?,?,?)",
-            (id, user["id"], p.title, js(p.overrides), time.time(), time.time()),
+            (id, user["id"], p.title, js(p.overrides.model_dump(exclude_none=True)), time.time(), time.time()),
         )
         return {"id": id, "title": p.title}
 
@@ -272,13 +279,14 @@ def create_app(services=None):
             (id,),
         ):
             raise HTTPException(409, "Cancel the active run first")
+        PrivateFiles(s).delete_chat(user, id)
         s.db.execute("DELETE FROM conversations WHERE id=?", (id,))
         return {"ok": True}
 
     @app.post("/api/conversations/{id}/messages")
     def send(id: str, p: Send, user=Depends(current)):
         owned_chat(s.db, id, user)
-        if not s.db.rate("messages:" + user["id"], 12, 60):
+        if not s.db.rate("messages:" + user["id"], user["messages_per_minute"], 60):
             raise HTTPException(429, "Message rate limit")
         return {"run_id": agent.enqueue(id, user, p.text, p.edit_message_id)}
 
@@ -291,6 +299,8 @@ def create_app(services=None):
         )
         if not m:
             raise HTTPException(409, "No message to retry")
+        if not s.db.rate("messages:" + user["id"], user["messages_per_minute"], 60):
+            raise HTTPException(429, "Message rate limit")
         return {"run_id": agent.enqueue(id, user, m["content"], retry=True)}
 
     def run_owned(id, user):
@@ -817,17 +827,9 @@ def create_app(services=None):
         return {k: v for k, v in a.items() if k != "file"}
 
     @app.get("/api/owner/usage")
-    def usage(user=Depends(current)):
+    def usage(days: int = 30, user=Depends(current)):
         owner(user)
-        return {
-            "items": s.db.rows(
-                "SELECT model,count(*) AS calls,sum(input_tokens) AS input_tokens,sum(output_tokens) AS output_tokens,sum(cached_tokens) AS cached_tokens,sum(estimated_cost) AS estimated_cost,avg(duration_ms) AS latency_ms FROM model_usage GROUP BY model"
-            ),
-            "cost_is_estimate": True,
-            "missing_usage_calls": s.db.one(
-                "SELECT count(*) AS n FROM model_usage WHERE input_tokens IS NULL"
-            )["n"],
-        }
+        return report(s, days=days) | {"file_cache": s.library_cache.metrics()}
 
     @app.get("/api/owner/audit")
     def audit(user=Depends(current)):
