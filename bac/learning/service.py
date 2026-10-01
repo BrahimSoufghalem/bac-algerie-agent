@@ -302,7 +302,7 @@ class Learning:
             "SELECT id,conversation_id,name,kind,pages,expires_at FROM private_uploads WHERE user_id=? AND expires_at>?",
             (user["id"], time.time()),
         )
-        if len(js(data)) > 10_000_000:
+        if len(js(data).encode("utf-8")) > 10_000_000:
             raise HTTPException(
                 413, "Export exceeds 10 MB; export individual chats first"
             )

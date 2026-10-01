@@ -96,7 +96,7 @@ npm run test:browser
 
 ## الدليل المحلي النهائي
 
-- Backend: **98 passed** (75 baseline + 23 learning/privacy/controls parameterized cases), Starlette TestClient deprecation warning only. Ruff F على app/tests الجديدة، strict TypeScript + Vite build، وpip check نجحت.
+- Backend: **99 passed** (75 baseline + 24 learning/privacy/controls parameterized cases), Starlette TestClient deprecation warning only. Ruff F على app/tests الجديدة، strict TypeScript + Vite build، وpip check نجحت.
 - Playwright: **10 passed**: ستة مسارات الكتاب/الحزم/الحسابات العلمية السابقة، وأربعة لمسارات الطالب الخاص/الأستاذ/التدريب الذاتي/المالك. اختبارات desktop/390px، لا horizontal overflow، تحميل فعلي لصورة خاصة، pending note ثم مراجعة/تعديل/موافقة، حذف/تصدير، same-engine draft tool + rubric/solution + reload، إنشاء أستاذ وحد 0 والأسعار وإشعار الحفظ. نتيجة المجموعة النهائية 45.1 ثانية في البيئة المحلية؛ ليست load benchmark.
 - اختبار الاتصال الحقيقي بالشبكة **لم يُجرَ**: HTTPX MockTransport يثبت GET /models فقط بعد confirm صريح، وعدم كشف المفتاح، ولا أي generation requests. Save/navigation/upload لا يرسلون توليدًا مدفوعًا.
 - Wrapper لقياس Vision عند الطلب الفعلي يحافظ على provider/config snapshot؛ reads/cache لا يُحتسبان requests. Cache المفقود والـtokens/cost المفقودة ليست أصفارًا. حساب التكلفة ورفض token-budget عند missing usage، قبل أول طلب وقبل الطلب التالي، اختُبرا.
@@ -111,3 +111,5 @@ npm run test:browser
 حُفظت HTML previews ثم ست لقطات PNG فعلية لتفضيلات desktop/mobile وملاحظات/مسودة/حسابات/أسعار. **المراجعة البصرية الفعلية ما زالت معلقة** مع المراحل 2–3؛ اختبارات DOM/CSS وعدم overflow ليست بديلًا عن النظر إلى الصور. لا claim visual approval.
 
 Phase 5 ما زالت مفتوحة: provider capability/educational quality (including real LUNA tool/vision compatibility), full security/native-parser audit, hostile uploads/resource/storage/orphan cleanup, load tests, actual backup/restore, scoped service tokens, email/password lifecycle, Docker deployment and final acceptance. Private-file expiry denies access immediately but deletion requires running services; data already in chat/provider isn't recalled. Account token/run caps apply to teaching, not a global BookForge/provider invoice cap. Prices are configured estimates, not billing proofs. لا تسمية whole platform production-ready.
+
+مراجعة إضافية للمرحلة الرابعة: export budget يُحسب ببايتات UTF-8، لا عدد حروف Unicode فقط؛ اختبار emoji multibyte يمنع تجاوز حد 10 MB عبر نص قصير ظاهريًا.

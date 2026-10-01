@@ -691,3 +691,14 @@ async def test_budget_checked_before_each_actual_provider_call(services, limit):
     assert row["error"] == (
         "TOKEN_ALLOWANCE_REACHED" if limit == 0 else "TOKEN_BUDGET_USAGE_UNKNOWN"
     )
+
+
+def test_export_budget_counts_utf8_bytes_not_only_characters(services, monkeypatch):
+    u, chat = chat_and_config(services)
+    learn = Learning(services)
+    monkeypatch.setattr(
+        learn, "materials", lambda user: [{"content": "🙂" * 2_500_001}]
+    )
+    with pytest.raises(HTTPException) as exc:
+        learn.export(u)
+    assert exc.value.status_code == 413
