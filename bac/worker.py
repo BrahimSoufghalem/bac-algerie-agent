@@ -12,7 +12,17 @@ async def main():
             sig, lambda: (agent.stop.set(), s.extraction_engine.stopping.set())
         )
     from bac.learning.private import PrivateFiles
-    await asyncio.gather(agent.run(), s.extraction_engine.run(), PrivateFiles(s).run(agent.stop))
+    from bac.ops.lifecycle import MailWorker
+
+    try:
+        await asyncio.gather(
+            agent.run(),
+            s.extraction_engine.run(),
+            PrivateFiles(s).run(agent.stop),
+            MailWorker(s).run(agent.stop),
+        )
+    finally:
+        s.close()
 
 
 if __name__ == "__main__":

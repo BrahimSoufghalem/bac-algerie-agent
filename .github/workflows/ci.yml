@@ -22,7 +22,7 @@ jobs:
         run: |
           mkdir -p .ci-logs
           python -m pip install -r requirements-dev.txt -c constraints.txt 2>&1 | tee .ci-logs/dependencies.log
-          python -m ruff check bac/core bac/agent bac/api bac/library bac/learning bac/science bac/worker.py bac/cli.py tests --select F 2>&1 | tee .ci-logs/lint.log
+          python -m ruff check bac/core bac/agent bac/api bac/library bac/learning bac/science bac/ops bac/worker.py bac/cli.py examples tests --select F 2>&1 | tee .ci-logs/lint.log
           python -m pytest -q 2>&1 | tee .ci-logs/backend.log
       - name: Typecheck and build
         run: |
@@ -61,3 +61,33 @@ jobs:
               issue_number: context.issue.number,
               body: `CI failure diagnostics for ${context.payload.pull_request.head.sha}\nRun: ${process.env.GITHUB_SERVER_URL}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}\nTest-only logs; no real model calls.\n` + reports.slice(-26000)
             });
+
+  container:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build production container
+        run: docker build -t masar-bac:ci .
+      - name: Check compose, CLI, migration, non-root and persistent volume
+        run: |
+          cp .env.example .env
+          docker compose config --quiet
+          DOMAIN=masar.example.invalid TLS_EMAIL=operator@example.invalid docker compose -f compose.yaml -f compose.production.yaml config --quiet
+          docker run --rm masar-bac:ci sh -c 'test "$(id -u)" = 10001 && python -m bac.cli migrate'
+          docker run --rm -e DOMAIN=masar.example.invalid -e TLS_EMAIL=operator@example.invalid -v "$PWD/deploy/Caddyfile:/etc/caddy/Caddyfile:ro" caddy:2.10.2-alpine caddy validate --config /etc/caddy/Caddyfile
+          docker volume create masar-ci-data
+          docker run -d --name masar-ci-api -p 127.0.0.1:8090:8090 -v masar-ci-data:/app/data --read-only --tmpfs /tmp:rw,size=256m --cap-drop ALL --security-opt no-new-privileges:true masar-bac:ci
+          for i in $(seq 1 30); do curl --fail --silent http://127.0.0.1:8090/health && break || sleep 2; done
+          curl --fail --silent http://127.0.0.1:8090/health
+          test "$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:8090/api/agent/books)" = 401
+          docker stop masar-ci-api
+          docker run --rm -v masar-ci-data:/app/data masar-bac:ci python -m bac.cli migrate
+          docker volume create masar-ci-backups
+          docker volume create masar-ci-restore
+          docker run --rm -v masar-ci-data:/app/data -v masar-ci-backups:/backup masar-bac:ci python -m bac.cli backup --output /backup/smoke.zip
+          docker run --rm -v masar-ci-backups:/backup:ro -v masar-ci-restore:/restore masar-bac:ci python -m bac.cli restore --archive /backup/smoke.zip --destination /restore/new-data
+          docker run --rm -e DATA_DIR=/restore/new-data -v masar-ci-restore:/restore masar-bac:ci python -m bac.cli migrate
+      - name: Failure container logs
+        if: failure()
+        run: docker logs masar-ci-api 2>/dev/null || true

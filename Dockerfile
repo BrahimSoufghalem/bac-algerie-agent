@@ -16,7 +16,7 @@ COPY bac/ bac/
 COPY migrations/ migrations/
 COPY config/ config/
 COPY --from=frontend /build/dist/ dist/
-RUN mkdir -p /app/data && chown bac:bac /app/data
+RUN mkdir -p /app/data /backup /restore && chown bac:bac /app/data /backup /restore && chmod 700 /app/data /backup /restore
 USER bac
 EXPOSE 8090
 HEALTHCHECK --interval=30s --timeout=5s --retries=3 CMD python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8090/health', timeout=3)"

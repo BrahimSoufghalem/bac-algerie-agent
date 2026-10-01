@@ -22,6 +22,9 @@ class Services:
         connection_transport=None,
     ):
         self.settings = settings or Settings.from_env()
+        from bac.ops.guard import DataGuard
+
+        self.guard = DataGuard(self.settings.data_dir.resolve())
         self.store = LocalStorage(self.settings.data_dir)
         self.db = DB(self.store.root / "platform.sqlite3")
         self.vault = SecretVault(self.store.root)
@@ -55,3 +58,6 @@ class Services:
         self.connection_transport = connection_transport
         self.chat_factory = chat_factory
         self.library_cache = ContentCache()
+
+    def close(self):
+        self.guard.close()

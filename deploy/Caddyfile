@@ -1,0 +1,12 @@
+{
+    email {$TLS_EMAIL}
+}
+{$DOMAIN} {
+    header Strict-Transport-Security "max-age=31536000"
+    request_body {
+        max_size 101MB
+    }
+    reverse_proxy api:8090 {
+        flush_interval -1
+    }
+}

@@ -9,7 +9,7 @@ def test_migrations_repeat_without_data_loss(services):
         db.one("SELECT email FROM users WHERE id=?", (id,))["email"]
         == "student@example.com"
     )
-    assert len(db.rows("SELECT * FROM migrations")) == 4
+    assert len(db.rows("SELECT * FROM migrations")) == 5
 
 
 def test_password_not_plain_and_session_hash_only(services):

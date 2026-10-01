@@ -219,6 +219,19 @@ class PrivateFiles:
         for r in rows:
             shutil.rmtree(self.s.store.path("private/" + r["id"]), ignore_errors=True)
 
+        root = self.s.store.path("private")
+        if root.exists():
+            known = {r["id"] for r in self.db.rows("SELECT id FROM private_uploads")}
+            for folder in root.iterdir():
+                if (
+                    folder.name.startswith("upload_")
+                    and folder.name not in known
+                    and not folder.is_symlink()
+                    and folder.is_dir()
+                    and folder.stat().st_mtime < now - 3600
+                ):
+                    shutil.rmtree(folder, ignore_errors=True)
+
     async def run(self, stop):
         while not stop.is_set():
             await asyncio.to_thread(self.cleanup)

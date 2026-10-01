@@ -23,6 +23,15 @@ def verify_password(password, stored):
 def create_user(db, email, password, name, role="student"):
     if len(password) < 12 or len(password) > 256:
         raise ValueError("Password must contain 12–256 characters")
+    import re
+
+    email = email.casefold().strip()
+    if (
+        not re.fullmatch(r"[^\s@]+@[^\s@]+\.[^\s@]+", email)
+        or not name.strip()
+        or len(name.strip()) > 100
+    ):
+        raise ValueError("Valid email and nonempty name required")
     id = uid("user")
     db.execute(
         "INSERT INTO users(id,email,password_hash,name,role,created_at) VALUES(?,?,?,?,?,?)",
@@ -38,22 +47,41 @@ def create_user(db, email, password, name, role="student"):
     return id
 
 
-def new_session(db, user, settings):
+def new_session(db, user, settings, expected_hash=None):
     token = secrets.token_urlsafe(48)
     csrf = secrets.token_urlsafe(32)
-    db.execute(
-        "INSERT INTO sessions VALUES(?,?,?,?)",
-        (
-            hashlib.sha256(token.encode()).hexdigest(),
-            user,
-            csrf,
-            time.time() + settings.session_hours * 3600,
-        ),
-    )
+    with db.tx() as c:
+        fresh = c.execute(
+            "SELECT password_hash,active,email_verified FROM users WHERE id=?", (user,)
+        ).fetchone()
+        if (
+            not fresh
+            or not fresh["active"]
+            or (
+                expected_hash is not None
+                and not hmac.compare_digest(expected_hash, fresh["password_hash"])
+            )
+        ):
+            raise HTTPException(401, "Credentials changed; sign in again")
+        if settings.require_verified_email and not fresh["email_verified"]:
+            raise HTTPException(403, "Email verification required")
+        c.execute(
+            "INSERT INTO sessions VALUES(?,?,?,?)",
+            (
+                hashlib.sha256(token.encode()).hexdigest(),
+                user,
+                csrf,
+                time.time() + settings.session_hours * 3600,
+            ),
+        )
     return token, csrf
 
 
 def user_from_request(request: Request):
+    if request.headers.get("authorization"):
+        from bac.ops.tokens import authenticate
+
+        return authenticate(request)
     token = request.cookies.get("bac_session", "")
     row = request.app.state.db.one(
         "SELECT u.*,s.csrf,s.token_hash FROM sessions s JOIN users u ON u.id=s.user_id WHERE s.token_hash=? AND s.expires_at>? AND u.active=1",
@@ -73,7 +101,10 @@ def user_from_request(request: Request):
 
 
 def public_user(row):
-    return {k: row[k] for k in ("id", "email", "name", "role", "preferences")}
+    return {
+        k: row[k]
+        for k in ("id", "email", "name", "role", "preferences", "email_verified")
+    }
 
 
 def owner(user):
