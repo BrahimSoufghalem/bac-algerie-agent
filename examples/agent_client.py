@@ -1,6 +1,6 @@
 """External agent client: environment secrets, TLS, no browser session, bounded complete reads."""
 
-import os
+import os, json
 import httpx
 
 
@@ -35,26 +35,57 @@ class LibraryClient:
         result = self.get(
             "/api/agent/get_lesson/" + id, max_chars=min(500000, self.max_context_chars)
         )
-        if result.get("content_complete"):
-            return result
-        parts = self.get(result["parts_url"])["items"]
-        bodies = []
-        total = 0
-        for p in parts:
-            chunk = self.get("/api/agent/parts/" + p["id"])
-            total += len(chunk["content"])
-            if total > self.max_context_chars:
+
+        def bounded(payload):
+            if (
+                len(json.dumps(payload, ensure_ascii=False, separators=(",", ":")))
+                > self.max_context_chars
+            ):
                 raise ValueError(
-                    "Whole lesson exceeds caller context. Read individual parts; never truncate or claim complete coverage."
+                    "Whole serialized lesson exceeds caller context. Read individual complete parts; never truncate or claim complete coverage."
                 )
-            bodies.append(chunk)
-        return {
+            return payload
+
+        if result.get("content_complete"):
+            return bounded(result)
+        parts = self.get(result["parts_url"])["items"]
+        assembled = {
             "tool": "get_lesson",
             "node_id": id,
-            "content_complete": True,
-            "parts": bodies,
-            "content": "\n\n".join(p["content"] for p in bodies),
+            "content_complete": False,
+            "content": "",
+            "part_ids": [],
+            "assets": [],
+            "sources": [],
         }
+        seen = {"assets": set(), "sources": set()}
+        for p in parts:
+            chunk = self.get("/api/agent/parts/" + p["id"])
+            if not assembled["part_ids"]:
+                assembled.update(
+                    {
+                        k: chunk[k]
+                        for k in ("node", "document", "ancestors")
+                        if k in chunk
+                    }
+                )
+            assembled["content"] += ("\n\n" if assembled["part_ids"] else "") + chunk[
+                "content"
+            ]
+            assembled["part_ids"].append(p["id"])
+            for field, key in (("assets", "id"), ("sources", "source_id")):
+                for item in chunk.get(field, []):
+                    identity = item.get(key) or json.dumps(item, sort_keys=True)
+                    if identity not in seen[field]:
+                        seen[field].add(identity)
+                        assembled[field].append(item)
+            bounded(assembled)
+        if not parts:
+            raise ValueError(
+                "No lossless lesson parts available; do not claim complete coverage"
+            )
+        assembled["content_complete"] = True
+        return bounded(assembled)
 
 
 if __name__ == "__main__":

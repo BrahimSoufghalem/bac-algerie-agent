@@ -118,7 +118,7 @@ Phase 5 ما زالت مفتوحة: provider capability/educational quality (inc
 
 | الفحص المحلي | النتيجة |
 |---|---|
-| Backend النهائي | **123 passed**؛ 24 حالة تشغيل/أمان جديدة مع parameterization |
+| Backend النهائي | **124 passed**؛ 25 حالة تشغيل/أمان جديدة مع parameterization |
 | المتصفح | **13 passed**: 10 السابقة + password/second-session، recovery/hash/no-SMTP، scoped token/revoke، desktop/390px/no overflow |
 | Ruff F / strict TypeScript / Vite / pip check | نجح |
 | BookForge vendor | **صفر ملفات معدلة**؛ manifest 26 ملفًا محفوظًا |
@@ -147,3 +147,5 @@ Phase 5 ما زالت مفتوحة: provider capability/educational quality (inc
 ## بوابة الإصدار
 
 دون visual QA، smoke المزود المأذون بعد الحجب، مراجعة كتب حقيقية ومقيّمة، SMTP/TLS في بيئة المالك، ترخيص/native/security review مستقل وacceptance: **لا تسمية عامة Production-ready**. لا دفاع كامل من DNS rebinding/native exploits، ولا VM/seccomp scientifique، ولا ضمان معنى علمي لكل جواب. لا مفاتيح أو بيانات تشغيل أو PDF حقيقي committed.
+
+External client regression: whole serialized payload budget (not text alone), deduplicated metadata/assets, no double copy of full Markdown and part contents. Oversized response refuses instead of claiming complete coverage.

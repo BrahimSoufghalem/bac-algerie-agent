@@ -718,3 +718,40 @@ def test_real_production_uvicorn_factory_starts_and_protects_library(tmp_path):
         proc.wait(timeout=10)
     with DataGuard(tmp_path, exclusive=True):
         pass
+
+
+def test_external_client_serialized_budget_and_no_duplicate_part_content():
+    from examples.agent_client import LibraryClient
+
+    client = LibraryClient(
+        "https://library.example.invalid", "test-token", max_context_chars=1000
+    )
+
+    def fake(path, **params):
+        if "/get_lesson/" in path:
+            return {"content_complete": False, "parts_url": "/api/agent/nodes/l/parts"}
+        if path.endswith("/parts"):
+            return {"items": [{"id": "p1"}, {"id": "p2"}]}
+        return {
+            "node": {"id": "l"},
+            "document": {"id": "b"},
+            "content": path.rsplit("/", 1)[-1],
+            "assets": [{"id": "a"}],
+            "sources": [{"source_id": path.rsplit("/", 1)[-1]}],
+        }
+
+    client.get = fake
+    try:
+        result = client.get_lesson("l")
+        assert result["content"] == "p1\n\np2" and result["part_ids"] == ["p1", "p2"]
+        assert len(result["assets"]) == 1 and "parts" not in result
+        assert len(json.dumps(result, ensure_ascii=False)) <= 1000
+        client.get = lambda *a, **k: {
+            "content_complete": True,
+            "content": "short",
+            "metadata": "x" * 1000,
+        }
+        with pytest.raises(ValueError):
+            client.get_lesson("l")
+    finally:
+        client.close()
