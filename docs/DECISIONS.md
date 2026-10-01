@@ -30,3 +30,12 @@
 - server-owned immutable results مرتبطة بالrun/user/chat. Failed/inconclusive تبقى مرئية ولو أغفلها النموذج. لا إعادة استعمال result ID قديم كشهادة جديدة.
 - SVG مكوّنات React من JSON bounded، لا executable chart markup. plotted program arrays مرجع مباشر، diagram equal scales. مصدر البيانات/حدود التحقق يظهران.
 - لا dependency chart كبيرة أو vector service. API typed blocks/storage والقدرات العلمية modular؛ vendor BookForge لا يتغير.
+
+## قرارات المرحلة الخامسة
+
+- service credential principal مستقل لا owner session، قراءة منشورات منتقاة فقط وTTL/revoke/hash. routes منفصلة لمنع توسع صلاحيات token تلقائيًا عند إضافة owner/student endpoint لاحقًا.
+- نفس lossless lesson/parts/atomic bundle كما في مشروع BookForge والوكيل الحالي؛ الفرق envelope وروابط auth الخاصة بالوكلاء. max_chars يشمل serialized response؛ لا اختصار النص لتعويض ميزانية صغيرة.
+- أرشفة offline مع lifecycle filelock أبسط وأوثق لـ DB+filesystem consistency من backup online غير ذري بين DBs والصور. لازم إيقاف خدمتيAPI/worker؛ staging restore لا overwrite، hashes ليست signatures، archive يحتوي keys/private data.
+- كلمة المرور/recovery يعيدان إبطال الجلسات/المفاتيح المصدرية/run state. بريد SMTP_STARTTLS optional ومقيد outbox، الروابط one-use+hash+20min، encrypted until sent ثم scrub؛ SMTP accepted لا delivery proved.
+- Docker container checks على GitHub بسبب عدم وجود daemon محلي، HTTPS proxy template لا نشر فعلي تلقائي. الموارد single-host/WAL وغير root/read-only، لا ادعاء multi-host scalability.
+- مرحلة5 الوظيفية لا تغلق بوابة الجودة/الأمان/التراخيص/المزود/visual acceptance تلقائيًا؛ paid tool request blocked قبل التنفيذ ولا محاولة التفاف أو تعديل سر دون موافقة جديدة.

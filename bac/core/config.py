@@ -22,10 +22,32 @@ class Settings:
     science_memory_mb: int = 256
     allow_private_model_urls: bool = False
 
+    public_origin: str = ""
+    smtp_host: str = ""
+    smtp_port: int = 587
+    smtp_from: str = ""
+    smtp_user: str = ""
+    smtp_password: str = ""
+    require_verified_email: bool = False
+    trusted_hosts: tuple[str, ...] = ()
+
     @classmethod
     def from_env(cls):
         load_env()
         s = cls(
+            public_origin=os.getenv("PUBLIC_ORIGIN", ""),
+            smtp_host=os.getenv("SMTP_HOST", ""),
+            smtp_port=int(os.getenv("SMTP_PORT", "587")),
+            smtp_from=os.getenv("SMTP_FROM", ""),
+            smtp_user=os.getenv("SMTP_USER", ""),
+            smtp_password=os.getenv("SMTP_PASSWORD", ""),
+            require_verified_email=os.getenv("REQUIRE_VERIFIED_EMAIL", "false")
+            == "true",
+            trusted_hosts=tuple(
+                x.strip()
+                for x in os.getenv("TRUSTED_HOSTS", "").split(",")
+                if x.strip()
+            ),
             data_dir=Path(os.getenv("DATA_DIR", "data")),
             secure_cookies=os.getenv("SECURE_COOKIES", "false") == "true",
             agent_workers=int(os.getenv("AGENT_WORKERS", "2")),
@@ -61,4 +83,10 @@ class Settings:
             and 128 <= s.science_memory_mb <= 512
         ):
             raise ValueError("Invalid scientific process limits")
+        if s.smtp_host and (
+            not s.public_origin.startswith("https://") or not s.smtp_from
+        ):
+            raise ValueError("SMTP requires HTTPS PUBLIC_ORIGIN and SMTP_FROM")
+        if s.require_verified_email and not s.smtp_host:
+            raise ValueError("Verified email policy requires configured SMTP")
         return s

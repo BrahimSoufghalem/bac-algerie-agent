@@ -1,3 +1,4 @@
+from contextlib import asynccontextmanager
 from pathlib import Path
 import asyncio, hashlib, json, os, tempfile, time
 from fastapi import FastAPI, Request, HTTPException, Depends, UploadFile, File, Form
@@ -86,9 +87,19 @@ class StatusUpdate(Strict):
 
 def create_app(services=None):
     s = services or Services()
+
+    @asynccontextmanager
+    async def lifespan(app):
+        try:
+            yield
+        finally:
+            if services is None:
+                s.close()
+
     app = FastAPI(
         title="Masar BAC Agent",
-        version="0.4.0",
+        lifespan=lifespan,
+        version="0.5.0",
         docs_url=None,
         redoc_url=None,
         openapi_url=None,
@@ -101,12 +112,30 @@ def create_app(services=None):
     app.state.library = library
     app.state.agent = agent
 
+    from bac.ops.limits import RequestLimit
+    from starlette.middleware.trustedhost import TrustedHostMiddleware
+
+    app.add_middleware(RequestLimit, max_upload_mb=s.settings.max_upload_mb)
+    if s.settings.trusted_hosts:
+        app.add_middleware(
+            TrustedHostMiddleware, allowed_hosts=list(s.settings.trusted_hosts)
+        )
+
     @app.middleware("http")
     async def protect(request, call_next):
         path = request.url.path
-        if path.startswith("/api/") and path not in (
-            "/api/auth/login",
-            "/api/auth/register",
+        if path.startswith("/api/") and (
+            request.headers.get("authorization")
+            or path
+            not in (
+                "/api/auth/login",
+                "/api/auth/register",
+                "/api/auth/policy",
+                "/api/auth/request-reset",
+                "/api/auth/reset",
+                "/api/auth/request-verification",
+                "/api/auth/verify",
+            )
         ):
             try:
                 request.state.user = user_from_request(request)
@@ -122,7 +151,11 @@ def create_app(services=None):
                 length = int(request.headers.get("content-length", "0"))
             except ValueError:
                 return JSONResponse({"detail": "Invalid length"}, 400)
-            cap = 11 * 1024**2 if path.startswith("/api/conversations/") else s.settings.max_upload_mb * 1024**2 + 1024**2
+            cap = (
+                11 * 1024**2
+                if path.startswith("/api/conversations/")
+                else s.settings.max_upload_mb * 1024**2 + 1024**2
+            )
             if length > cap:
                 return JSONResponse({"detail": "File too large"}, 413)
         response = await call_next(request)
@@ -151,6 +184,11 @@ def create_app(services=None):
         return request.state.user
 
     app.include_router(learning_router(s, current))
+    from bac.ops.agent_api import router as agent_router
+    from bac.ops.lifecycle import router as lifecycle_router
+
+    app.include_router(agent_router(s, current))
+    app.include_router(lifecycle_router(s, current))
 
     @app.get("/health")
     def health():
@@ -171,6 +209,16 @@ def create_app(services=None):
             raise HTTPException(
                 409, "Registration not available for this address"
             ) from None
+        from bac.ops.lifecycle import enqueue_link
+
+        enqueue_link(s, p.email, "verify")
+        if s.settings.require_verified_email:
+            return JSONResponse(
+                {
+                    "verification_required": True,
+                    "message": "Verify your email, then sign in.",
+                }
+            )
         token, csrf = new_session(s.db, id, s.settings)
         res = JSONResponse(
             {
@@ -200,7 +248,11 @@ def create_app(services=None):
         valid = verify_password(p.password, row["password_hash"] if row else dummy)
         if not row or not valid or not row["active"]:
             raise HTTPException(401, "Invalid credentials")
-        token, csrf = new_session(s.db, row["id"], s.settings)
+        if s.settings.require_verified_email and not row["email_verified"]:
+            raise HTTPException(403, "Email verification required")
+        token, csrf = new_session(
+            s.db, row["id"], s.settings, expected_hash=row["password_hash"]
+        )
         res = JSONResponse({"user": public_user(row), "csrf": csrf})
         res.set_cookie(
             "bac_session",
@@ -239,7 +291,14 @@ def create_app(services=None):
         id = uid("chat")
         s.db.execute(
             "INSERT INTO conversations VALUES(?,?,?,?,?,?)",
-            (id, user["id"], p.title, js(p.overrides.model_dump(exclude_none=True)), time.time(), time.time()),
+            (
+                id,
+                user["id"],
+                p.title,
+                js(p.overrides.model_dump(exclude_none=True)),
+                time.time(),
+                time.time(),
+            ),
         )
         return {"id": id, "title": p.title}
 

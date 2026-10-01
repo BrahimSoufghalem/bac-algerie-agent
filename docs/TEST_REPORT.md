@@ -113,3 +113,39 @@ npm run test:browser
 Phase 5 ما زالت مفتوحة: provider capability/educational quality (including real LUNA tool/vision compatibility), full security/native-parser audit, hostile uploads/resource/storage/orphan cleanup, load tests, actual backup/restore, scoped service tokens, email/password lifecycle, Docker deployment and final acceptance. Private-file expiry denies access immediately but deletion requires running services; data already in chat/provider isn't recalled. Account token/run caps apply to teaching, not a global BookForge/provider invoice cap. Prices are configured estimates, not billing proofs. لا تسمية whole platform production-ready.
 
 مراجعة إضافية للمرحلة الرابعة: export budget يُحسب ببايتات UTF-8، لا عدد حروف Unicode فقط؛ اختبار emoji multibyte يمنع تجاوز حد 10 MB عبر نص قصير ظاهريًا.
+
+# تقرير المرحلة الخامسة — تنفيذ التشغيل، قبول الإصدار مفتوح
+
+| الفحص المحلي | النتيجة |
+|---|---|
+| Backend النهائي | **124 passed**؛ 25 حالة تشغيل/أمان جديدة مع parameterization |
+| المتصفح | **13 passed**: 10 السابقة + password/second-session، recovery/hash/no-SMTP، scoped token/revoke، desktop/390px/no overflow |
+| Ruff F / strict TypeScript / Vite / pip check | نجح |
+| BookForge vendor | **صفر ملفات معدلة**؛ manifest 26 ملفًا محفوظًا |
+| تحميل محدود | 240 طلبًا، concurrency8، 48 queue jobs، 0 HTTP errors / duplicates / missing jobs، 0 model calls |
+| أرقام التحميل | 0.704s و340.97req/s، p50 18.65ms وp95 33.08ms؛ قياس ASGI in-process محلي واحد، **ليس** توقع أداء شبكة/موديل/خادم إنتاج |
+| اختبار مزود مدفوع | **لم يبدأ: حجبه النظام قبل تشغيل command**؛ صفر generation calls، ولا retry أو credential artifact أنشئ من الطلب المحجوب |
+| موفر mock لاختبار حدود التقييم | طلبان فقط، outputs/usage مفحوصة، 429 دون retry، لا key في التقرير |
+| Docker / Caddy / TLS | Docker غير مثبت محليًا؛ workflow مستقل يبني الصورة ويفحص config/non-root/health/401/persistent DB/backup/restore/Caddy config، الحالة تُراجع في PR |
+| SMTP | outbox/claim/retry/purpose/expiry/one-use/reset/verification tested بمُرسِل محلي واضح؛ لا اختبار توصيل حقيقي أو domain/DNS |
+| مراجعة بصرية | عرض PNG أعاد computer_helper_failed، لا اعتماد بصري للمراحل2–5 رغم DOM QA |
+
+## دليل وظيفي جديد
+
+- bearer hash-only, scoped published documents، expire/revoke/demote/archive، 60/min persisted limiter، لا browser/cookie privileges ولا owner/private routes أو mutation. Search يطبّق document scope قبل ranking؛ publication ثانية حقيقية تُرفض، URL للصورة/parts يعمل بالرمز نفسه.
+- get_lesson يعيد جميع العناصر والمصدر الفعلي أو budget manifest بلا محتوى مقتطع؛ full/manifest/pages/chapter(null عند غيابه)/parts/assets/source JSON مختبرة.
+- password change ومراجعة كلمة المرور الحالية/CSRF، invalidate كل session، login يرفض password hash قديمًا لمنع reset/login race. Reset/verify links hashed20min one-use، concurrency4 ينتج نجاحًا واحدًا، wrong-purpose/expired/reused ممنوعة.
+- encrypted SMTP outbox، cancel superseded token، sender failure5 attempts، class-only errors/scrub secret؛ generic recovery وعدم ادعاء بريد مهيأ عندما لا يوجد، verified policy، email/name validation.
+- actual HTTP chunked byte cap بلا Content-Length، origin/TrustedHosts، fresh private upload staging محفوظ وcrash orphan قديم محذوف.
+- Backup يرفض live Services بقفل فعلي cross-process. Restore ينجح في login/vault decrypt/second vault/source/private file ويمنع overwrite، unsafe paths، symlink، duplicates، byte limits، missing key/hash mismatch. hash ليس توقيعًا ولا ثقة لملف خارجي.
+- تحميل read auth/API بـ8concurrency ومطالبات queue48 فريدة؛ لا inference داخل benchmark. اختبارات صغيرة مع concurrency4 داخلة في pytest أيضًا.
+
+## إصلاحات أثناء التطوير
+
+اختبار byte cap الأول اختار260000bytes وهو أقل من256KiB؛ أصبح300000 وتأكد413. تنقل نفس الوثيقة إلى fragment recovery لم يعِد mount التطبيق؛ أضيف hashchange handler وتمحو الواجهة الرابط ثم تعرض النموذج. Docker backup/restore يحتاج writable owned mount points، أصبحت /backup و/restore و/data مهيأة UID10001. فحص الحاوية كشف مدخل Uvicorn مكسورًا (`bac.api.main:app` بلا object مُصدّر): أصبح `bac.api.main:create_app --factory` في Docker/Compose/README، واختبار subprocess يبدأ الخادم الفعلي ويثبت health/401/live maintenance lock/shutdown release. لا اعتماد نتائج factory-injection وحدها كدليل تشغيل للإنتاج. لا توجد نتيجة نجاح مدّعاة بعد فشل غير محلول.
+
+## بوابة الإصدار
+
+دون visual QA، smoke المزود المأذون بعد الحجب، مراجعة كتب حقيقية ومقيّمة، SMTP/TLS في بيئة المالك، ترخيص/native/security review مستقل وacceptance: **لا تسمية عامة Production-ready**. لا دفاع كامل من DNS rebinding/native exploits، ولا VM/seccomp scientifique، ولا ضمان معنى علمي لكل جواب. لا مفاتيح أو بيانات تشغيل أو PDF حقيقي committed.
+
+External client regression: whole serialized payload budget (not text alone), deduplicated metadata/assets, no double copy of full Markdown and part contents. Oversized response refuses instead of claiming complete coverage.

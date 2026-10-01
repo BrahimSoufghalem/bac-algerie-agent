@@ -17,6 +17,7 @@ import {
   AccountsPanel,
   PersonalUsage,
 } from "./LearningPanels";
+import { Recovery, SecurityPanel, ServiceTokens } from "./SecurityPanels";
 import BundleEditor from "./BundleEditor";
 import {
   Verification,
@@ -183,6 +184,25 @@ function Content({ blocks }: { blocks: Block[] }) {
   );
 }
 function App() {
+  const [recovery, setRecovery] = useState(() => {
+    if (location.hash.startsWith("#auth=")) {
+      const link = location.hash.slice(6);
+      history.replaceState(null, "", location.pathname);
+      return link;
+    }
+    return "";
+  });
+  useEffect(() => {
+    const readLink = () => {
+      if (location.hash.startsWith("#auth=")) {
+        const link = location.hash.slice(6);
+        history.replaceState(null, "", location.pathname);
+        setRecovery(link);
+      }
+    };
+    window.addEventListener("hashchange", readLink);
+    return () => window.removeEventListener("hashchange", readLink);
+  }, []);
   const [user, setUser] = useState<User | null>(null),
     [loading, setLoading] = useState(true),
     [authMode, setAuthMode] = useState("login"),
@@ -369,6 +389,11 @@ function App() {
   useEffect(() => {
     api("/api/auth/me")
       .then(async (d) => {
+        if (d.verification_required) {
+          setAuthMode("login");
+          setError("راجع بريدك لتأكيد الحساب قبل الدخول.");
+          return;
+        }
         csrf = d.csrf;
         setUser(d.user);
         const list = await api("/api/conversations");
@@ -549,6 +574,14 @@ function App() {
       setNotice("حُفظت نسخة خام. عاين المصدر قبل بدء Vision؛ لم تُنشر للطلاب.");
     });
   }
+  if (recovery)
+    return (
+      <Recovery
+        api={api}
+        link={recovery === "request" ? "" : recovery}
+        back={() => setRecovery("")}
+      />
+    );
   if (loading) return <main className="loading">جارٍ فتح مسار…</main>;
   if (!user)
     return (
@@ -625,6 +658,13 @@ function App() {
               ? "ليس لديك حساب؟ أنشئ حساب طالب"
               : "لديك حساب؟ سجّل الدخول"}
           </button>
+          <button
+            type="button"
+            className="text-button"
+            onClick={() => setRecovery("request")}
+          >
+            نسيت كلمة المرور أو تأكيد البريد؟
+          </button>
         </form>
       </main>
     );
@@ -691,6 +731,12 @@ function App() {
           )}
         </nav>
         <nav className="learning-nav">
+          <button onClick={() => navigate("security")}>أمان الحساب</button>
+          {user.role === "owner" && (
+            <button onClick={() => navigate("service-tokens")}>
+              وصول الوكلاء
+            </button>
+          )}
           <button onClick={() => navigate("preferences")}>
             تفضيلات وخصوصية
           </button>
@@ -810,6 +856,8 @@ function App() {
           </button>
           <strong>
             {[
+              "security",
+              "service-tokens",
               "preferences",
               "notes",
               "materials",
@@ -818,6 +866,8 @@ function App() {
             ].includes(view)
               ? (
                   {
+                    security: "أمان الحساب",
+                    "service-tokens": "وصول الوكلاء",
                     preferences: "تفضيلات وخصوصية",
                     notes: "ملاحظاتي التعليمية",
                     materials: "المسودات التعليمية",
@@ -1377,6 +1427,10 @@ function App() {
               <PersonalUsage {...props} />
             );
           })()}
+        {view === "security" && <SecurityPanel api={api} notify={setNotice} />}
+        {view === "service-tokens" && user.role === "owner" && (
+          <ServiceTokens api={api} notify={setNotice} />
+        )}
         {view === "owner-library" && (
           <section className="page-content">
             <h1>من المصدر إلى نسخة معتمدة</h1>

@@ -349,3 +349,5 @@ s.chat_factory=lambda cfg,key:Phase4RoutedFixture()
 for name,role in [('learning','student'),('teacher','teacher'),('practice','student')]:
     email=name+'@test.invalid'
     if not s.db.one('SELECT 1 FROM users WHERE email=?',(email,)):create_user(s.db,email,'Test-learning-password-1','حساب '+name,role)
+if not s.db.one('SELECT 1 FROM users WHERE email=?',('security@test.invalid',)):
+    create_user(s.db,'security@test.invalid','Test-security-password-1','اختبار الأمان')

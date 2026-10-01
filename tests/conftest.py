@@ -5,7 +5,7 @@ from bac.core.services import Services
 
 @pytest.fixture
 def services(tmp_path):
-    return Services(
+    s = Services(
         Settings(
             data_dir=tmp_path,
             max_run_seconds=20,
@@ -13,3 +13,6 @@ def services(tmp_path):
             max_daily_requests=20,
         )
     )
+
+    yield s
+    s.close()

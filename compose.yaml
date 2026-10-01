@@ -1,3 +1,4 @@
+# Single-host Linux, local bind only. Add compose.production.yaml for HTTPS.
 services:
   api:
     build: .
@@ -9,10 +10,18 @@ services:
     volumes: ["library:/app/data"]
     restart: unless-stopped
     init: true
+    read_only: true
+    tmpfs: ["/tmp:size=256m,mode=1777"]
+    mem_limit: 1g
+    cpus: 2
+    pids_limit: 128
+    cap_drop: [ALL]
     security_opt: ["no-new-privileges:true"]
+    command: ["uvicorn", "bac.api.main:create_app","--factory", "--host", "0.0.0.0", "--port", "8090", "--limit-concurrency", "96", "--timeout-keep-alive", "5", "--proxy-headers", "--forwarded-allow-ips", "*"]
+    stop_grace_period: 60s
   worker:
-    build: .
     image: masar-bac:local
+    build: .
     command: ["python", "-m", "bac.worker"]
     env_file: .env
     environment:
@@ -20,6 +29,12 @@ services:
     volumes: ["library:/app/data"]
     restart: unless-stopped
     init: true
+    read_only: true
+    tmpfs: ["/tmp:size=256m,mode=1777"]
+    mem_limit: 2g
+    cpus: 4
+    pids_limit: 128
+    cap_drop: [ALL]
     stop_grace_period: 240s
     healthcheck:
       disable: true
