@@ -1,0 +1,28 @@
+services:
+  api:
+    build: .
+    image: masar-bac:local
+    ports: ["127.0.0.1:8090:8090"]
+    env_file: .env
+    environment:
+      DATA_DIR: /app/data
+    volumes: ["library:/app/data"]
+    restart: unless-stopped
+    init: true
+    security_opt: ["no-new-privileges:true"]
+  worker:
+    build: .
+    image: masar-bac:local
+    command: ["python", "-m", "bac.worker"]
+    env_file: .env
+    environment:
+      DATA_DIR: /app/data
+    volumes: ["library:/app/data"]
+    restart: unless-stopped
+    init: true
+    stop_grace_period: 240s
+    healthcheck:
+      disable: true
+    security_opt: ["no-new-privileges:true"]
+volumes:
+  library:

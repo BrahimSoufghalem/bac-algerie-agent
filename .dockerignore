@@ -1,0 +1,14 @@
+.env
+.env.*
+.venv
+node_modules
+data
+.git
+dist
+__pycache__
+*.pyc
+.pytest_cache
+browser-results
+tests
+docs
+*.zip
