@@ -18,6 +18,7 @@ jobs:
       - name: Backend dependencies and tests
         run: |
           python -m pip install -r requirements-dev.txt -c constraints.txt
+          python -m ruff check bac/core bac/agent bac/api bac/library bac/science bac/worker.py bac/cli.py tests --select F
           python -m pytest -q
       - name: Typecheck and build
         run: |

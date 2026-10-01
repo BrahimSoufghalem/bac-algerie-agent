@@ -17,6 +17,9 @@ class Settings:
     max_daily_requests: int = 50
     extraction_workers: int = 2
     max_upload_mb: int = 100
+    science_timeout: int = 6
+    science_cpu_seconds: int = 4
+    science_memory_mb: int = 256
     allow_private_model_urls: bool = False
 
     @classmethod
@@ -33,6 +36,9 @@ class Settings:
             max_tool_chars=int(os.getenv("MAX_TOOL_CHARS", "22000")),
             max_daily_requests=int(os.getenv("MAX_DAILY_REQUESTS", "50")),
             max_upload_mb=int(os.getenv("MAX_UPLOAD_MB", "100")),
+            science_timeout=int(os.getenv("SCIENCE_TIMEOUT", "6")),
+            science_cpu_seconds=int(os.getenv("SCIENCE_CPU_SECONDS", "4")),
+            science_memory_mb=int(os.getenv("SCIENCE_MEMORY_MB", "256")),
             allow_private_model_urls=os.getenv("ALLOW_PRIVATE_MODEL_URLS", "false")
             == "true",
         )
@@ -49,4 +55,10 @@ class Settings:
             and s.max_daily_requests >= 1
         ):
             raise ValueError("Invalid context/usage limits")
+        if not (
+            2 <= s.science_timeout <= 15
+            and 1 <= s.science_cpu_seconds <= s.science_timeout
+            and 128 <= s.science_memory_mb <= 512
+        ):
+            raise ValueError("Invalid scientific process limits")
         return s

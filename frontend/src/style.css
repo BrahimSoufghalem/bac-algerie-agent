@@ -890,3 +890,130 @@ a {
     grid-column: 1/-1;
   }
 }
+
+.verification,
+.scientific-chart {
+  margin-block: 24px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 20px;
+  background: white;
+  overflow-wrap: anywhere;
+}
+.verification-heading {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.verification-heading span {
+  font-size: 14px;
+  color: #52617a;
+}
+.verification.passed {
+  border-inline-start: 4px solid #198064;
+}
+.verification.failed {
+  border-inline-start: 4px solid #b54031;
+}
+.verification.inconclusive {
+  border-inline-start: 4px solid #b57b16;
+}
+.numeric-result {
+  font-family: monospace;
+  font-size: 18px;
+  overflow-wrap: anywhere;
+}
+.science-caveat {
+  font-size: 13px;
+  color: var(--muted);
+  line-height: 1.9;
+}
+.verification summary,
+.scientific-chart summary {
+  cursor: pointer;
+  padding-block: 12px;
+  min-height: 44px;
+  font-size: 14px;
+}
+.verification pre {
+  max-height: 350px;
+  overflow: auto;
+  font-size: 13px;
+}
+.scientific-chart figcaption {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.scientific-chart figcaption .muted {
+  font-size: 13px;
+}
+.scientific-chart svg {
+  display: block;
+  width: 100%;
+  height: auto;
+  touch-action: pan-y;
+}
+.scientific-chart svg text {
+  font-family: Arial, sans-serif;
+  font-size: 12px;
+  fill: #52617a;
+}
+.scientific-chart svg .axis-label {
+  font-size: 14px;
+  fill: #272d38;
+}
+.chart-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  margin-block: 16px;
+  font-size: 13px;
+}
+.chart-legend i {
+  display: inline-block;
+  width: 12px;
+  height: 12px;
+  margin-inline-end: 6px;
+  border-radius: 2px;
+}
+.chart-control {
+  margin-top: 12px;
+  font-size: 13px;
+}
+.chart-control input {
+  padding: 0;
+  width: 100%;
+  min-height: 44px;
+}
+.chart-readout {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 12px;
+  background: #f5f7fb;
+  padding: 12px;
+  font-size: 14px;
+}
+.chart-data {
+  max-height: 350px;
+}
+.equation-evidence {
+  font-size: 13px;
+  display: block;
+  direction: rtl;
+  margin-top: 10px;
+}
+@media (max-width: 700px) {
+  .verification,
+  .scientific-chart {
+    padding: 12px;
+    margin-inline: 0;
+  }
+  .chart-readout {
+    font-size: 13px;
+  }
+}

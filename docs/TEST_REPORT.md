@@ -75,3 +75,19 @@ npm run test:browser
 ## حدود المرحلة
 
 التحقق من المطابقة owner attestation مع هوية ودليل، وليس شهادة مستقلة بصحة الحل العلمي/رسمية المصدر. لا paid real-model benchmark ولا Docker build ولا load/security audit شامل في هذه الجولة. أجزاء legacy تحافظ على بلوكات Markdown، وsnapshot v1 لا يصبح له JSON frozen مختلق. جميع حدود tool/context بالحروف، وجمع token usage الفعلي/أسعار provider مستقل عن cache الملفات. راجع `RETRIEVAL.md` والمرحلتين 3–5.
+
+# تقرير المرحلة الثالثة
+
+- Baseline قبل المرحلة: **40 passed**. الاختبارات النهائية للخلفية: **75 passed**، مع تحذير Starlette TestClient deprecation واحد. منها 35 scientific cases باحتساب parameterization.
+- Ruff F checks على app/tests الجديدة مع استثناء vendor القديم: نجح. TypeScript strict + Vite build: نجح.
+- Playwright: **6 passed**، الثلاثة السابقة وثلاثة مسارات علمية line/bar/scatter مع failed+passed evidence/real-code arrays/interactive chart/diagram/reload/390px. حسابات science مُحضّرة داخل test server فقط، لأن الستة تجاوزت registration rate cap الحقيقي؛ لم تُخفَّض حماية الإنتاج. GitHub CI يُراجع مستقلًا قبل الدمج.
+- اختبارات denominator cancellation، missing values/constraints، real/positive assumptions ومجالات symbolic، 50digits/tolerances، SI/affine/delta temperatures، shape/finite/domain/chart/source scope.
+- رفض imports/attributes/files/network/while/comprehensions/huge allocations، unreachable unsafe calls، loop/step caps. اختبارات حقيقية لقتل child بالdeadline ولرفض address-space منخفض، مع semaphore recovery؛ لا mocks للعزل.
+- أصالة result_id ورفض payload من النموذج/ID من run آخر، graph-from-real-arrays، failure autoinclusion، full-wrapper output budget، cancellation، privacy/unauthenticated/another-student denial، integrity mismatch، cascade delete، DB migrations، actual agent events/SSE replay+saved blocks.
+- لا paid Vision/teaching requests جديدة. جميع chat/vision fixtures صريحة؛ العمليات العلمية نفسها حقيقية. hashes BookForge/vendor تبقى كما هي؛ لا إعادة ادعاء تشغيل baseline BookForge32 في البيئة الحالية.
+
+## قيود الدليل
+
+الـCPU/ذاكرة/wall caps وAST boundary ليست VM أو seccomp/OS-security audit. child يعمل بهوية الخدمة ويحمّل مكتبات التطبيق الموثوقة؛ generated program لا يملك filesystem/network/shell APIs. الاختبارات لا تثبت correctness علمي شامل أو تفسير السؤال أو توافق أدوات LUNA الواقعي. Docker/load/native dependency security وscoped service tokens/المراحل4–5 ليست منجزة.
+
+تم التقاط PNG فعلية للرسم في desktop/mobile؛ **فشلت أداة view_image ثانية بـcomputer_helper_failed**. لا ندّعي مراجعة بصرية للمرحلة الثالثة، ويلزم استكمال visual QA للمرحلتين2–3 قبل القبول النهائي. ملفات SKILL/capture المجمّعة غير متاحة في البيئة المستعادة؛ Playwright فقط للوظائف والتقاط الصور.

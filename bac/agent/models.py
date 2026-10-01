@@ -14,6 +14,7 @@ class TextBlock(Strict):
 class EquationBlock(Strict):
     type: Literal["equation"] = "equation"
     latex: str = Field(max_length=4000)
+    result_ids: list[str] = Field(default_factory=list, max_length=8)
 
 
 class ImageBlock(Strict):
@@ -45,8 +46,38 @@ class CodeBlock(Strict):
     text: str = Field(max_length=12000)
 
 
+class VerificationBlock(Strict):
+    type: Literal["verification"] = "verification"
+    result_id: str = Field(min_length=1, max_length=100)
+    result: dict | None = None
+
+    @model_validator(mode="after")
+    def server_only(self):
+        if self.result is not None:
+            raise ValueError("Result data is server-owned; supply only result_id")
+        return self
+
+
+class GraphBlock(Strict):
+    type: Literal["graph"] = "graph"
+    result_id: str = Field(min_length=1, max_length=100)
+    result: dict | None = None
+
+    @model_validator(mode="after")
+    def server_only(self):
+        if self.result is not None:
+            raise ValueError("Chart data is server-owned; supply only result_id")
+        return self
+
+
 Block = Annotated[
-    TextBlock | EquationBlock | ImageBlock | TableBlock | CodeBlock,
+    TextBlock
+    | EquationBlock
+    | ImageBlock
+    | TableBlock
+    | CodeBlock
+    | VerificationBlock
+    | GraphBlock,
     Field(discriminator="type"),
 ]
 

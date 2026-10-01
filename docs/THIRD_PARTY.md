@@ -12,3 +12,7 @@
 المكتبات المباشرة الأخرى: FastAPI (MIT)، Uvicorn (BSD-3-Clause)، HTTPX (BSD-3-Clause)، Pydantic (MIT)، Pillow (HPND)، Cryptography (Apache-2.0/BSD)، PyYAML (MIT)، React (MIT)، Vite (MIT)، TypeScript (Apache-2.0)، react-markdown/remark-math/rehype-katex (MIT)، KaTeX (MIT)، Playwright (Apache-2.0)، Noto Sans Arabic (OFL).
 
 **PyMuPDF: AGPL-3.0 أو ترخيص تجاري.** قائمة أسماء تراخيص ليست legal opinion. راجع dependency versions وتراخيص transitive deps قبل الإطلاق أو إعادة التوزيع. `constraints.txt` و`package-lock.json` يثبتان نسخ الاختبار؛ يجب تحديثهما بشكل مدروس مع إعادة الاختبارات.
+
+## اعتماد المرحلة الثالثة
+
+SymPy **1.14.0** وmpmath **1.3.0**: BSD-3-Clause؛ قُرئت ملفات LICENSE في distributions المثبتة. الاعتماد الرمزي يعمل من AST مبني يدويًا في child process محدود، وليس parser eval للمُدخل. هذا فحص ترخيص وتوافق وظيفي للاختبارات، **لا تدقيقًا أمنيًا مستقلًا أو إثبات غياب ثغرات**. لا نسخ كود من agent frameworks في هذه المرحلة.

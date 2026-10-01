@@ -155,3 +155,158 @@ async def lifespan(app):
 
 
 app.router.lifespan_context = lifespan
+
+
+class FixtureScience:
+    """Exercises real scientific tools with an explicit no-network chat fixture."""
+
+    def __init__(self):
+        self.step = 0
+        self.checks = []
+
+    async def stream(self, messages, tools):
+        self.step += 1
+        if self.step == 1:
+            question = next(
+                m["content"] for m in reversed(messages) if m["role"] == "user"
+            )
+            self.kind = (
+                "bar"
+                if "أعمدة" in question
+                else "scatter"
+                if "نقاط" in question
+                else "line"
+            )
+            tasks = [
+                ("verify_calculation", {"expression": "2+2", "expected": "5"}),
+                (
+                    "verify_dimensions",
+                    {
+                        "lhs": "v*t+a*t**2/2",
+                        "rhs": "d",
+                        "units": {"v": "m/s", "t": "s", "a": "m/s**2", "d": "m"},
+                    },
+                ),
+            ]
+        elif self.step == 2:
+            self.checks = [
+                json.loads(x["content"])["result_id"]
+                for x in messages
+                if x["role"] == "tool"
+            ]
+            tasks = [
+                (
+                    "run_scientific_code",
+                    {
+                        "code": 'xs = linspace(0, 2, 21)\nys = []\nfor t in xs:\n    ys = ys + [v*t + a*t**2/2]\nemit("time", xs)\nemit("distance", ys)',
+                        "inputs": {"v": 3, "a": 2},
+                    },
+                )
+            ]
+        elif self.step == 3:
+            result = json.loads(messages[-1]["content"])
+            tasks = [
+                (
+                    "plot_from_result",
+                    {
+                        "result_id": result["result_id"],
+                        "x_output": "time",
+                        "y_output": "distance",
+                        "title": "الحركة تحت تسارع ثابت — بيانات اختبار",
+                        "x_label": "time (s)",
+                        "y_label": "distance (m)",
+                        "kind": self.kind,
+                    },
+                )
+            ]
+            tasks.append(
+                (
+                    "draw_diagram",
+                    {
+                        "title": "مخطط متجه تعليمي — مثال مقيّد",
+                        "x_min": -2,
+                        "x_max": 2,
+                        "y_min": -2,
+                        "y_max": 2,
+                        "elements": [
+                            {"kind": "circle", "x": 0, "y": 0, "radius": 0.4},
+                            {
+                                "kind": "vector",
+                                "x": 0,
+                                "y": 0,
+                                "x2": 1,
+                                "y2": 1,
+                                "label": "F = ma",
+                            },
+                        ],
+                    },
+                )
+            )
+        else:
+            result = json.loads(messages[-2]["content"])
+            diagram = json.loads(messages[-1]["content"])
+            tasks = [
+                (
+                    "render_answer",
+                    {
+                        "blocks": [
+                            {
+                                "type": "text",
+                                "text": "## حساب علمي بأدوات فعلية\n\nهذا اختبار محلي صريح دون نموذج خارجي. نبدأ بفحص نتيجة خاطئة، ثم نفحص الأبعاد ونحسب مسارًا.",
+                            },
+                            {"type": "verification", "result_id": self.checks[0]},
+                            {
+                                "type": "equation",
+                                "latex": "d=vt+\\frac{1}{2}at^2",
+                                "result_ids": [self.checks[1]],
+                            },
+                            {"type": "verification", "result_id": self.checks[1]},
+                            {"type": "graph", "result_id": result["result_id"]},
+                            {"type": "graph", "result_id": diagram["result_id"]},
+                            {
+                                "type": "text",
+                                "text": "### تفسير بعد الرسم\n\nباستخدام v = 3 m/s وa = 2 m/s² نحصل عند t = 2 s على d = 10 m. الأبعاد متسقة، لكن ذلك لا يثبت أن هذه المعطيات تفسر مسألة أصلية بعينها.",
+                            },
+                        ]
+                    },
+                )
+            ]
+        yield {"type": "usage", "data": {"prompt_tokens": 0, "completion_tokens": 0}}
+        yield {
+            "type": "result",
+            "message": {
+                "role": "assistant",
+                "content": None,
+                "tool_calls": [
+                    {
+                        "id": f"science{self.step}_{i}",
+                        "type": "function",
+                        "function": {"name": name, "arguments": js(args)},
+                    }
+                    for i, (name, args) in enumerate(tasks)
+                ],
+            },
+        }
+
+
+class RoutedFixture:
+    def __init__(self):
+        self.delegate = None
+
+    async def stream(self, messages, tools):
+        if not self.delegate:
+            question = next(
+                m["content"] for m in reversed(messages) if m["role"] == "user"
+            )
+            self.delegate = FixtureScience() if "علمي" in question else FixtureChat()
+        async for item in self.delegate.stream(messages, tools):
+            yield item
+
+
+s.chat_factory = lambda cfg, key: RoutedFixture()
+
+# Preseed ONLY test users; do not relax production registration rate limits.
+for mode in ("line", "bar", "scatter"):
+    email = f"science-{mode}@test.invalid"
+    if not s.db.one("SELECT 1 FROM users WHERE email=?", (email,)):
+        create_user(s.db, email, "Test-science-password-1", "طالب الحساب العلمي")

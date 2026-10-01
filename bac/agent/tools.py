@@ -1,7 +1,11 @@
-import time
+import time, hashlib
+from bac.core.db import uid
+from bac.science.runner import ScienceRunner
+from bac.science.registry import CONTRACTS, DESCRIPTIONS
+from bac.science.contracts import PlotFromResult
 from pydantic import Field
 from bac.core.db import js
-from bac.agent.models import Strict, Answer
+from bac.agent.models import Strict, Answer, VerificationBlock
 from bac.library.service import Library
 
 
@@ -33,13 +37,16 @@ class WithinArgs(NodeArgs):
 
 
 class Tools:
-    def __init__(self, s, user, chat):
+    def __init__(self, s, user, chat, run_id=None):
         self.s = s
         self.user = user
         self.chat = chat
         self.library = Library(s)
         self.sources = {}
         self.assets = set()
+        self.run_id = run_id
+        self.scientific = {}
+        self.runner = ScienceRunner(s.settings)
 
     def definitions(self):
         entries = [
@@ -99,6 +106,16 @@ class Tools:
                 Answer,
             ),
         ]
+        entries.extend(
+            (name, DESCRIPTIONS[name], schema) for name, schema in CONTRACTS.items()
+        )
+        entries.append(
+            (
+                "plot_from_result",
+                "Plot numeric array outputs actually computed in this run; no model replacements.",
+                PlotFromResult,
+            )
+        )
         return [
             {
                 "type": "function",
@@ -195,7 +212,84 @@ class Tools:
             self.remember(result, scope, id)
         return result
 
+    def science(self, name, args):
+        if name == "plot_from_result":
+            p = PlotFromResult.model_validate(args)
+            previous = self.scientific.get(p.result_id)
+            if not previous or previous["tool"] != "run_scientific_code":
+                raise ValueError(
+                    "Numeric outputs were not actually computed in this run"
+                )
+            outputs = previous["output"].get("outputs", {})
+            plot = {
+                "title": p.title,
+                "x_label": p.x_label,
+                "y_label": p.y_label,
+                "kind": p.kind,
+                "series": [
+                    {
+                        "label": p.y_output,
+                        "x": outputs.get(p.x_output),
+                        "y": outputs.get(p.y_output),
+                    }
+                ],
+            }
+            validated = CONTRACTS["plot_data"].model_validate(plot).model_dump()
+            output = self.runner.execute("plot_data", validated)
+            if "error" not in output:
+                output["origin"] = "computed_program_outputs"
+                output["parent_result_id"] = p.result_id
+                output["scope"] = (
+                    "Exact returned program arrays; shape checked, but program assumptions are not independently verified"
+                )
+            inputs = p.model_dump()
+        else:
+            inputs = CONTRACTS[name].model_validate(args).model_dump()
+            output = self.runner.execute(name, inputs)
+        if "error" in output:
+            return output
+        result = {
+            "result_id": uid("science"),
+            "tool": name,
+            "inputs": inputs,
+            "output": output,
+        }
+        if len(js(result)) > self.s.settings.max_tool_chars:
+            return {
+                "error": "SCIENTIFIC_RESULT_EXCEEDS_TOOL_BUDGET",
+                "message": "No result credited; use fewer points/outputs or increase tool/context budgets",
+            }
+        if self.run_id:
+            active = self.s.db.one(
+                "SELECT status,cancel_requested FROM agent_runs WHERE id=?",
+                (self.run_id,),
+            )
+            if (
+                not active
+                or active["status"] != "RUNNING"
+                or active["cancel_requested"]
+            ):
+                return {"error": "SCIENTIFIC_RUN_NO_LONGER_ACTIVE"}
+        self.s.db.execute(
+            "INSERT INTO scientific_results VALUES(?,?,?,?,?,?,?,?,?)",
+            (
+                result["result_id"],
+                self.user["id"],
+                self.chat,
+                self.run_id,
+                name,
+                js(inputs),
+                js(output),
+                hashlib.sha256(js(output).encode()).hexdigest(),
+                time.time(),
+            ),
+        )
+        self.scientific[result["result_id"]] = result
+        return result
+
     def execute(self, name, args):
+        if name in CONTRACTS or name == "plot_from_result":
+            return self.science(name, args)
         if name == "search_library":
             p = SearchArgs.model_validate(args)
             return {
@@ -261,7 +355,34 @@ class Tools:
                 raise ValueError("Citation was not actually loaded")
             source = self.sources[id]
             self.library._node(source["node_id"])
+        blocks = []
         for block in answer.blocks:
+            if block.type in ("verification", "graph"):
+                result = self.scientific.get(block.result_id)
+                if not result:
+                    raise ValueError(
+                        "Scientific result was not computed/loaded in this run"
+                    )
+                if block.type == "graph" and not any(
+                    k in result["output"] for k in ("chart", "diagram")
+                ):
+                    raise ValueError("Graph requires an actual chart tool result")
+                blocks.append(block.model_copy(update={"result": result}))
+            else:
+                blocks.append(block)
+            if block.type == "equation":
+                for result_id in block.result_ids:
+                    if result_id not in self.scientific:
+                        raise ValueError(
+                            "Equation evidence was not computed in this run"
+                        )
+            if block.type == "verification" and result["output"].get("status") in (
+                "failed",
+                "inconclusive",
+            ):
+                answer.warnings.append(
+                    "فحص حسابي لم ينجح أو لم يُحسم؛ لا يُعدّ هذا تأكيدًا لصحة الحل."
+                )
             if block.type == "image":
                 if block.asset_id not in self.assets:
                     raise ValueError("Image was not loaded from the published source")
@@ -269,8 +390,40 @@ class Tools:
                     self.library.asset(block.asset_id)
                 except Exception:
                     raise ValueError("Image publication was revoked") from None
+        displayed = {b.result_id for b in blocks if b.type == "verification"}
+        for id, result in self.scientific.items():
+            if (
+                result["output"].get("status") in ("failed", "inconclusive")
+                and id not in displayed
+            ):
+                blocks.append(
+                    VerificationBlock(result_id=id).model_copy(
+                        update={"result": result}
+                    )
+                )
+                answer.warnings.append(
+                    "أُظهر فحص سابق لم ينجح أو لم يُحسم بدل إخفائه؛ لا يثبت التصحيح اللاحق صحة كل الحل."
+                )
+        if len(blocks) > 30:
+            raise ValueError("Answer plus mandatory failed checks exceeds block budget")
+        answer = answer.model_copy(update={"blocks": blocks})
+        if any(
+            b.type in ("verification", "graph")
+            or (b.type == "equation" and b.result_ids)
+            for b in blocks
+        ):
+            answer.warnings.append(
+                "التحقق يخص المدخلات والفحص المعروض فقط، وليس تصديقًا لكل الشرح أو تفسير المسألة."
+            )
+        if len(answer.model_dump_json()) > 50000:
+            raise ValueError(
+                "Resolved scientific answer exceeds output budget; use fewer result blocks/points"
+            )
         if not answer.source_ids:
             answer.warnings.append(
                 "لم تُستخدم مصادر منشورة لتأكيد هذه الإجابة؛ ليست حلًا رسميًا."
             )
+        answer.warnings = list(dict.fromkeys(answer.warnings))[-20:]
+        if len(answer.model_dump_json()) > 50000:
+            raise ValueError("Resolved answer and warnings exceed output budget")
         return answer, [self.sources[i] for i in answer.source_ids]

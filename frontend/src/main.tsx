@@ -10,6 +10,12 @@ import "@fontsource/noto-sans-arabic/600.css";
 import "@fontsource/noto-sans-arabic/700.css";
 import "./style.css";
 import BundleEditor from "./BundleEditor";
+import {
+  Verification,
+  ScientificChart,
+  ScientificDiagram,
+  ScientificResult,
+} from "./ScienceBlocks";
 type User = { id: string; name: string; role: string };
 type Source = {
   node_id: string;
@@ -29,6 +35,9 @@ type Block = {
   headers?: string[];
   rows?: string[][];
   language?: string;
+  result_id?: string;
+  result_ids?: string[];
+  result?: ScientificResult;
 };
 type Message = {
   id: string;
@@ -97,6 +106,17 @@ function Content({ blocks }: { blocks: Block[] }) {
         ) : b.type === "equation" ? (
           <div key={i} className="equation" dir="ltr">
             <Md text={"$$\n" + b.latex + "\n$$"} />
+            {b.result_ids?.map((id) => (
+              <a
+                className="equation-evidence"
+                key={id}
+                href={"/api/science/results/" + id}
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                مدخلات ونتيجة الفحص المرتبط
+              </a>
+            ))}
           </div>
         ) : b.type === "image" ? (
           <figure key={i}>
@@ -131,6 +151,14 @@ function Content({ blocks }: { blocks: Block[] }) {
               </tbody>
             </table>
           </div>
+        ) : b.type === "verification" && b.result ? (
+          <Verification key={i} result={b.result} />
+        ) : b.type === "graph" && b.result ? (
+          b.result.output.diagram ? (
+            <ScientificDiagram key={i} result={b.result} />
+          ) : (
+            <ScientificChart key={i} result={b.result} />
+          )
         ) : b.type === "code" ? (
           <pre dir="ltr" key={i}>
             <code>{b.text}</code>

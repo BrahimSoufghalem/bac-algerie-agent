@@ -242,7 +242,7 @@ class AgentEngine:
         row = self.db.one("SELECT * FROM model_configs WHERE id=?", (run["config_id"],))
         cfg = json.loads(row["config"])
         user = self.db.one("SELECT * FROM users WHERE id=?", (run["user_id"],))
-        tools = Tools(self.s, user, run["conversation_id"])
+        tools = Tools(self.s, user, run["conversation_id"], run["id"])
         if not user or not user["active"]:
             raise ModelError("ACCOUNT_DISABLED")
         provider = (
@@ -322,6 +322,17 @@ class AgentEngine:
                                 "get_table_of_contents": "قراءة الفهرس",
                                 "get_lesson_full": "قراءة الدرس كاملًا",
                                 "get_section": "قراءة قسم من المصدر",
+                                "calculate": "حساب التعبير العددي",
+                                "verify_calculation": "التحقق من الناتج العددي",
+                                "verify_equation": "فحص التعويض وشروط المسألة",
+                                "symbolic_math": "إجراء حساب رمزي",
+                                "convert_units": "تحويل الوحدات",
+                                "verify_dimensions": "فحص الأبعاد والوحدات",
+                                "run_scientific_code": "تنفيذ حساب علمي مقيّد",
+                                "plot_function": "حساب نقاط المنحنى",
+                                "plot_data": "فحص بيانات الرسم",
+                                "draw_diagram": "إنشاء مخطط هندسي مقيّد",
+                                "plot_from_result": "رسم المخرجات المحسوبة فعليًا",
                             }.get(name, "تنفيذ أداة " + name),
                         },
                     )
@@ -331,10 +342,19 @@ class AgentEngine:
                         "tool_end",
                         {
                             "name": name,
-                            "success": "error" not in result,
-                            "label": "تم تنفيذ الأداة"
+                            "success": "error" not in result
+                            and result.get("output", {}).get("status")
+                            not in ("failed", "inconclusive"),
+                            "label": (
+                                "تعذر تأكيد الفحص؛ راجع المعطيات والشروط"
+                                if result.get("output", {}).get("status")
+                                in ("failed", "inconclusive")
+                                else "نجح الفحص المحدد، لا كل الشرح"
+                                if result.get("output", {}).get("status") == "passed"
+                                else "تم تنفيذ الأداة"
+                            )
                             if "error" not in result
-                            else "تحتاج الأداة إلى سياق أصغر",
+                            else "تعذر تنفيذ الأداة ضمن حدودها",
                         },
                     )
                 except ModelError:
