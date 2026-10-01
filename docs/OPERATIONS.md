@@ -86,7 +86,7 @@ docker compose run --rm --no-deps -v /srv/backups:/backup:ro -v masar-restore-st
 docker compose up -d
 ```
 
-الاستعادة ترفض destination قائمًا، traversal/absolute/Windows/backslash/duplicates/symlinks/zip bombs ومفاتيح ناقصة/DB تالفة/hash mismatch؛ staging ثم atomic rename. الحدود5GiB uncompressed/100000ملف الافتراضية؛ المكتبات الأكبر تحتاج تعديل حد متعمد. لا تستعد zip من مصدر غير موثوق ولو صحت hashes. اختبر استعادة شهرية فعلية في staging ولا تحذف آخر نسخة جيدة. الاختبارات أثبتت استعادة login وفك التشفير وكتاب منشور ومصادره والمفتاح الثاني والملف الخاص، لا مجرد فتح zip.
+الاستعادة ترفض destination قائمًا، traversal/absolute/Windows/backslash/duplicates/symlinks/zip bombs ومفاتيح ناقصة/DB تالفة/hash mismatch؛ staging ثم atomic rename. الحدود5GiB uncompressed/100000ملف الافتراضية؛ المكتبات الأكبر تحتاج اختيارًا متعمدًا مثل `--max-restore-gib 50 --max-restore-files 500000`. لا تستعد zip من مصدر غير موثوق ولو صحت hashes. اختبر استعادة شهرية فعلية في staging ولا تحذف آخر نسخة جيدة. الاختبارات أثبتت استعادة login وفك التشفير وكتاب منشور ومصادره والمفتاح الثاني والملف الخاص، لا مجرد فتح zip.
 
 ## فحص التحميل والمزود
 

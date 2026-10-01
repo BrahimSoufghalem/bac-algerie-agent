@@ -25,7 +25,13 @@ def main():
     p.add_argument("--output", type=Path)
     p.add_argument("--archive", type=Path)
     p.add_argument("--destination", type=Path)
+    p.add_argument("--max-restore-gib", type=int, default=5)
+    p.add_argument("--max-restore-files", type=int, default=100000)
     args = p.parse_args()
+    if not (
+        1 <= args.max_restore_gib <= 1000 and 1000 <= args.max_restore_files <= 5000000
+    ):
+        p.error("Explicit restore limits: 1–1000 GiB and 1000–5000000 files")
     cfg = Settings.from_env()
     if args.action == "backup":
         from bac.ops.backup import backup
@@ -39,7 +45,14 @@ def main():
 
         if not args.archive or not args.destination:
             p.error("--archive and --destination are required")
-        print(restore(args.archive, args.destination))
+        print(
+            restore(
+                args.archive,
+                args.destination,
+                max_bytes=args.max_restore_gib * 1024**3,
+                max_files=args.max_restore_files,
+            )
+        )
         return
     s = Services(cfg)
     try:
