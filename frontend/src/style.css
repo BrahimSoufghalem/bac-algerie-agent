@@ -829,3 +829,64 @@ a {
 .node-row bdi {
   white-space: nowrap;
 }
+.bundle-editor {
+  margin-block: 24px;
+  padding: 24px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+}
+.bundle-editor details {
+  margin-block: 16px;
+}
+.bundle-editor summary,
+.solution-view summary {
+  cursor: pointer;
+  min-height: 44px;
+  font-weight: 600;
+  padding-block: 12px;
+}
+.source-files {
+  display: grid;
+  gap: 12px;
+  margin-block: 16px;
+}
+.source-files > div {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: white;
+}
+.source-files span {
+  overflow-wrap: anywhere;
+}
+.library-filters {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 16px;
+  align-items: end;
+  margin-block: 24px;
+}
+.library-filters label {
+  margin: 0;
+}
+.solution-view {
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  margin-block: 24px;
+}
+@media (max-width: 700px) {
+  .bundle-editor {
+    padding: 16px;
+  }
+  .library-filters {
+    grid-template-columns: 1fr 1fr;
+  }
+  .library-filters > label:first-child {
+    grid-column: 1/-1;
+  }
+}

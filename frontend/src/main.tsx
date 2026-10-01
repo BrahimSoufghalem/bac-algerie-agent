@@ -9,12 +9,16 @@ import "@fontsource/noto-sans-arabic/400.css";
 import "@fontsource/noto-sans-arabic/600.css";
 import "@fontsource/noto-sans-arabic/700.css";
 import "./style.css";
+import BundleEditor from "./BundleEditor";
 type User = { id: string; name: string; role: string };
 type Source = {
   node_id: string;
   document_id: string;
   title: string;
   pages: number[];
+  file_id?: string;
+  source_id?: string;
+  role?: string;
 };
 type Block = {
   type: string;
@@ -185,8 +189,23 @@ function App() {
       subject: "",
       track: "",
       year: "",
+      session: "",
+      exam_type: "",
+      institution: "",
       source: "",
     });
+  useEffect(() => {
+    setAck(false);
+    setReviewPage(null);
+    setReviewNotes("");
+  }, [version?.id]);
+  const [filters, setFilters] = useState({
+    kind: "",
+    subject: "",
+    track: "",
+    year: "",
+    session: "",
+  });
   useEffect(() => {
     if (!source && !menu) return;
     const previous = document.activeElement as HTMLElement | null;
@@ -328,7 +347,12 @@ function App() {
     bottom.current?.scrollIntoView({ behavior: "auto", block: "end" });
   }, [delta, messages.length]);
   useEffect(() => {
-    if (!version || view !== "owner-library") return;
+    if (
+      !version ||
+      view !== "owner-library" ||
+      ["REVIEWED", "PUBLISHED"].includes(version.status)
+    )
+      return;
     const timer = setInterval(
       () =>
         api("/api/owner/versions/" + version.id)
@@ -337,7 +361,7 @@ function App() {
       2500,
     );
     return () => clearInterval(timer);
-  }, [version?.id, view]);
+  }, [version?.id, version?.status, view]);
   async function authenticate(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     const f = new FormData(e.currentTarget);
@@ -421,9 +445,27 @@ function App() {
     }
   }
   async function readSource(id: string) {
+    await action(async () => {
+      let payload = await api("/api/library/nodes/" + encodeURIComponent(id));
+      if (["exam", "exercise_collection"].includes(payload.node.kind))
+        payload = await api(
+          "/api/library/nodes/" + encodeURIComponent(id) + "/bundle",
+        );
+      if (payload.node.kind === "lesson")
+        payload.parts = (
+          await api("/api/library/nodes/" + encodeURIComponent(id) + "/parts")
+        ).items;
+      setSource(payload);
+    });
+  }
+  async function readPart(id: string) {
     await action(async () =>
-      setSource(await api("/api/library/nodes/" + encodeURIComponent(id))),
+      setSource(await api("/api/library/parts/" + encodeURIComponent(id))),
     );
+  }
+  async function refreshVersion() {
+    setVersion(await api("/api/owner/versions/" + version.id));
+    setOwnerDocs((await api("/api/owner/documents")).items);
   }
   async function upload(e: React.FormEvent) {
     e.preventDefault();
@@ -773,7 +815,11 @@ function App() {
                         {m.sources.map((src, i) => (
                           <button
                             key={i}
-                            onClick={() => readSource(src.node_id)}
+                            onClick={() =>
+                              src.source_id?.includes(":part:")
+                                ? readPart(src.source_id)
+                                : readSource(src.node_id)
+                            }
                           >
                             {src.title} · ص {src.pages.join("–")}
                           </button>
@@ -896,7 +942,57 @@ function App() {
         {view === "library" && (
           <section className="page-content">
             <h1>مصادر جاهزة للتعلّم</h1>
-            <p className="muted">تظهر فقط النسخ التي راجعها المالك ونشرها.</p>
+            <p className="muted">
+              تظهر فقط النسخ التي راجعها المالك ونشرها. الدروس بهيكلها الأصلي،
+              والامتحانات والتمارين بحزمتها الكاملة.
+            </p>
+            <form
+              className="library-filters"
+              onSubmit={(e) => {
+                e.preventDefault();
+                action(async () => {
+                  const q = new URLSearchParams(
+                    Object.entries(filters).filter(([, v]) => v),
+                  );
+                  setDocs((await api("/api/library/documents?" + q)).items);
+                });
+              }}
+            >
+              <label>
+                نوع المصدر
+                <select
+                  value={filters.kind}
+                  onChange={(e) =>
+                    setFilters({ ...filters, kind: e.target.value })
+                  }
+                >
+                  <option value="">كل الأنواع</option>
+                  <option value="book">كتاب</option>
+                  <option value="exam">امتحان مع حلّه إن وجد</option>
+                  <option value="exercise_collection">
+                    سلسلة تمارين كاملة
+                  </option>
+                  <option value="reference">مرجع</option>
+                </select>
+              </label>
+              {[
+                ["subject", "تصفية المادة"],
+                ["track", "تصفية التخصص"],
+                ["year", "تصفية السنة"],
+                ["session", "تصفية الدورة"],
+              ].map(([k, label]) => (
+                <label key={k}>
+                  {label}
+                  <input
+                    value={(filters as any)[k]}
+                    onChange={(e) =>
+                      setFilters({ ...filters, [k]: e.target.value })
+                    }
+                  />
+                </label>
+              ))}
+              <button>تطبيق التصفية</button>
+            </form>
             {!docs.length ? (
               <div className="empty-state">
                 لا توجد مصادر منشورة بعد. يستطيع المالك رفع كتاب ومراجعته من
@@ -908,7 +1004,9 @@ function App() {
                   <div>
                     <h3>{d.title}</h3>
                     <p className="muted">
-                      {d.subject} · {d.track} · {d.kind}
+                      {d.subject} · {d.track} · {d.kind}{" "}
+                      {d.year && " · " + d.year}{" "}
+                      {d.metadata?.session && " · " + d.metadata.session}
                     </p>
                   </div>
                   <button
@@ -917,6 +1015,16 @@ function App() {
                         const toc = await api(
                           "/api/library/documents/" + d.id + "/toc",
                         );
+                        if (["exam", "exercise_collection"].includes(d.kind)) {
+                          setSource(
+                            await api(
+                              "/api/library/nodes/" +
+                                encodeURIComponent(toc.items[0].id) +
+                                "/bundle",
+                            ),
+                          );
+                          return;
+                        }
                         setSource({
                           document: d,
                           children: toc.items,
@@ -926,7 +1034,11 @@ function App() {
                       })
                     }
                   >
-                    استكشف الفهرس
+                    {d.kind === "exam"
+                      ? "افتح الامتحان وحلّه"
+                      : d.kind === "exercise_collection"
+                        ? "افتح سلسلة التمارين كاملة"
+                        : "استكشف الفهرس"}
                   </button>
                 </div>
               ))
@@ -1087,6 +1199,19 @@ function App() {
                         setMeta({
                           ...meta,
                           title: e.target.files[0].name.replace(/\.pdf$/i, ""),
+                          kind: /فرض|اختبار|بكالوريا|exam|bac\b/i.test(
+                            e.target.files[0].name,
+                          )
+                            ? "exam"
+                            : /تمارين|exercices|exercises/i.test(
+                                  e.target.files[0].name,
+                                )
+                              ? "exercise_collection"
+                              : /ملخص|قوانين|summary|formula/i.test(
+                                    e.target.files[0].name,
+                                  )
+                                ? "reference"
+                                : "book",
                         });
                     }}
                   />
@@ -1108,6 +1233,10 @@ function App() {
                     onChange={(e) => setMeta({ ...meta, kind: e.target.value })}
                   >
                     <option value="book">كتاب مدرسي أو خارجي</option>
+                    <option value="exam">امتحان — الحل اختياري ومطابق</option>
+                    <option value="exercise_collection">
+                      سلسلة تمارين كاملة
+                    </option>
                     <option value="reference">مرجع أو ملخص</option>
                   </select>
                 </label>
@@ -1133,6 +1262,29 @@ function App() {
                     />
                   </label>
                 </div>
+                {["exam", "exercise_collection"].includes(meta.kind) && (
+                  <div className="form-columns">
+                    {[
+                      ["year", "السنة"],
+                      ["session", "الدورة"],
+                      ["exam_type", "نوع الامتحان"],
+                      ["institution", "المؤسسة"],
+                    ].map(([k, label]) => (
+                      <label key={k}>
+                        {label}
+                        <input
+                          value={(meta as any)[k]}
+                          onChange={(e) =>
+                            setMeta({ ...meta, [k]: e.target.value })
+                          }
+                        />
+                      </label>
+                    ))}
+                  </div>
+                )}
+                <p className="muted">
+                  نوع المستند اقتراح قابل للتغيير؛ راجعه قبل المعالجة.
+                </p>
                 <label>
                   المصدر / المرجع
                   <input
@@ -1205,12 +1357,21 @@ function App() {
                     {version.extraction_status} · {version.status}
                   </span>
                 </div>
+                <BundleEditor
+                  version={version}
+                  api={api}
+                  action={action}
+                  refresh={refreshVersion}
+                  onClone={setVersion}
+                />
                 <div className="actions">
                   <button
                     disabled={
                       busy ||
                       ["REVIEWED", "PUBLISHED"].includes(version.status) ||
-                      version.extraction_status === "PROCESSING"
+                      version.files?.some(
+                        (f: any) => f.extraction_status === "PROCESSING",
+                      )
                     }
                     onClick={() =>
                       action(async () => {
@@ -1264,28 +1425,41 @@ function App() {
                     إعادة المشكوك فيها
                   </button>
                 </div>
-                <div className="page-list">
-                  {version.pages?.map((p: any) => (
-                    <button
-                      key={p.pdf_page}
-                      className={p.quality.length ? "needs-review" : ""}
-                      onClick={() =>
-                        action(async () =>
-                          setReviewPage(
-                            await api(
-                              "/api/owner/versions/" +
-                                version.id +
-                                "/page/" +
-                                p.pdf_page,
-                            ),
-                          ),
-                        )
-                      }
-                    >
-                      ص {p.pdf_page} · {p.status}
-                    </button>
-                  ))}
-                </div>
+                {version.files?.map((f: any) => (
+                  <div key={f.id}>
+                    <h3>
+                      {f.role === "primary" ? "صفحات المصدر" : "صفحات الحل"} ·{" "}
+                      {f.filename}
+                    </h3>
+                    <div className="page-list">
+                      {f.pages?.map((p: any) => (
+                        <button
+                          key={p.pdf_page}
+                          className={p.quality.length ? "needs-review" : ""}
+                          onClick={() =>
+                            action(async () =>
+                              setReviewPage({
+                                ...(await api(
+                                  "/api/owner/versions/" +
+                                    version.id +
+                                    "/page/" +
+                                    p.pdf_page +
+                                    "?file_id=" +
+                                    encodeURIComponent(f.id),
+                                )),
+                                file_id: f.id,
+                                role: f.role,
+                              }),
+                            )
+                          }
+                        >
+                          {f.role === "solution" ? "الحل · " : ""}ص {p.pdf_page}{" "}
+                          · {p.status}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                ))}
                 {reviewPage && (
                   <div className="review-grid">
                     <div>
@@ -1297,7 +1471,8 @@ function App() {
                           version.id +
                           "/page/" +
                           reviewPage.page +
-                          "/image"
+                          "/image?file_id=" +
+                          encodeURIComponent(reviewPage.file_id)
                         }
                         alt="صفحة المصدر الأصلية"
                       />
@@ -1333,7 +1508,17 @@ function App() {
                 </label>
                 <div className="actions">
                   <button
-                    disabled={busy || !ack || version.status === "PUBLISHED"}
+                    disabled={
+                      busy ||
+                      !ack ||
+                      ["REVIEWED", "PUBLISHED"].includes(version.status) ||
+                      version.files?.some(
+                        (f: any) =>
+                          !f.extraction_status.startsWith("COMPLETED") ||
+                          (f.role === "solution" &&
+                            f.verification !== "owner_verified"),
+                      )
+                    }
                     onClick={() =>
                       action(async () => {
                         await api(
@@ -1442,7 +1627,54 @@ function App() {
                 ×
               </button>
             </div>
+            {source.atomic_bundle && (
+              <p className="info">
+                حزمة كاملة: الموضوع والحل المرفق إن وجد. لا تُجزّأ إلى أسئلة
+                مستقلة.
+              </p>
+            )}
+            {source.part && (
+              <p className="info">
+                جزء {source.part.part_index + 1} من الدرس · الاستشهاد يخص هذا
+                الجزء فقط.
+              </p>
+            )}
+            {source.parts?.length > 1 && (
+              <details>
+                <summary>
+                  أجزاء الدرس الطويل — دون قطع الجداول والمعادلات
+                </summary>
+                {source.parts.map((p: any) => (
+                  <button
+                    className="node-row"
+                    key={p.id}
+                    onClick={() => readPart(p.id)}
+                  >
+                    جزء {p.part_index + 1} · {p.metadata.title} · ص{" "}
+                    {p.metadata.pages.join("، ")}
+                  </button>
+                ))}
+              </details>
+            )}
             {source.content && <Md text={source.content} />}
+            {source.atomic_bundle &&
+              (source.solution ? (
+                <details className="solution-view">
+                  <summary>عرض الحل المرفق — مطابق بتأكيد المالك</summary>
+                  <p className="muted">
+                    مصدر الحل: {source.solution.provenance.source}.{" "}
+                    {source.solution.provenance.designation ===
+                    "official_source"
+                      ? "النسبة لمصدر رسمي وصفٌ قدّمه المالك، وليست شهادة من النموذج."
+                      : "حل مرفق، غير مصنّف رسميًا."}
+                  </p>
+                  <Md text={source.solution.content} />
+                </details>
+              ) : (
+                <p className="warning">
+                  الحل غير متاح لهذا المصدر. لا يتم اختراع حل رسمي.
+                </p>
+              ))}
             <div>
               {source.children?.map((n: any) => (
                 <button
@@ -1465,12 +1697,16 @@ function App() {
                   "/api/library/documents/" +
                   src.document_id +
                   "/page/" +
-                  src.pages[0]
+                  src.pages[0] +
+                  (src.file_id
+                    ? "?file_id=" + encodeURIComponent(src.file_id)
+                    : "")
                 }
                 target="_blank"
                 rel="noopener"
               >
-                عرض صفحة المصدر {src.pages[0]}
+                عرض صفحة {src.role === "solution" ? "الحل" : "المصدر"}{" "}
+                {src.pages[0]}
               </a>
             ))}
           </section>

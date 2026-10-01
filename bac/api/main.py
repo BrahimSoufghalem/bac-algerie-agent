@@ -20,6 +20,12 @@ from bac.core.db import uid, js
 from bac.agent.engine import AgentEngine
 from bac.agent.models import ModelConfig
 from bac.library.service import Library
+from bac.library.contracts import (
+    DocumentMetadata,
+    SolutionMetadata,
+    PageRange,
+    SolutionVerification,
+)
 from bac.vendor.bookforge.vision.provider import validate_base_url
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -57,18 +63,17 @@ class ConfigRequest(Strict):
     api_key: str = Field(default="", max_length=4096, repr=False)
 
 
-class Metadata(Strict):
-    title: str = Field(default="", max_length=200)
-    kind: str
-    subject: str = Field(max_length=100)
-    track: str = Field(max_length=100)
-    year: str | None = Field(default=None, max_length=20)
-    source: str = Field(default="", max_length=2048)
+Metadata = DocumentMetadata
 
 
 class Review(Strict):
     acknowledge_issues: bool = False
     notes: str = Field(default="", max_length=4000)
+
+
+class CombinedSolution(Strict):
+    metadata: SolutionMetadata
+    page_range: PageRange
 
 
 class StatusUpdate(Strict):
@@ -79,7 +84,7 @@ def create_app(services=None):
     s = services or Services()
     app = FastAPI(
         title="Masar BAC Agent",
-        version="0.1.0",
+        version="0.2.0",
         docs_url=None,
         redoc_url=None,
         openapi_url=None,
@@ -445,11 +450,6 @@ def create_app(services=None):
         temp = None
         try:
             p = Metadata.model_validate_json(metadata)
-            if p.kind not in ("book", "reference"):
-                raise HTTPException(
-                    422,
-                    "This release supports books and references; exam/exercise bundles require phase 2",
-                )
             if not (file.filename or "").lower().endswith(".pdf"):
                 raise HTTPException(422, "PDF required")
             incoming = s.store.path("incoming")
@@ -483,6 +483,94 @@ def create_app(services=None):
                 temp.unlink(missing_ok=True)
             await file.close()
 
+    def selected_file(v, file_id, page=None):
+        f = (
+            next((f for f in v["files"] if f["id"] == file_id), None)
+            if file_id
+            else next(f for f in v["files"] if f["role"] == "primary")
+        )
+        if not f or (
+            page is not None and not f["first_page"] <= page <= f["last_page"]
+        ):
+            raise HTTPException(404, "Source file/page not found")
+        return f
+
+    @app.post("/api/owner/versions/{id}/clone")
+    def clone(id: str, user=Depends(current)):
+        owner(user)
+        return library.clone(id, user["id"])
+
+    @app.patch("/api/owner/versions/{id}/metadata")
+    def update_metadata(id: str, p: DocumentMetadata, user=Depends(current)):
+        owner(user)
+        return library.update_metadata(id, p.model_dump(), user["id"])
+
+    @app.patch("/api/owner/versions/{id}/files/{file_id}/range")
+    def file_range(id: str, file_id: str, p: PageRange, user=Depends(current)):
+        owner(user)
+        return library.set_range(id, file_id, p.model_dump(), user["id"])
+
+    @app.post("/api/owner/versions/{id}/solution/upload")
+    async def upload_solution(
+        id: str,
+        metadata: str = Form(...),
+        file: UploadFile = File(...),
+        user=Depends(current),
+    ):
+        owner(user)
+        temp = None
+        try:
+            p = SolutionMetadata.model_validate_json(metadata)
+            if not (file.filename or "").lower().endswith(".pdf"):
+                raise HTTPException(422, "PDF required")
+            incoming = s.store.path("incoming")
+            incoming.mkdir(exist_ok=True)
+            fd, name = tempfile.mkstemp(dir=incoming)
+            temp = Path(name)
+            length = 0
+            with os.fdopen(fd, "wb") as out:
+                while chunk := await file.read(1024 * 1024):
+                    length += len(chunk)
+                    if length > s.settings.max_upload_mb * 1024**2:
+                        raise HTTPException(413, "File too large")
+                    out.write(chunk)
+            return await asyncio.to_thread(
+                library.attach_solution,
+                id,
+                p.model_dump(),
+                user["id"],
+                temp,
+                file.filename,
+            )
+        except HTTPException:
+            raise
+        except (ValueError, __import__("subprocess").SubprocessError):
+            raise HTTPException(422, "Invalid solution metadata/PDF") from None
+        finally:
+            if temp:
+                temp.unlink(missing_ok=True)
+            await file.close()
+
+    @app.post("/api/owner/versions/{id}/solution/range")
+    def solution_range(id: str, p: CombinedSolution, user=Depends(current)):
+        owner(user)
+        return library.attach_solution(
+            id,
+            p.metadata.model_dump(),
+            user["id"],
+            page_range=p.page_range.model_dump(),
+        )
+
+    @app.post("/api/owner/versions/{id}/solution/verify")
+    def solution_verify(id: str, p: SolutionVerification, user=Depends(current)):
+        owner(user)
+        return library.verify_solution(id, p.model_dump(), user["id"])
+
+    @app.delete("/api/owner/versions/{id}/solution")
+    def solution_remove(id: str, user=Depends(current)):
+        owner(user)
+        return library.remove_solution(id, user["id"])
+
     @app.get("/api/owner/versions/{id}")
     def version(id: str, user=Depends(current)):
         owner(user)
@@ -500,21 +588,37 @@ def create_app(services=None):
         if v["status"] in ("REVIEWED", "PUBLISHED"):
             raise HTTPException(409, "Create a new version to change reviewed content")
         try:
-            n = s.extraction_queue.retry_pages(
-                v["bookforge_id"],
-                {"failed": "FAILED", "suspicious": "NEEDS_REVIEW"}[status],
+            raw_status = {"failed": "FAILED", "suspicious": "NEEDS_REVIEW"}[status]
+            n = sum(
+                s.extraction_queue.retry_pages(bid, raw_status)
+                for bid in dict.fromkeys(f["bookforge_id"] for f in v["files"])
             )
         except (ValueError, KeyError):
             raise HTTPException(409, "Invalid retry or extraction state") from None
         return {"scheduled": n}
 
     @app.get("/api/owner/versions/{id}/page/{page}")
-    def preview(id: str, page: int, user=Depends(current)):
+    def preview(id: str, page: int, file_id: str | None = None, user=Depends(current)):
         owner(user)
         v = library.version(id)
+        f = selected_file(v, file_id, page)
+        frozen = library.approved_page(v, f["id"], page)
+        if frozen is not None:
+            return {
+                "page": page,
+                "status": frozen["status"],
+                "quality": frozen["quality"],
+                "content": s.store.read(frozen["content_file"]).decode()
+                if frozen.get("content_file")
+                else None,
+                "json": json.loads(s.store.read(frozen["json_file"]))
+                if frozen.get("json_file")
+                else None,
+                "immutable_preview": True,
+            }
         p = s.extraction_db.one(
             "SELECT * FROM pages WHERE book_id=? AND pdf_page=?",
-            (v["bookforge_id"], page),
+            (f["bookforge_id"], page),
         )
         if not p:
             raise HTTPException(404, "Page not found")
@@ -533,10 +637,20 @@ def create_app(services=None):
         }
 
     @app.get("/api/owner/versions/{id}/page/{page}/image")
-    async def preview_image(id: str, page: int, user=Depends(current)):
+    async def preview_image(
+        id: str, page: int, file_id: str | None = None, user=Depends(current)
+    ):
         owner(user)
         v = library.version(id)
-        b = s.extraction_db.one("SELECT * FROM books WHERE id=?", (v["bookforge_id"],))
+        f = selected_file(v, file_id, page)
+        frozen = library.approved_page(v, f["id"], page)
+        if frozen is not None:
+            if not frozen["image_file"]:
+                raise HTTPException(404, "Approved source image unavailable")
+            return FileResponse(
+                s.store.path(frozen["image_file"]), media_type="image/png"
+            )
+        b = s.extraction_db.one("SELECT * FROM books WHERE id=?", (f["bookforge_id"],))
         p = s.extraction_db.one(
             "SELECT * FROM pages WHERE book_id=? AND pdf_page=?", (b["id"], page)
         )
@@ -575,11 +689,21 @@ def create_app(services=None):
         subject: str | None = None,
         track: str | None = None,
         kind: str | None = None,
+        year: str | None = None,
+        session: str | None = None,
+        exam_type: str | None = None,
         user=Depends(current),
     ):
         return {
             "items": library.list_documents(
-                {"subject": subject, "track": track, "kind": kind}
+                {
+                    "subject": subject,
+                    "track": track,
+                    "kind": kind,
+                    "year": year,
+                    "session": session,
+                    "exam_type": exam_type,
+                }
             )
         }
 
@@ -601,13 +725,26 @@ def create_app(services=None):
         subject: str | None = None,
         track: str | None = None,
         document_id: str | None = None,
+        kind: str | None = None,
+        year: str | None = None,
+        session: str | None = None,
+        exam_type: str | None = None,
         user=Depends(current),
     ):
         if not 1 <= len(q) <= 300:
             raise HTTPException(422, "Invalid query")
         return {
             "items": library.search(
-                q, {"subject": subject, "track": track, "document_id": document_id}
+                q,
+                {
+                    "subject": subject,
+                    "track": track,
+                    "document_id": document_id,
+                    "kind": kind,
+                    "year": year,
+                    "session": session,
+                    "exam_type": exam_type,
+                },
             )
         }
 
@@ -622,16 +759,42 @@ def create_app(services=None):
         return FileResponse(s.store.path(a["file"]), media_type="image/png")
 
     @app.get("/api/library/documents/{id}/page/{page}")
-    def source_page(id: str, page: int, user=Depends(current)):
-        d = library.get_doc(id, True)
-        v = s.db.one(
-            "SELECT snapshot_dir FROM versions WHERE id=?", (d["published_version"],)
+    def source_page(
+        id: str, page: int, file_id: str | None = None, user=Depends(current)
+    ):
+        return FileResponse(
+            s.store.path(library.source_page(id, page, file_id)), media_type="image/png"
         )
-        manifest = json.loads(s.store.read(v["snapshot_dir"] + "/manifest.json"))
-        p = next((p for p in manifest["pages"] if p["pdf_page"] == page), None)
-        if not p or not p["file"]:
-            raise HTTPException(404, "Source page unavailable")
-        return FileResponse(s.store.path(p["file"]), media_type="image/png")
+
+    @app.get("/api/library/documents/{id}/page/{page}/json")
+    def source_json(
+        id: str, page: int, file_id: str | None = None, user=Depends(current)
+    ):
+        return library.source_page(id, page, file_id, "json")
+
+    @app.get("/api/library/nodes/{id}/parts")
+    def parts(id: str, user=Depends(current)):
+        return {"items": library.parts(id)}
+
+    @app.get("/api/library/parts/{id}")
+    def part(id: str, user=Depends(current)):
+        return library.part(id)
+
+    @app.get("/api/library/nodes/{id}/bundle")
+    def bundle(id: str, user=Depends(current)):
+        return library.bundle(id)
+
+    @app.get("/api/library/lessons/{id}")
+    def lesson(id: str, user=Depends(current)):
+        p = library.node(id)
+        if p["node"]["kind"] != "lesson":
+            raise HTTPException(422, "An actual lesson is required")
+        return p
+
+    @app.get("/api/library/assets/{id}/metadata")
+    def asset_metadata(id: str, user=Depends(current)):
+        a = library.asset(id)
+        return {k: v for k, v in a.items() if k != "file"}
 
     @app.get("/api/owner/usage")
     def usage(user=Depends(current)):

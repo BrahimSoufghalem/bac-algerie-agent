@@ -1,71 +1,7 @@
-import { test, expect, Page } from "@playwright/test";
-import { mkdir, writeFile, readFile } from "node:fs/promises";
+import { test, expect } from "@playwright/test";
 import path from "node:path";
 import { execFileSync } from "node:child_process";
-const qa = path.resolve("browser-results/previews");
-async function snapshot(page: Page, name: string) {
-  await page.evaluate(() => document.fonts.ready);
-  const html = await page.evaluate(async () => {
-    const clone = document.documentElement.cloneNode(true) as HTMLElement;
-    clone
-      .querySelectorAll("script,link[rel=modulepreload]")
-      .forEach((x) => x.remove());
-    clone.querySelectorAll("link[href]").forEach((x) => {
-      const href = x.getAttribute("href") || "";
-      if (href.startsWith("/assets/"))
-        x.setAttribute("href", location.origin + href);
-    });
-    for (const img of clone.querySelectorAll("img")) {
-      const src = img.getAttribute("src");
-      if (!src || src.startsWith("data:")) continue;
-      const res = await fetch(src);
-      const blob = await res.blob();
-      const data = await new Promise<string>((resolve) => {
-        const reader = new FileReader();
-        reader.onload = () => resolve(reader.result as string);
-        reader.readAsDataURL(blob);
-      });
-      img.setAttribute("src", data);
-    }
-    const s = document.createElement("style");
-    s.textContent =
-      ".workspace{max-height:none;overflow:visible}.composer-wrap{position:static}.sidebar{position:fixed;inset-inline-start:0}.workspace{margin-inline-start:268px}@media(max-width:700px){.workspace{margin-inline-start:0}}";
-    clone.querySelector("head")?.appendChild(s);
-    return "<!doctype html>" + clone.outerHTML;
-  });
-  await mkdir(qa, { recursive: true });
-  let offline = html;
-  for (const link of [...html.matchAll(/<link[^>]*rel="stylesheet"[^>]*>/g)]) {
-    const href = link[0].match(/href="([^"]+)"/);
-    if (!href) continue;
-    const cssFile = path.join(
-      process.cwd(),
-      "dist/assets",
-      path.basename(href[1]),
-    );
-    let css = await readFile(cssFile, "utf8");
-    css = css.replace(
-      /url\(([^)]+)\)/g,
-      (_, url) =>
-        'url("file://' +
-        path.join(
-          process.cwd(),
-          "dist/assets",
-          path.basename(url.replace(/["']/g, "")),
-        ) +
-        '")',
-    );
-    offline = offline.replace(link[0], "<style>" + css + "</style>");
-  }
-  await writeFile(path.join(qa, name + ".html"), offline);
-}
-async function assertNoOverflow(page: Page) {
-  expect(
-    await page.evaluate(
-      () => document.documentElement.scrollWidth <= innerWidth + 1,
-    ),
-  ).toBe(true);
-}
+import { snapshot, assertNoOverflow } from "./helpers";
 test("owner upload → extract → review → publish → student tool retrieval, stream, source and mobile", async ({
   page,
   browser,
@@ -94,6 +30,9 @@ test("owner upload → extract → review → publish → student tool retrieval
   );
   await snapshot(page, "models-desktop");
   await page.getByRole("button", { name: "▥ إدارة المحتوى" }).click();
+  const initialCount = (
+    await (await page.request.get("/api/library/documents")).json()
+  ).items.length;
   const pdf = path.join(process.env.TEST_DATA_DIR!, "scanned_book.pdf");
   execFileSync(process.env.BAC_PYTHON || "python", [
     "tests/fixture_book.py",
@@ -116,7 +55,7 @@ test("owner upload → extract → review → publish → student tool retrieval
   const version = docs.items[0].versions[0].id;
   expect(
     (await (await page.request.get("/api/library/documents")).json()).items,
-  ).toHaveLength(0);
+  ).toHaveLength(initialCount);
   await page.getByRole("button", { name: "بدء المعالجة", exact: true }).click();
   await expect
     .poll(
@@ -156,7 +95,7 @@ test("owner upload → extract → review → publish → student tool retrieval
         (await (await page.request.get("/api/library/documents")).json()).items
           .length,
     )
-    .toBe(1);
+    .toBe(initialCount + 1);
   const ctx = await browser.newContext({
     viewport: { width: 1440, height: 1000 },
   });
@@ -224,7 +163,16 @@ test("owner upload → extract → review → publish → student tool retrieval
   ).toBeVisible();
   await snapshot(page, "usage-desktop");
   await page.getByRole("button", { name: "▥ إدارة المحتوى" }).click();
-  await page.getByRole("button", { name: "نسخة 1 · PUBLISHED" }).click();
+  await page
+    .locator(".document-row")
+    .filter({
+      has: page.getByRole("heading", {
+        name: "مبادئ الحرارة — مصدر اختبار",
+        exact: true,
+      }),
+    })
+    .getByRole("button", { name: "نسخة 1 · PUBLISHED" })
+    .click();
   await page.setViewportSize({ width: 390, height: 844 });
   await snapshot(page, "owner-mobile");
   await assertNoOverflow(page);

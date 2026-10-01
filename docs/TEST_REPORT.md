@@ -40,3 +40,38 @@ npm run build
 npx playwright install chromium
 npm run test:browser
 ```
+
+# تقرير المرحلة الثانية
+
+## دليل محلي بعد استعادة بيئة التنفيذ
+
+- Backend: **40 passed**، مع تحذير deprecation واحد من Starlette TestClient.
+- Ruff F: **All checks passed**، الكود الجديد والاختبارات، دون تعديل vendor.
+- TypeScript strict + Vite production build: نجح.
+- Playwright: **3 passed**؛ كتاب ودروس، امتحان/حل بنطاقين ومصادر ملفين، وسلسلة كاملة بلا حل. اختبارات سطح المكتب و390px والـCSS/صور المصدر/KaTeX/source modal/CSRF/RBAC وSSE تعمل فعلًا.
+- SHA-256 لكل الملفات في `bookforge-reuse.json`: لا اختلاف، بما يشمل fixture generator. نتيجة baseline BookForge الأصلية السابقة 32 passed؛ لم يُعَد ادعاء تشغيله في البيئة المستعادة.
+- طلبات مدفوعة جديدة: **0**. كل vision/chat fixture صريح داخل tests فقط.
+- GitHub CI: يُفحص منفصلًا في PR قبل الدمج، لا يُستنتج من نجاح محلي.
+
+### الاختبارات المضافة
+
+1. الموضوع والحل المنفصلان يُحفظان PDF/JSON/rasters/crops مستقلين؛ تحافظ source IDs على role/file/page.
+2. ملف مدمج، نطاقات غير متداخلة؛ enqueue مرة واحدة لكل raw PDF. كل نص في نطاقه الصحيح.
+3. اختلاف مادة/تخصص/سنة/دورة/نوع امتحان يرفض التحقق. لا اعتماد قبل تأكيد المصدر والمطابقة.
+4. تغيير الهوية أو النطاق يبطل التأكيد؛ تعديل نسخة منشورة يرفض. مسودة جديدة لا تغيّر metadata المنشور.
+5. امتحان/سلسلة/مرجع عقدة واحدة، بلا invented lessons أو individual exercise nodes.
+6. missing solution صريح؛ الحزمة الزائدة ترفض كليًا ولا تمنح مصدرًا مقروءًا وهميًا.
+7. درس طويل أجزاء ثابتة عند عناصر كاملة، citation للجزء فقط؛ درس واحد في صفحة مشتركة لا يستدعي عناصر الدرس الآخر.
+8. metadata-only بلا قراءة ملفات؛ cache مشترك بين أدوات/Library instances ويظل publication-scoped.
+9. JSON الناتج كاملًا يخضع للحد، لا content وحده؛ source لم يدخل context restore لا يمنح citation credit.
+10. تعديل raw Markdown/JSON بعد النشر لا يغير قراءة الطالب أو معاينة المالك للنسخة المعتمدة.
+11. migration فعلية من schema v1، backfill الهوية، legacy parts من approved Markdown فقط؛ الأرشفة تمنع القراءة حتى مع cache.
+12. صفحة فاشلة تبقى بعلامة gap صريحة و`extraction_complete=false`، والأصل يبقى محفوظًا.
+
+## المراجعة البصرية: قيد صريح
+
+تم توليد صور مراجعة للحاسوب/الهاتف للمراجعة والحل والفلاتر وغياب الحل، وتؤكد اختبارات المتصفح عدم horizontal overflow. بعد إعادة تشغيل بيئة التنفيذ لم يعد `/skills` المجمّع متاحًا، فاستُخدم renderer محلي عبر Playwright. **تعطّلت أداة view_image/download نفسها (computer_helper_failed)**؛ لا نعتبر توليد الصور أو نجاح الاختبارات بديلًا عن النظر فيها، ولا ندّعي نجاح مراجعة بصرية جديدة للمرحلة الثانية. يلزم استكمالها قبل القبول النهائي للإنتاج. صور الاختبارات لا تحتوي أسرارًا أو بيانات كتب حقيقية ولا تدخل Git.
+
+## حدود المرحلة
+
+التحقق من المطابقة owner attestation مع هوية ودليل، وليس شهادة مستقلة بصحة الحل العلمي/رسمية المصدر. لا paid real-model benchmark ولا Docker build ولا load/security audit شامل في هذه الجولة. أجزاء legacy تحافظ على بلوكات Markdown، وsnapshot v1 لا يصبح له JSON frozen مختلق. جميع حدود tool/context بالحروف، وجمع token usage الفعلي/أسعار provider مستقل عن cache الملفات. راجع `RETRIEVAL.md` والمرحلتين 3–5.

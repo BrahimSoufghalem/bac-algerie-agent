@@ -1,6 +1,7 @@
 from pathlib import Path
 from dataclasses import replace
 from bac.core.config import Settings
+from bac.library.cache import ContentCache
 from bac.core.db import DB
 from bac.vendor.bookforge.core.storage import LocalStorage
 from bac.vendor.bookforge.core.secrets import SecretVault
@@ -40,3 +41,4 @@ class Services:
             vision_factory,
         )
         self.chat_factory = chat_factory
+        self.library_cache = ContentCache()
