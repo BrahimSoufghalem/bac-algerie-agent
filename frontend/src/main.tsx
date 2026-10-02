@@ -30,7 +30,6 @@ import {
 import { Recovery, SecurityPanel, ServiceTokens } from "./SecurityPanels";
 import BundleEditor from "./BundleEditor";
 import {
-  Verification,
   ScientificChart,
   ScientificDiagram,
   ScientificResult,
@@ -99,12 +98,7 @@ function Md({ text }: { text: string }) {
             {children}
           </a>
         ),
-        img: ({ src, alt }) =>
-          typeof src === "string" && src.startsWith("/api/library/assets/") ? (
-            <img src={src} alt={alt || "صورة المصدر"} loading="lazy" />
-          ) : (
-            <span className="muted">[صورة خارجية غير محمّلة]</span>
-          ),
+        img: () => null,
         td: ({ children }) => <td dir="auto">{children}</td>,
         th: ({ children }) => <th dir="auto">{children}</th>,
         table: ({ children }) => (
@@ -127,31 +121,8 @@ function Content({ blocks }: { blocks: Block[] }) {
         ) : b.type === "equation" ? (
           <div key={i} className="equation" dir="ltr">
             <Md text={"$$\n" + b.latex + "\n$$"} />
-            {b.result_ids?.map((id) => (
-              <a
-                className="equation-evidence"
-                key={id}
-                href={"/api/science/results/" + id}
-                target="_blank"
-                rel="noopener noreferrer"
-              >
-                مدخلات ونتيجة الفحص المرتبط
-              </a>
-            ))}
           </div>
-        ) : b.type === "image" ? (
-          <figure key={i}>
-            <img
-              src={
-                b.asset_url?.startsWith("/api/private/")
-                  ? b.asset_url
-                  : "/api/library/assets/" + b.asset_id
-              }
-              alt={b.caption || "صورة من المصدر"}
-            />
-            <figcaption>{b.caption}</figcaption>
-          </figure>
-        ) : b.type === "table" ? (
+        ) : b.type === "image" ? null : b.type === "table" ? (
           <div className="table-scroll" key={i}>
             <table>
               <thead>
@@ -176,9 +147,8 @@ function Content({ blocks }: { blocks: Block[] }) {
               </tbody>
             </table>
           </div>
-        ) : b.type === "verification" && b.result ? (
-          <Verification key={i} result={b.result} />
-        ) : b.type === "graph" && b.result ? (
+        ) : b.type === "verification" && b.result ? null : b.type === "graph" &&
+          b.result ? (
           b.result.output.diagram ? (
             <ScientificDiagram key={i} result={b.result} />
           ) : (
@@ -366,15 +336,7 @@ function App() {
     const es = new EventSource("/api/runs/" + id + "/events");
     stream.current = es;
     const seen = new Set<number>();
-    for (const kind of [
-      "queued",
-      "model_start",
-      "tool_start",
-      "tool_end",
-      "delta",
-      "answer",
-      "error",
-    ])
+    for (const kind of ["queued", "answer", "error"])
       es.addEventListener(kind, (event: Event) => {
         const e = event as MessageEvent;
         if (!e.data) return;
@@ -382,8 +344,7 @@ function App() {
         if (seen.has(eid)) return;
         seen.add(eid);
         const p = JSON.parse(e.data);
-        if (kind === "delta") setDelta((x) => x + p.text);
-        else if (kind === "answer") {
+        if (kind === "answer") {
           setMessages((x) => [
             ...x.filter((m) => m.id !== p.message_id),
             {
@@ -400,13 +361,10 @@ function App() {
           es.close();
           refreshChats().catch(() => {});
         } else if (kind === "error") {
-          setNotice(p.label + " (" + p.code + ")");
+          setNotice(p.label);
           setRun("");
           es.close();
-        } else
-          setActivities((x) =>
-            [...x, { id: eid, label: p.label, success: p.success }].slice(-12),
-          );
+        }
       });
     es.onerror = () => {
       if (es.readyState !== EventSource.CLOSED)
@@ -678,7 +636,9 @@ function App() {
       const r = await api("/api/owner/documents/upload", "POST", f);
       setVersion(await api("/api/owner/versions/" + r.version_id));
       setOwnerDocs((await api("/api/owner/documents")).items);
-      setNotice("حُفظت نسخة خام. عاين المصدر قبل بدء Vision؛ لم تُنشر للطلاب.");
+      setNotice(
+        "حُفظت نسخة خام. عاين المصدر قبل بدء Vision؛ لم تُتفعيل للوكيل.",
+      );
     });
   }
   const isEmpty = messages.length === 0 && !run;
@@ -748,7 +708,7 @@ function App() {
           {
             icon: "book" as IconName,
             label: "افهم درسًا",
-            prompt: "اشرح لي درسًا من المكتبة خطوة بخطوة",
+            prompt: "اشرح لي درسًا خطوة بخطوة",
           },
           {
             icon: "write" as IconName,
@@ -757,8 +717,8 @@ function App() {
           },
           {
             icon: "practice" as IconName,
-            label: "تدرّب معي",
-            prompt: "أريد تدريبًا على مفهوم لم أتقنه",
+            label: "افهم قانونًا",
+            prompt: "اشرح لي قانونًا في الفيزياء بطريقة مبسطة",
           },
         ];
   if (recovery)
@@ -925,13 +885,8 @@ function App() {
             <span>محادثة جديدة</span>
             <kbd>جديد</kbd>
           </button>
-          {navItem("library", "المكتبة", "book", "▤ المكتبة المنشورة")}
-          {navItem("notes", "ملاحظاتي التعليمية", "note")}
-          {navItem(
-            "materials",
-            user.role === "student" ? "تدريبي الذاتي" : "مساحة إعداد الأستاذ",
-            "practice",
-          )}
+          {user.role !== "student" &&
+            navItem("materials", "مساحة إعداد الأستاذ", "practice")}
         </nav>
         <label className="chat-search">
           <Icon name="search" size={17} />
@@ -1030,6 +985,7 @@ function App() {
               <div className="account-heading">إعدادات مساحتك</div>
               <nav aria-label="إعدادات الحساب والتنقل">
                 {navItem("preferences", "تفضيلات وخصوصية", "settings")}
+                {navItem("notes", "ملاحظات مسار التعليمية", "note")}
                 {navItem("security", "أمان الحساب", "shield")}
                 {navItem("personal-usage", "استخدامي وحدودي", "chart")}
                 {user.role === "owner" && (
@@ -1048,7 +1004,6 @@ function App() {
                       "⚙ إعداد النماذج",
                     )}
                     {navItem("usage", "الاستخدام", "chart", "◷ الاستخدام")}
-                    {navItem("service-tokens", "وصول الوكلاء", "key")}
                     {navItem("accounts", "الحسابات والحدود", "users")}
                   </>
                 )}
@@ -1208,27 +1163,6 @@ function App() {
                           <Md text={m.content} />
                         )}
                       </div>
-                      {m.sources.length > 0 && (
-                        <div className="sources">
-                          <span>
-                            <Icon name="book" size={15} /> المصادر
-                          </span>
-                          {m.sources.map((src, i) => (
-                            <button
-                              key={i}
-                              onClick={() =>
-                                src.scope === "private"
-                                  ? privateSource(src)
-                                  : src.source_id?.includes(":part:")
-                                    ? readPart(src.source_id)
-                                    : readSource(src.node_id)
-                              }
-                            >
-                              {src.title} · ص <bdi>{src.pages.join("–")}</bdi>
-                            </button>
-                          ))}
-                        </div>
-                      )}
                       <div className="message-actions">
                         {m.role === "user" ? (
                           !run && (
@@ -1281,27 +1215,6 @@ function App() {
                       </div>
                     </article>
                   ))
-                )}
-                {activities.length > 0 && (
-                  <details className="activity" open={Boolean(run)}>
-                    <summary>
-                      <Icon name={run ? "settings" : "check"} size={16} />
-                      {run ? "نشاط الوكيل الفعلي" : "الأدوات المستخدمة"}
-                    </summary>
-                    {activities.map((a) => (
-                      <div
-                        key={a.id}
-                        className={a.success === false ? "error" : ""}
-                      >
-                        {a.success === true
-                          ? "✓ "
-                          : a.success === false
-                            ? "! "
-                            : "· "}
-                        {a.label}
-                      </div>
-                    ))}
-                  </details>
                 )}
                 {delta && (
                   <article className="message assistant streaming">
@@ -1436,112 +1349,6 @@ function App() {
               </div>
             )}
           </div>
-        )}
-        {view === "library" && (
-          <section className="page-content">
-            <h1>مصادر جاهزة للتعلّم</h1>
-            <p className="muted">
-              تظهر فقط النسخ التي راجعها المالك ونشرها. الدروس بهيكلها الأصلي،
-              والامتحانات والتمارين بحزمتها الكاملة.
-            </p>
-            <form
-              className="library-filters"
-              onSubmit={(e) => {
-                e.preventDefault();
-                action(async () => {
-                  const q = new URLSearchParams(
-                    Object.entries(filters).filter(([, v]) => v),
-                  );
-                  setDocs((await api("/api/library/documents?" + q)).items);
-                });
-              }}
-            >
-              <label>
-                نوع المصدر
-                <select
-                  value={filters.kind}
-                  onChange={(e) =>
-                    setFilters({ ...filters, kind: e.target.value })
-                  }
-                >
-                  <option value="">كل الأنواع</option>
-                  <option value="book">كتاب</option>
-                  <option value="exam">امتحان مع حلّه إن وجد</option>
-                  <option value="exercise_collection">
-                    سلسلة تمارين كاملة
-                  </option>
-                  <option value="reference">مرجع</option>
-                </select>
-              </label>
-              {[
-                ["subject", "تصفية المادة"],
-                ["track", "تصفية التخصص"],
-                ["year", "تصفية السنة"],
-                ["session", "تصفية الدورة"],
-              ].map(([k, label]) => (
-                <label key={k}>
-                  {label}
-                  <input
-                    value={(filters as any)[k]}
-                    onChange={(e) =>
-                      setFilters({ ...filters, [k]: e.target.value })
-                    }
-                  />
-                </label>
-              ))}
-              <button>تطبيق التصفية</button>
-            </form>
-            {!docs.length ? (
-              <div className="empty-state">
-                لا توجد مصادر منشورة بعد. يستطيع المالك رفع كتاب ومراجعته من
-                إدارة المحتوى.
-              </div>
-            ) : (
-              docs.map((d) => (
-                <div className="document-row" key={d.id}>
-                  <div>
-                    <h3>{d.title}</h3>
-                    <p className="muted">
-                      {d.subject} · {d.track} · {d.kind}{" "}
-                      {d.year && " · " + d.year}{" "}
-                      {d.metadata?.session && " · " + d.metadata.session}
-                    </p>
-                  </div>
-                  <button
-                    onClick={() =>
-                      action(async () => {
-                        const toc = await api(
-                          "/api/library/documents/" + d.id + "/toc",
-                        );
-                        if (["exam", "exercise_collection"].includes(d.kind)) {
-                          setSource(
-                            await api(
-                              "/api/library/nodes/" +
-                                encodeURIComponent(toc.items[0].id) +
-                                "/bundle",
-                            ),
-                          );
-                          return;
-                        }
-                        setSource({
-                          document: d,
-                          children: toc.items,
-                          content: "",
-                          assets: [],
-                        });
-                      })
-                    }
-                  >
-                    {d.kind === "exam"
-                      ? "افتح الامتحان وحلّه"
-                      : d.kind === "exercise_collection"
-                        ? "افتح سلسلة التمارين كاملة"
-                        : "استكشف الفهرس"}
-                  </button>
-                </div>
-              ))
-            )}
-          </section>
         )}
         {view === "models" && (
           <section className="page-content narrow">
@@ -1774,7 +1581,7 @@ function App() {
         {view === "service-tokens" && user.role === "owner" && (
           <ServiceTokens api={api} notify={setNotice} />
         )}
-        {view === "owner-library" && (
+        {view === "owner-library" && user.role === "owner" && (
           <section className="page-content">
             <h1>من المصدر إلى نسخة معتمدة</h1>
             <p className="muted">
@@ -2151,7 +1958,7 @@ function App() {
                       })
                     }
                   >
-                    نشر للطلاب
+                    تفعيل للوكيل
                   </button>
                 </div>
               </div>

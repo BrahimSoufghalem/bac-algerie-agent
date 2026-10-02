@@ -2,7 +2,7 @@ import { test, expect } from "@playwright/test";
 import path from "node:path";
 import { execFileSync } from "node:child_process";
 import { snapshot, assertNoOverflow, navigate } from "./helpers";
-test("whole exam + explicit matched solution ranges → publish → role-scoped sources and bundle tool", async ({
+test("whole exam + explicit matched solution ranges → publish → private bundle retrieval without student source access", async ({
   page,
   browser,
 }) => {
@@ -97,9 +97,9 @@ test("whole exam + explicit matched solution ranges → publish → role-scoped 
     .getByRole("button", { name: "اعتماد المراجعة", exact: true })
     .click();
   await expect(
-    page.getByRole("button", { name: "نشر للطلاب", exact: true }),
+    page.getByRole("button", { name: "تفعيل للوكيل", exact: true }),
   ).toBeEnabled();
-  await page.getByRole("button", { name: "نشر للطلاب", exact: true }).click();
+  await page.getByRole("button", { name: "تفعيل للوكيل", exact: true }).click();
   await expect(page.locator(".version-panel .status").first()).toContainText(
     "PUBLISHED",
   );
@@ -120,41 +120,13 @@ test("whole exam + explicit matched solution ranges → publish → role-scoped 
   await student
     .getByRole("button", { name: "إنشاء حساب", exact: true })
     .click();
-  await student.getByRole("button", { name: "▤ المكتبة المنشورة" }).click();
-  await student
-    .getByRole("combobox", { name: "نوع المصدر", exact: true })
-    .selectOption("exam");
-  await student.getByLabel("تصفية السنة").fill("2025");
-  await student.getByRole("button", { name: "تطبيق التصفية" }).click();
-  await student.getByRole("button", { name: "افتح الامتحان وحلّه" }).click();
-  await expect(student.getByRole("dialog")).toBeVisible();
+  await expect(student.locator(".workspace")).toBeVisible();
   await expect(
-    student.getByText("عرض الحل المرفق — مطابق بتأكيد المالك", { exact: true }),
-  ).toBeVisible();
-  await expect(student.locator(".solution-view .muted")).not.toBeVisible();
-  await snapshot(student, "exam-statement-desktop");
-  await student
-    .getByText("عرض الحل المرفق — مطابق بتأكيد المالك", { exact: true })
-    .click();
-  await expect(student.locator(".solution-view .muted")).toBeVisible();
-  await expect(student.locator(".source-link")).toHaveCount(2);
-  const links = await student
-    .locator(".source-link")
-    .evaluateAll((x) => x.map((a) => a.getAttribute("href")));
-  expect(links[0]).not.toBe(links[1]);
-  for (const link of links) {
-    expect(
-      (await student.request.get(link!)).headers()["content-type"],
-    ).toContain("image/png");
-  }
-  await student.setViewportSize({ width: 390, height: 844 });
-  await assertNoOverflow(student);
-  await snapshot(student, "exam-solution-mobile");
-  await student.getByRole("button", { name: "إغلاق المصدر" }).click();
-  await student.getByRole("button", { name: "فتح القائمة" }).click();
-  await student
-    .getByRole("button", { name: "مسار · المحادثة", exact: true })
-    .click();
+    student.getByRole("button", { name: "المكتبة", exact: true }),
+  ).toHaveCount(0);
+  expect((await student.request.get("/api/library/documents")).status()).toBe(
+    404,
+  );
   await student
     .getByRole("textbox", { name: "رسالتك" })
     .fill("استدع الامتحان كاملًا مع حله المطابق عن الحرارة.");
@@ -162,7 +134,8 @@ test("whole exam + explicit matched solution ranges → publish → role-scoped 
   await expect(
     student.getByRole("heading", { name: "الحزمة الكاملة من المصدر" }),
   ).toBeVisible({ timeout: 20000 });
-  await expect(student.locator(".sources button")).toHaveCount(2);
+  await expect(student.locator(".sources button")).toHaveCount(0);
+  await expect(student.locator(".message.assistant img")).toHaveCount(0);
   await snapshot(student, "exam-agent-mobile");
   expect(errors).toEqual([]);
   await context.close();
@@ -208,9 +181,9 @@ test("exercise collection stays whole and missing solution is explicit", async (
     .getByRole("button", { name: "اعتماد المراجعة", exact: true })
     .click();
   await expect(
-    page.getByRole("button", { name: "نشر للطلاب", exact: true }),
+    page.getByRole("button", { name: "تفعيل للوكيل", exact: true }),
   ).toBeEnabled();
-  await page.getByRole("button", { name: "نشر للطلاب", exact: true }).click();
+  await page.getByRole("button", { name: "تفعيل للوكيل", exact: true }).click();
   await expect(page.locator(".version-panel .status").first()).toContainText(
     "PUBLISHED",
   );
@@ -230,29 +203,14 @@ test("exercise collection stays whole and missing solution is explicit", async (
   await student
     .getByRole("button", { name: "إنشاء حساب", exact: true })
     .click();
-  await student.getByRole("button", { name: "فتح القائمة" }).click();
-  await student.getByRole("button", { name: "▤ المكتبة المنشورة" }).click();
-  await student
-    .getByRole("combobox", { name: "نوع المصدر", exact: true })
-    .selectOption("exercise_collection");
-  await student.getByRole("button", { name: "تطبيق التصفية" }).click();
-  await snapshot(student, "library-filters-mobile");
-  await student
-    .getByRole("button", { name: "افتح سلسلة التمارين كاملة" })
-    .click();
+  await expect(student.locator(".workspace")).toBeVisible();
   await expect(
-    student.getByText("الحل غير متاح لهذا المصدر. لا يتم اختراع حل رسمي.", {
-      exact: true,
-    }),
-  ).toBeVisible();
-  await expect(student.locator(".node-row")).toHaveCount(0);
+    student.getByRole("button", { name: "المكتبة", exact: true }),
+  ).toHaveCount(0);
+  expect((await student.request.get("/api/library/documents")).status()).toBe(
+    404,
+  );
   await assertNoOverflow(student);
-  await snapshot(student, "collection-missing-solution-mobile");
-  await student.getByRole("button", { name: "إغلاق المصدر" }).click();
-  await student.getByRole("button", { name: "فتح القائمة" }).click();
-  await student
-    .getByRole("button", { name: "مسار · المحادثة", exact: true })
-    .click();
   await student
     .getByRole("textbox", { name: "رسالتك" })
     .fill("استدع سلسلة الحرارة كاملة دون اختراع حل رسمي.");
@@ -260,6 +218,8 @@ test("exercise collection stays whole and missing solution is explicit", async (
   await expect(
     student.getByRole("heading", { name: "الحزمة الكاملة من المصدر" }),
   ).toBeVisible({ timeout: 20000 });
-  await expect(student.locator(".sources button")).toHaveCount(1);
+  await expect(student.locator(".sources button")).toHaveCount(0);
+  await expect(student.locator(".message.assistant img")).toHaveCount(0);
+  await snapshot(student, "private-collection-chat-mobile");
   await ctx.close();
 });

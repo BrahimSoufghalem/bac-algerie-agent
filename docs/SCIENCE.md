@@ -57,14 +57,12 @@ inputs: `{"v":3,"a":2}`. عند t=2 تكون distance=10. numeric subset يست�
 
 السجل الحالي: kg/g/mg، m/cm/mm/km، s/min/h، A، K/delta_degC، mol، cd، rad/dimensionless، N/J/W، Pa/kPa/MPa/bar/atm، L/mL، Hz/C/V/ohm/eV، وقوى/ضرب/قسمة مركبة. unités أخرى غير معروفة ترفض بدل invent conversion. `degC` أو `°C` مستقلان للتحويل المطلق (+273.15)؛ درجة الفرق `delta_degC`. لا degC داخل معادلة مركبة؛ حوّل absolute إلى K أولًا. تحويل قيمة temperature لا يثبت معقوليتها الفيزيائية. لا تحويل العملات أو الوحدات غير القياسية/كل prefixes تلقائيًا.
 
-## أدلة محفوظة وواجهة آمنة
+## أدلة داخلية وجواب عام مُنقَّى
 
-- جدول `scientific_results` migration003 يحفظ user/chat/run، tool، inputs، output، SHA256 ووقت التنفيذ. هو trace علمي خاص بالمحادثة، لا مصدر كتاب رسمي ولا cache provider.
-- `GET /api/science/results/{id}` يتطلب صاحب المحادثة؛ طالب آخر أو مستخدم غير مصادق لا يقرأه. SHA256 فحص اتساق للبيانات، ليس توقيعًا ضد تعديل DB من المدير. حذف المحادثة يحذف الأدلة التابعة.
-- `verification` و`graph` في render_answer يقبلان **result_id فقط** من التشغيل الحالي. `result` payload من النموذج مرفوض؛ server يحقن النتيجة الأصلية. equations تدعم result_ids محملة حقيقية. إعادة فتح المتصفح تعرض blocks المخزنة نفسها؛ run جديد يعيد الحساب عند الحاجة ولا يحصل على badge من ID قديم.
-- الرسوم safe JSON→React SVG، لا arbitrary SVG/HTML/JS أو external URLs. تفاعلية بإشارة مؤشر أو slider keyboard، values table، labels/unit text وorigin/caveat. المخطط الهندسي لا يدّعي تصوير pixel للمصدر. Domain غير مدعوم للرسم يُرفض بدل توصيل منحنى وهمي عبره؛ sampling لا يثبت extrema/continuity.
-- BookForge/vendor ومصادر الصور الأصلية لم تتغير. image blocks السابقة تظل من published assets فقط؛ graph ليس بديلًا للصورة الأصلية.
+السجل scientific_results يحفظ المدخلات والنتائج والحدود داخل الخادم فقط. `/api/science/*` غير متاح للمستخدمين، وverification blocks والأسماء والمدخلات ومعرّفات النتائج لا تُعرض في المحادثة أو التصدير أو SSE، حتى للمحادثات القديمة. يبقى التحذير التعليمي العام عند نتيجة فاشلة/غير محسومة دون تفاصيل أداة.
+
+graph blocks تقبل result_id حقيقيًا من التشغيل الحالي، ثم يعرض الإسقاط العام chart/diagram/origin فقط. الرسم المحسوب الجديد تفاعلي عبر SVG آمن؛ ليس صورة الكتاب أو تصديقًا علميًا شاملًا. لا image blocks في الجواب؛ فحص pixels الأصلية مسموح للوكيل فقط. لا JSON/HTML/JS حر من النموذج.
 
 ## ما لا يزال غير مثبت
 
-الفحوص تختبر المدخلات المحددة؛ لا ضمان أن النموذج فهم السؤال، لم يحذف شرطًا أو قدّم تفسيرًا علميًا صحيحًا. Multivariate/domain proofs عامة، real-model lesson evaluations، الوحدات غير المدعومة، load/DoS/security audit الكامل، deployment/backup وscoped service tokens ليست منجزات تلقائية. لا native arbitrary code، لا مخططات 3D/chemistry renderer. لا طلبات نموذج مدفوعة جديدة في تنفيذ هذه المرحلة. المراجعة البصرية الجديدة معلقة بسبب عطل أداة view_image، رغم التقاط صور حقيقية ونجاح functional E2E.
+الفحوص تخص المدخلات المحددة؛ لا ضمان لفهم السؤال أو صحة التفسير بأكمله. الوحدات غير المدعومة، التدقيق الأمني المستقل، التحميل والنشر الفعلي والجودة التعليمية والمنهج الرسمي تحتاج قبولًا إضافيًا. راجع [اختبارات المحادثة والخصوصية الحالية](acceptance/private-autonomous-chat.md)؛ تقارير المراحل الأقدم تاريخية وليست سياسة العرض الحالية.

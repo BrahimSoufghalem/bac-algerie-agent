@@ -1,3 +1,5 @@
+> سجل مراحل تاريخي؛ سياسة العرض والوصول والملاحظات وحدود الجولات تغيّرت. راجع [التقرير الحالي](acceptance/private-autonomous-chat.md) وREADME أولًا.
+
 # قرارات المرحلة الأولى
 
 1. **Modular monolith** Python/FastAPI + React/TypeScript. خدمات API وworker منفصلة من نفس مصدر الكود؛ أبسط من microservices في هذه المرحلة.

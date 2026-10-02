@@ -1,3 +1,4 @@
+from fastapi import HTTPException
 import hashlib, json, os, time, zipfile
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import replace
@@ -40,103 +41,27 @@ def mail_token(s, email, purpose):
 
 
 @pytest.mark.asyncio
-async def test_agent_read_scope_whole_lesson_parts_assets_and_no_private_access(
+async def test_external_source_credentials_retired_even_for_published_documents(
     services,
 ):
     lib, r, owner = seeded(services)
     await process_and_publish(services, lib, r, owner)
     u = services.db.one("SELECT * FROM users WHERE id=?", (owner,))
-    cred = issue(services, u, "Agent", [r["document_id"]], 1)
-    c = TestClient(create_app(services))
-    h = {"Authorization": "Bearer " + cred["token"]}
-    assert (
-        services.db.one(
-            "SELECT token_hash FROM service_tokens WHERE id=?", (cred["id"],)
-        )["token_hash"]
-        == hashlib.sha256(cred["token"].encode()).hexdigest()
-    )
-    assert cred["token"] not in json.dumps(
-        services.db.rows("SELECT * FROM service_tokens")
-    )
-    lessons = c.get(
-        f"/api/agent/books/{r['document_id']}/toc?kind=lesson", headers=h
-    ).json()["items"]
-    lid = lessons[0]["id"]
-    lesson = c.get("/api/agent/get_lesson/" + lid, headers=h).json()
-    assert lesson["tool"] == "get_lesson" and "الحرارة تنتقل" in lesson["content"]
-    assert lesson["sources"][0]["version_id"] == r["version_id"]
-    assert lesson["assets"][0]["asset_url"].startswith("/api/agent/assets/")
-    assert "/api/library/assets/" not in lesson["content"]
-    asset = lesson["assets"][0]["id"]
-    assert c.get("/api/agent/assets/" + asset, headers=h).content.startswith(b"\x89PNG")
-    assert (
-        c.get("/api/agent/assets/" + asset + "/metadata", headers=h).status_code == 200
-    )
-    assert (
-        c.get(
-            f"/api/agent/books/{r['document_id']}/pages/1/json", headers=h
-        ).status_code
-        == 200
-    )
-    parts = c.get("/api/agent/nodes/" + lid + "/parts", headers=h).json()["items"]
-    assert c.get("/api/agent/parts/" + parts[0]["id"], headers=h).status_code == 200
-    assert c.get("/api/agent/search?q=الحرارة", headers=h).json()["items"]
-    for path in (
-        "/api/auth/me",
-        "/api/conversations",
-        "/api/owner/models",
-        "/api/library/documents",
-        "/api/notes",
-        "/api/privacy/export",
-        "/api/private/missing/original",
-    ):
-        assert c.get(path, headers=h).status_code == 403
-    assert (
-        c.post(
-            "/api/auth/request-reset", json={"email": "a@example.com"}, headers=h
-        ).status_code
-        == 403
-    )
-    assert c.post("/api/agent/books", headers=h).status_code == 403
-    # Scope can't read another publication even if its id is guessed; search before top-k.
-    second = lib.upload(
-        services.store.path("test.pdf"),
-        "other.pdf",
-        {
-            "title": "Other heat book",
-            "kind": "book",
-            "subject": "physics",
-            "track": "science",
-        },
-        owner,
-    )
-    await process_and_publish(services, lib, second, owner)
-    sid = lib.nodes(second["document_id"], "lesson")[0]["id"]
-    assert c.get("/api/agent/get_lesson/" + sid, headers=h).status_code == 404
-    hits = c.get("/api/agent/search?q=الحرارة", headers=h).json()["items"]
-    assert all(x["document_id"] == r["document_id"] for x in hits)
-    assert c.get("/api/agent/books/ungranted", headers=h).status_code == 404
-    services.db.execute(
-        "UPDATE documents SET status='ARCHIVED' WHERE id=?", (r["document_id"],)
-    )
-    assert c.get("/api/agent/get_lesson/" + lid, headers=h).status_code == 404
-    assert c.get("/api/agent/search?q=الحرارة", headers=h).json()["items"] == []
+    with pytest.raises(HTTPException) as exc:
+        issue(services, u, "Agent", [r["document_id"]], 1)
+    assert exc.value.status_code == 403
+    assert not services.db.rows("SELECT * FROM service_tokens")
 
 
-def test_service_token_wrong_scope_expiry_revoke_role_and_durable_rate(services):
+def test_legacy_service_token_never_bypasses_source_privacy(services):
     u = account(services, "owner")
-    # Nonexistent/unpublished scope cannot issue.
-    with pytest.raises(Exception):
-        issue(services, u, "X", [], 1)
-    with pytest.raises(Exception):
-        issue(services, u, "X", ["missing"], 1)
     now = time.time()
     services.db.execute(
         "INSERT INTO service_tokens(id,label,token_hash,creator_id,documents,expires_at,created_at) VALUES(?,?,?,?,?,?,?)",
         (
-            "t",
-            "test",
-            hashlib.sha256(b"mbac_test").hexdigest(),
+            "legacy",
+            "old",
+            hashlib.sha256(b"mbac_old").hexdigest(),
             u["id"],
             "[]",
             now + 600,
@@ -144,20 +69,15 @@ def test_service_token_wrong_scope_expiry_revoke_role_and_durable_rate(services)
         ),
     )
     c = TestClient(create_app(services))
-    h = {"Authorization": "Bearer mbac_test"}
-    for _ in range(60):
-        assert c.get("/api/agent/capabilities", headers=h).status_code == 200
-    assert c.get("/api/agent/capabilities", headers=h).status_code == 429
-    services.db.execute("UPDATE service_tokens SET expires_at=0 WHERE id='t'")
-    assert c.get("/api/agent/capabilities", headers=h).status_code == 401
-    services.db.execute(
-        "UPDATE service_tokens SET expires_at=?,revoked_at=? WHERE id='t'",
-        (now + 600, now),
-    )
-    assert c.get("/api/agent/capabilities", headers=h).status_code == 401
-    services.db.execute("UPDATE service_tokens SET revoked_at=NULL WHERE id='t'")
-    services.db.execute("UPDATE users SET role='student' WHERE id=?", (u["id"],))
-    assert c.get("/api/agent/capabilities", headers=h).status_code == 401
+    h = {"Authorization": "Bearer mbac_old"}
+    for path in [
+        "/api/agent/capabilities",
+        "/api/agent/books",
+        "/api/agent/search?q=الحرارة",
+        "/api/auth/me",
+        "/api/notes",
+    ]:
+        assert c.get(path, headers=h).status_code == 403
 
 
 def test_password_change_revokes_other_sessions_tokens_and_queued_runs(services):

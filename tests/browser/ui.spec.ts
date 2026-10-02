@@ -206,7 +206,8 @@ test("real answer controls: copy, edit, smart scrolling, retry, source-safe scie
   await expect(
     page.getByRole("heading", { name: "تفسير بعد الرسم" }),
   ).toBeVisible({ timeout: 30000 });
-  await expect(page.locator(".verification.passed")).toHaveCount(1);
+  await expect(page.locator(".verification")).toHaveCount(0);
+  await expect(page.locator(".activity")).toHaveCount(0);
   await page
     .getByRole("button", { name: "نسخ الرد", exact: true })
     .last()

@@ -22,12 +22,8 @@ for (const mode of ["line", "bar", "scatter"])
     await expect(
       page.getByRole("heading", { name: "تفسير بعد الرسم" }),
     ).toBeVisible({ timeout: 30000 });
-    await expect(page.locator(".verification.failed")).toContainText(
-      "لم ينجح الفحص",
-    );
-    await expect(page.locator(".verification.passed")).toContainText(
-      "نجح الفحص المحدد",
-    );
+    await expect(page.locator(".verification")).toHaveCount(0);
+    await expect(page.locator(".activity")).toHaveCount(0);
     await expect(
       page.locator(".scientific-chart:not(.scientific-diagram) svg"),
     ).toBeVisible();
@@ -69,20 +65,16 @@ for (const mode of ["line", "bar", "scatter"])
     const messages = await (
       await page.request.get("/api/conversations/" + chat.id)
     ).json();
-    const verification = messages.messages
-      .at(-1)
-      .blocks.find((x: any) => x.type === "verification");
-    const evidence = await (
-      await page.request.get("/api/science/results/" + verification.result_id)
-    ).json();
-    expect(evidence.output.status).toBe("failed");
+    expect(messages.messages.at(-1).sources).toEqual([]);
+    expect(JSON.stringify(messages)).not.toContain('"tool":');
+    expect(
+      (await page.request.get("/api/science/results/known")).status(),
+    ).toBe(404);
     await page.reload();
     await expect(
       page.locator(".scientific-chart:not(.scientific-diagram) svg"),
     ).toBeVisible();
-    await expect(page.locator(".verification.failed")).toContainText(
-      "لم ينجح الفحص",
-    );
+    await expect(page.locator(".verification")).toHaveCount(0);
     await page.setViewportSize({ width: 390, height: 844 });
     await assertNoOverflow(page);
     await page.getByRole("slider", { name: "النقطة المعروضة" }).focus();

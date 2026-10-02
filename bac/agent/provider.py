@@ -13,6 +13,11 @@ class ChatProvider(ABC):
     async def stream(self, messages, tools):
         yield {}
 
+    async def final_stream(self, messages, tools):
+        """Compatibility default: adapters may force the advertised final tool."""
+        async for item in self.stream(messages, tools):
+            yield item
+
 
 class OpenAIChat(ChatProvider):
     def __init__(self, config, key, allow_private=False, transport=None):
@@ -22,6 +27,18 @@ class OpenAIChat(ChatProvider):
         self.transport = transport
 
     async def stream(self, messages, tools):
+        async for item in self._stream(messages, tools):
+            yield item
+
+    async def final_stream(self, messages, tools):
+        async for item in self._stream(
+            messages,
+            tools,
+            tool_choice={"type": "function", "function": {"name": "render_answer"}},
+        ):
+            yield item
+
+    async def _stream(self, messages, tools, tool_choice=None):
         cfg = self.config
         if self.transport is None:
             await validate_base_url(cfg["base_url"], self.allow_private)
@@ -37,6 +54,8 @@ class OpenAIChat(ChatProvider):
             "stream": True,
             "stream_options": {"include_usage": True},
         }
+        if tool_choice is not None:
+            body["tool_choice"] = tool_choice
         content = ""
         calls = {}
         finish = "stop"

@@ -63,41 +63,21 @@ test("recovery: unconfigured mail is explicit; link kept out of URL after loadin
   await page.getByRole("button", { name: "تأكيد التحديث" }).click();
   await expect(page.getByRole("status")).toContainText("Invalid or expired");
 });
-test("owner: scoped read credential works, private APIs denied, then immediate revocation", async ({
+test("owner: no new external source credentials or credential navigation", async ({
   page,
 }) => {
   await signIn(page, "owner@test.invalid", "Test-password-only-1");
-  await navigate(page, "وصول الوكلاء");
-  await page.getByLabel("اسم الوكيل").fill("Browser test reader");
-  const checks = page.locator("fieldset input[type=checkbox]");
-  await expect(checks.first()).toBeVisible();
-  await checks.first().check();
-  await page.getByRole("button", { name: "إنشاء رمز قراءة" }).click();
-  const field = page.getByLabel("رمز الخدمة الجديد");
-  await expect(field).toBeVisible();
-  const token = await field.inputValue();
-  expect(token.startsWith("mbac_")).toBeTruthy();
-  // Never capture the one-time secret in an HTML/PNG artifact.
-  await page.getByRole("button", { name: "إخفاء الرمز", exact: true }).click();
-  await expect(field).not.toBeVisible();
-  const h = { Authorization: "Bearer " + token };
-  const books = await page.request.get("/api/agent/books", { headers: h });
-  expect(books.status()).toBe(200);
-  expect((await books.json()).items.length).toBe(1);
-  expect(
-    (await page.request.get("/api/conversations", { headers: h })).status(),
-  ).toBe(403);
-  await assertNoOverflow(page);
-  await snapshot(page, "service-tokens-desktop");
-  await page.setViewportSize({ width: 390, height: 844 });
-  await assertNoOverflow(page);
-  await snapshot(page, "service-tokens-mobile");
   await page
-    .getByRole("button", { name: "إلغاء الرمز", exact: true })
-    .last()
+    .getByRole("button", { name: "إعدادات الحساب", exact: true })
     .click();
-  await expect(page.getByText("ملغى · 1 كتاب")).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "وصول الوكلاء", exact: true }),
+  ).toHaveCount(0);
   expect(
-    (await page.request.get("/api/agent/books", { headers: h })).status(),
-  ).toBe(401);
+    (
+      await page.request.get("/api/agent/books", {
+        headers: { Authorization: "Bearer mbac_legacy" },
+      })
+    ).status(),
+  ).toBe(403);
 });

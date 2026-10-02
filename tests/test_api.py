@@ -23,7 +23,7 @@ def test_auth_rbac_and_private_conversations(services):
     hb = login(b, "b@example.com")
     assert b.get("/api/conversations/" + chat).status_code == 404
     assert b.delete("/api/conversations/" + chat, headers=hb).status_code == 404
-    assert b.get("/api/library/documents").json()["items"] == []
+    assert b.get("/api/library/documents").status_code == 404
     assert (
         a.patch(
             "/api/conversations/" + chat, json={"title": "عنوان جديد"}, headers=h
