@@ -83,6 +83,7 @@ class Plot(Strict):
 class PlotFunction(Strict):
     expression: str = Field(min_length=1, max_length=500)
     variable: str = Field(default="x", min_length=1, max_length=32)
+    values: dict[str, str] = Field(default_factory=dict, max_length=20)
     lower: float = Field(allow_inf_nan=False, ge=-1e6, le=1e6)
     upper: float = Field(allow_inf_nan=False, ge=-1e6, le=1e6)
     samples: int = Field(default=101, ge=21, le=201)

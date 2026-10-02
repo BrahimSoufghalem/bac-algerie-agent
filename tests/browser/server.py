@@ -13,6 +13,10 @@ from bac.core.db import js, uid
 from bac.agent.engine import AgentEngine
 from bac.vendor.bookforge.models.page import PageDocument
 from tests.fixture_book import golden_page
+from tests.grounding_fixture import publish_reference
+from bac.agent.provider import ModelError
+
+fixture_nodes = {}
 
 
 class FixtureVision:
@@ -135,6 +139,10 @@ app = create_app(s)
 
 @asynccontextmanager
 async def lifespan(app):
+    extraction_config = s.db.one("SELECT config_id FROM active_models WHERE slot='extraction'")["config_id"]
+    fixture_nodes["arithmetic"] = await publish_reference(s, "arithmetic")
+    fixture_nodes["projectile"] = await publish_reference(s, "projectile")
+    s.db.execute("UPDATE active_models SET config_id=? WHERE slot='extraction'", (extraction_config,))
     engine = AgentEngine(s)
     tasks = [
         asyncio.create_task(engine.run()),
@@ -243,6 +251,7 @@ class FixtureScience:
                 (
                     "render_answer",
                     {
+                        "response_kind": "calculation",
                         "blocks": [
                             {
                                 "type": "text",
@@ -314,10 +323,13 @@ class FixtureLearning:
             self.question=next(m['content'] for m in reversed(messages) if m['role']=='user' and isinstance(m['content'],str))
         if 'مهمة تعليمية' in self.question:
             if self.step==1:
+                name,args='get_section',{'node_id':fixture_nodes['arithmetic']}
+            elif self.step==2:
+                self.source=json.loads(messages[-1]['content'])['sources'][0]
                 name='save_teaching_material'
                 kind=next((k for k in ('lesson_plan','exercise_set','exam','grading','reference_review') if k in self.question or 'سلم' in self.question and k=='exam'),'exam')
-                args={'kind':kind,'title':'مسودة اختبار محلي صريح','answer':{'blocks':[{'type':'text','text':'## سؤال مولّد تجريبي\n\nاحسب 2 + 3. هذا اختبار أدوات محلي، وليس حلًا رسميًا.'}]},'rubric':[{'title':'الناتج','maximum':2,'awarded':2 if kind=='grading' else None}],'total':2,'solution':'5؛ حل مولّد للاختبار فقط.'}
-            else:name,args='render_answer',{'blocks':[{'type':'text','text':'## حُفظت المسودة الخاصة\n\nمسودة مولّدة غير رسمية، للاختبار المحلي دون مزوّد خارجي.'}]}
+                args={'kind':kind,'title':'مسودة اختبار محلي صريح','answer':{'source_ids':[self.source.get('source_id',self.source['node_id'])],'blocks':[{'type':'text','text':'## سؤال مولّد تجريبي\n\nاحسب 2 + 3. هذا اختبار أدوات محلي، وليس حلًا رسميًا.'}]},'rubric':[{'title':'الناتج','maximum':2,'awarded':2 if kind=='grading' else None}],'total':2,'solution':'5؛ حل مولّد للاختبار فقط.'}
+            else:name,args='render_answer',{'source_ids':[self.source.get('source_id',self.source['node_id'])],'blocks':[{'type':'text','text':'## حُفظت المسودة الخاصة\n\nمسودة مولّدة غير رسمية، للاختبار المحلي دون مزوّد خارجي.'}]}
         elif self.step==1:name,args='list_private_uploads',{}
         elif self.step==2:
             files=json.loads(messages[-1]['content'])['items'];self.file=files[0]['id'];name,args='read_private_page',{'upload_id':self.file,'page':1}
@@ -336,9 +348,32 @@ class Phase4RoutedFixture:
     async def stream(self,messages,tools):
         if not self.delegate:
             question=next(m['content'] for m in reversed(messages) if m['role']=='user' and isinstance(m['content'],str))
-            self.delegate=FixtureLearning() if 'مهمة تعليمية' in question or 'ملف خاص' in question else RoutedFixture()
+            self.delegate=RetryFixture() if 'اختبار مرجع ومحاولات' in question else FixtureLearning() if 'مهمة تعليمية' in question or 'ملف خاص' in question else RoutedFixture()
         async for item in self.delegate.stream(messages,tools):yield item
 s.chat_factory=lambda cfg,key:Phase4RoutedFixture()
+
+
+class RetryFixture:
+    """No-network failure after read, retry via restored source, then corrected plot."""
+    def __init__(self): self.step=0; self.question=""
+    async def stream(self,messages,tools):
+        self.step+=1
+        if self.step==1:self.question=next(m["content"] for m in reversed(messages) if m["role"]=="user" and isinstance(m["content"],str))
+        failed=s.db.one("SELECT count(*) n FROM agent_runs r JOIN messages m ON m.id=r.message_id WHERE r.status='FAILED' AND m.content LIKE '%اختبار مرجع ومحاولات%'")["n"]
+        node=fixture_nodes["projectile"]
+        if not failed:
+            if self.step==2:raise ModelError("TEST_FAILURE_AFTER_READ")
+            name,args="get_section",{"node_id":node}
+        elif "رسم" in self.question:
+            if self.step==1:name,args="plot_function",{"expression":"v0y-g*t","title":"invalid"}
+            elif self.step==2:
+                assert "issues" in json.loads(messages[-1]["content"])
+                name,args="plot_function",{"expression":"v0y-g*t","variable":"t","values":{"v0y":"10","g":"9.8"},"lower":0,"upper":2,"samples":21,"title":"مثال توضيحي","x_label":"t (s)","y_label":"vy (m/s)"}
+            else:
+                result=json.loads(messages[-1]["content"])
+                name,args="render_answer",{"source_ids":[node],"blocks":[{"type":"text","text":"## رسم بعد التصحيح\n\nمثال توضيحي، لا صورة من المصدر."},{"type":"graph","result_id":result["result_id"]}]}
+        else:name,args="render_answer",{"source_ids":[node],"blocks":[{"type":"text","text":"## رد بعد إعادة المحاولة\n\nالثقالة تغيّر المركبة الشاقولية، بينما تبقى السرعة الأفقية ثابتة إذا أهملنا مقاومة الهواء."}]}
+        yield {"type":"result","message":{"role":"assistant","content":None,"tool_calls":[{"id":f"retry{self.step}","type":"function","function":{"name":name,"arguments":js(args)}}]}}
 for name,role in [('learning','student'),('teacher','teacher'),('practice','student'),('work-ui','teacher')]:
     email=name+'@test.invalid'
     if not s.db.one('SELECT 1 FROM users WHERE email=?',(email,)):create_user(s.db,email,'Test-learning-password-1','حساب '+name,role)

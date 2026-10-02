@@ -38,10 +38,10 @@ PUBLIC_EVENTS = {
     "tool_end",
     "answer",
     "error",
+    "source_reloaded",
+    "answer_rejected",
 }
-EVENT_SQL = (
-    "('queued','model_start','finalizing','tool_start','tool_end','answer','error')"
-)
+EVENT_SQL = "('queued','model_start','finalizing','tool_start','tool_end','answer','error','source_reloaded','answer_rejected')"
 TERMINAL = {"COMPLETED", "FAILED", "CANCELLED", "INTERRUPTED"}
 
 
@@ -85,6 +85,12 @@ class Activity:
         elif kind == "finalizing":
             self.settle_phase()
             self.phase = self.add_item(id, "prepare", "صياغة الرد")
+        elif kind == "source_reloaded":
+            self.add_item(id, "review", "مراجعة المعلومات السابقة", "done")
+        elif kind == "answer_rejected":
+            if self.phase:
+                self.phase["state"] = "unavailable"
+            self.add_item(id, "check", "مراجعة جاهزية الرد", "unavailable")
         elif kind == "tool_start":
             self.settle_phase()
             name = p.get("name", "") if isinstance(p.get("name", ""), str) else ""
@@ -156,6 +162,7 @@ def attach_activity(db, chat, user_id, messages):
     events = defaultdict(list)
     for row in rows:
         events[row["run_id"]].append(row)
+    latest = {run["message_id"]: run["id"] for run in runs}
     for run in runs:
         projection = Activity(run["id"])
         answer_id = None
@@ -168,8 +175,11 @@ def attach_activity(db, chat, user_id, messages):
                     pass
         if answer_id in by_id and by_id[answer_id]["role"] == "assistant":
             by_id[answer_id]["activity"] = projection.snapshot(run["status"])
-        elif run["message_id"] in by_id and run["status"] != "COMPLETED":
-            by_id[run["message_id"]]["unanswered_activity"] = projection.snapshot(
-                run["status"]
-            )
+        elif run["message_id"] in by_id:
+            question = by_id[run["message_id"]]
+            summary = projection.snapshot(run["status"])
+            if run["id"] != latest[run["message_id"]]:
+                question.setdefault("previous_activities", []).append(summary)
+            elif run["status"] != "COMPLETED":
+                question["unanswered_activity"] = summary
     return messages

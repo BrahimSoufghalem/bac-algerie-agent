@@ -13,6 +13,7 @@ from bac.learning.contracts import AgentNote, NoteId, SourceImage, Material, Pri
 from bac.core.presentation import INTERNAL, IMAGE, SourceTextGuard
 from io import BytesIO
 from PIL import Image
+from bac.agent.grounding import require_grounding
 
 
 class EmptyArgs(Strict):
@@ -63,6 +64,9 @@ class Tools:
         self.pending_private = None
         self.pending_source = None
         self.private_assets = {}
+        self.question = ""
+        self.study_context = ""
+        self.delivered_sources = set()
 
     def definitions(self):
         entries = [
@@ -118,7 +122,7 @@ class Tools:
             ),
             (
                 "render_answer",
-                "Finish with your own educational explanation. Never expose private reference files, scans, filenames, IDs, URLs, verbatim sections or tool names/traces. No image blocks. Internal source_ids may record read evidence but are never shown to the user. Keep calculation checks internal; state genuine limitations without tool jargon. For generated graph blocks use result_id only.",
+                "Finish the answer. response_kind=teaching REQUIRES relevant source_ids actually read in this run (restored context counts; search/TOC does not). Never teach from model memory without a read reference. calculation requires real computed results and cannot bypass lesson grounding. conversation is only a short greeting/thanks; clarification asks for missing information in one short text block; refusal is a short non-teaching refusal. Never expose private files/scans/titles/IDs/URLs/source passages or tool traces. No image blocks. For generated graph blocks use actual result_id only.",
                 PresentedAnswer,
             ),
             (
@@ -511,6 +515,8 @@ class Tools:
                 self.private.row(self.user, source["node_id"], self.chat)
             else:
                 self.library._node(source["node_id"])
+        if self.run_id:
+            require_grounding(answer, self)
         blocks = []
         for block in answer.blocks:
             if block.type in ("verification", "graph"):

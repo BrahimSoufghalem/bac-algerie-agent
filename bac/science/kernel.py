@@ -224,11 +224,24 @@ def plot_function(p):
     expr = parser.parse(p["expression"])
     identifier(p["variable"])
     var = parser.symbols.get(p["variable"], sp.Symbol(p["variable"], real=True))
+    parameters = values_map(parser, p.get("values", {}))
+    if var in parameters:
+        raise ValueError("Do not bind the plotting variable in values")
+    denominators = [
+        factor.base.subs(parameters)
+        for factor in expr.atoms(sp.Pow)
+        if factor.exp.is_number and factor.exp.is_negative
+    ]
+    if parameters:
+        expr = expr.subs(parameters)
     if expr.free_symbols - {var}:
         raise ValueError(
-            "Function plot needs one variable; supply constants in expression"
+            "Function plot needs one variable; supply each other constant in values as a numeric expression string"
         )
     domain = domains(expr, var).intersect(sp.Interval(p["lower"], p["upper"]))
+    # Substitution must not erase a zero-denominator exclusion by simplification.
+    for denominator in denominators:
+        domain -= sp.solveset(denominator, var, domain=sp.S.Reals)
     intervals = list(domain.args) if isinstance(domain, sp.Union) else [domain]
     if (
         not intervals

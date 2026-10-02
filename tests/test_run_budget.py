@@ -21,8 +21,12 @@ def call(name, args, i):
     }
 
 
-def answer(text="شرح عام دون مصدر منشور."):
-    return {"blocks": [{"type": "text", "text": text}], "source_ids": []}
+def answer(text="أي جزء من الفقرة تريد أن نراجعه؟"):
+    return {
+        "blocks": [{"type": "text", "text": text}],
+        "source_ids": [],
+        "response_kind": "clarification",
+    }
 
 
 class ExhaustWorkingRounds:
@@ -84,9 +88,7 @@ async def test_empty_search_variants_stop_without_student_tool_instructions(serv
             else:
                 msg = call(
                     "render_answer",
-                    answer(
-                        "لم أجد درسًا منشورًا عن القذف. هذا شرح عام مع فرض إهمال مقاومة الهواء."
-                    ),
+                    answer("هل يمكنك إرسال الفقرة أو المعطيات التي تريد أن نراجعها؟"),
                     len(seen),
                 )
             yield {"type": "result", "message": msg}
@@ -101,7 +103,8 @@ async def test_empty_search_variants_stop_without_student_tool_instructions(serv
     stored = services.db.one(
         "SELECT sources,content FROM messages WHERE role='assistant'"
     )
-    assert json.loads(stored["sources"]) == [] and "شرح عام" in stored["content"]
+    assert json.loads(stored["sources"]) == [] and "؟" in stored["content"]
+    assert "شرح عام" not in stored["content"]
 
 
 @pytest.mark.asyncio
@@ -206,16 +209,10 @@ async def test_unstructured_reply_does_not_auto_cite_previous_topic(
     await e.process(e.claim())
     assert (
         services.db.one("SELECT status FROM agent_runs WHERE id=?", (rid,))["status"]
-        == "COMPLETED"
+        == "FAILED"
     )
-    assert (
-        json.loads(
-            services.db.one("SELECT sources FROM messages WHERE role='assistant'")[
-                "sources"
-            ]
-        )
-        == []
-    )
+    assert not services.db.one("SELECT * FROM messages WHERE role='assistant'")
+    assert services.db.rows("SELECT * FROM run_events WHERE type='answer_rejected'")
 
 
 @pytest.mark.asyncio
