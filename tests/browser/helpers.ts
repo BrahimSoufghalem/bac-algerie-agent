@@ -4,6 +4,12 @@ import path from "node:path";
 const qa = path.resolve("browser-results/previews");
 export async function snapshot(page: Page, name: string) {
   await page.evaluate(() => document.fonts.ready);
+  await page.evaluate(async () => {
+    const finite = document
+      .getAnimations()
+      .filter((a) => a.effect?.getTiming().iterations !== Infinity);
+    await Promise.all(finite.map((a) => a.finished.catch(() => {})));
+  });
   const html = await page.evaluate(async () => {
     const clone = document.documentElement.cloneNode(true) as HTMLElement;
     clone

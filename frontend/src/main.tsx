@@ -10,6 +10,7 @@ import "@fontsource/noto-sans-arabic/400.css";
 import "@fontsource/noto-sans-arabic/600.css";
 import "@fontsource/noto-sans-arabic/700.css";
 import "./style.css";
+import "./conversationRefinements.css";
 import {
   Icon,
   Mark,
@@ -29,6 +30,7 @@ import {
 } from "./LearningPanels";
 import { Recovery, SecurityPanel, ServiceTokens } from "./SecurityPanels";
 import BundleEditor from "./BundleEditor";
+import { RunActivity, type WorkActivity } from "./RunActivity";
 import {
   ScientificChart,
   ScientificDiagram,
@@ -65,6 +67,8 @@ type Message = {
   content: string;
   blocks: Block[];
   sources: Source[];
+  activity?: WorkActivity;
+  unanswered_activity?: WorkActivity;
 };
 type Chat = { id: string; title: string };
 let csrf = "";
@@ -211,12 +215,12 @@ function App() {
     [editing, setEditing] = useState(""),
     [run, setRun] = useState(""),
     [delta, setDelta] = useState(""),
-    [activities, setActivities] = useState<
-      { id: number; label: string; success?: boolean }[]
-    >([]),
+    [activeActivity, setActiveActivity] = useState<WorkActivity | null>(null),
+    [expandedRuns, setExpandedRuns] = useState<Record<string, boolean>>({}),
     [warnings, setWarnings] = useState<string[]>([]),
     [source, setSource] = useState<any>(null);
   const stream = useRef<EventSource | null>(null);
+  const chatLoad = useRef(0);
   const bottom = useRef<HTMLDivElement>(null);
   const [docs, setDocs] = useState<any[]>([]),
     [ownerDocs, setOwnerDocs] = useState<any[]>([]),
@@ -310,13 +314,16 @@ function App() {
     return d.items as Chat[];
   }
   async function openChat(id: string) {
+    const load = ++chatLoad.current;
     setText("");
     stream.current?.close();
     setRun("");
     setDelta("");
-    setActivities([]);
+    setActiveActivity(null);
     setWarnings([]);
     const c = await api("/api/conversations/" + id);
+    if (load !== chatLoad.current) return;
+    setActiveActivity(null);
     setChatId(id);
     location.hash = "chat=" + id;
     setMessages(c.messages);
@@ -332,19 +339,21 @@ function App() {
     stream.current?.close();
     setRun(id);
     setDelta("");
-    setActivities([]);
+    setActiveActivity(null);
     const es = new EventSource("/api/runs/" + id + "/events");
     stream.current = es;
-    const seen = new Set<number>();
-    for (const kind of ["queued", "answer", "error"])
+    const seen = new Set<string>();
+    for (const kind of ["queued", "progress", "answer", "error"])
       es.addEventListener(kind, (event: Event) => {
         const e = event as MessageEvent;
         if (!e.data) return;
-        const eid = Number(e.lastEventId);
+        const eid = `${kind}:${e.lastEventId}`;
         if (seen.has(eid)) return;
         seen.add(eid);
         const p = JSON.parse(e.data);
-        if (kind === "answer") {
+        if (kind === "progress") {
+          setActiveActivity(p);
+        } else if (kind === "answer") {
           setMessages((x) => [
             ...x.filter((m) => m.id !== p.message_id),
             {
@@ -353,14 +362,33 @@ function App() {
               content: "",
               blocks: p.blocks,
               sources: p.sources,
+              activity: p.activity,
             },
           ]);
+          setActiveActivity(null);
+          setMessages((x) =>
+            x.map((m) => ({
+              ...m,
+              unanswered_activity:
+                m.unanswered_activity?.run_id === id
+                  ? undefined
+                  : m.unanswered_activity,
+            })),
+          );
           setWarnings(p.warnings || []);
           setDelta("");
           setRun("");
           es.close();
           refreshChats().catch(() => {});
         } else if (kind === "error") {
+          setActiveActivity(null);
+          setMessages((old) =>
+            old.map((m) =>
+              m.unanswered_activity?.run_id === id
+                ? { ...m, unanswered_activity: p.activity }
+                : m,
+            ),
+          );
           setNotice(p.label);
           setRun("");
           es.close();
@@ -483,11 +511,12 @@ function App() {
     }
   }
   async function createChat() {
+    ++chatLoad.current;
     // Clear synchronously, not after network I/O: typing during creation must survive.
     stream.current?.close();
     setRun("");
     setDelta("");
-    setActivities([]);
+    setActiveActivity(null);
     setWarnings([]);
     setChatId("");
     setMessages([]);
@@ -641,6 +670,10 @@ function App() {
       );
     });
   }
+  function toggleWork(id: string) {
+    pinned.current = false;
+    setExpandedRuns((old) => ({ ...old, [id]: !old[id] }));
+  }
   const isEmpty = messages.length === 0 && !run;
   const titles: Record<string, string> = {
     chat: "مسار",
@@ -651,7 +684,7 @@ function App() {
     security: "أمان الحساب",
     "service-tokens": "وصول الوكلاء",
     preferences: "تفضيلات وخصوصية",
-    notes: "ملاحظاتي التعليمية",
+    notes: "ملاحظات مسار التعليمية",
     materials: "المسودات التعليمية",
     accounts: "الحسابات والحدود",
     "personal-usage": "استخدامي وحدودي",
@@ -974,15 +1007,25 @@ function App() {
                     : "مساحة الطالب"}
               </small>
             </span>
-            <Icon name="chevron" size={16} />
+            <span className="profile-action">
+              <Icon name="settings" size={18} />
+            </span>
           </button>
-          {accountOpen && (
+          {
             <div
               id="account-panel"
-              className="account-panel"
+              className={"account-panel " + (accountOpen ? "is-open" : "")}
+              aria-hidden={!accountOpen}
+              inert={!accountOpen}
               aria-label="إعدادات ومساحات الحساب"
             >
-              <div className="account-heading">إعدادات مساحتك</div>
+              <div className="account-summary">
+                <span className="avatar">{user.name.trim().slice(0, 1)}</span>
+                <div>
+                  <strong>{user.name}</strong>
+                  <small>إعدادات مساحتك الخاصة</small>
+                </div>
+              </div>
               <nav aria-label="إعدادات الحساب والتنقل">
                 {navItem("preferences", "تفضيلات وخصوصية", "settings")}
                 {navItem("notes", "ملاحظات مسار التعليمية", "note")}
@@ -1052,7 +1095,7 @@ function App() {
                 <Icon name="logout" size={18} /> خروج
               </button>
             </div>
-          )}
+          }
         </div>
       </aside>
       <div
@@ -1148,72 +1191,96 @@ function App() {
                   </div>
                 ) : (
                   messages.map((m, index) => (
-                    <article className={"message " + m.role} key={m.id}>
-                      {m.role === "assistant" && (
-                        <div className="message-label">
-                          <Mark small /> مسار
-                        </div>
-                      )}
-                      <div className="message-body" dir="auto">
-                        {m.blocks.length ? (
-                          <Content blocks={m.blocks} />
-                        ) : m.role === "user" ? (
-                          <p className="user-text">{m.content}</p>
-                        ) : (
-                          <Md text={m.content} />
+                    <React.Fragment key={m.id}>
+                      <article className={"message " + m.role}>
+                        {m.role === "assistant" && m.activity && (
+                          <RunActivity
+                            activity={m.activity}
+                            open={Boolean(expandedRuns[m.activity.run_id])}
+                            onToggle={() => toggleWork(m.activity!.run_id)}
+                          />
                         )}
-                      </div>
-                      <div className="message-actions">
-                        {m.role === "user" ? (
-                          !run && (
-                            <button
-                              className="icon-button"
-                              aria-label="تعديل"
-                              title="تعديل الرسالة"
-                              onClick={() => {
-                                setEditing(m.id);
-                                setText(m.content);
-                                composerInput.current?.focus();
-                              }}
-                            >
-                              <Icon name="write" size={17} />
-                            </button>
-                          )
-                        ) : (
-                          <>
-                            <CopyAnswer
-                              text={
-                                m.content ||
-                                m.blocks
-                                  .map(
-                                    (b) =>
-                                      b.text ||
-                                      b.latex ||
-                                      (b.headers
-                                        ? [b.headers, ...(b.rows || [])]
-                                            .map((row) => row.join(" | "))
-                                            .join("\n")
-                                        : b.caption || ""),
-                                  )
-                                  .join("\n\n")
-                              }
-                              notify={setNotice}
-                            />
-                            {!run && index === messages.length - 1 && (
+                        {m.role === "assistant" && (
+                          <div className="message-label">
+                            <Mark small /> مسار
+                          </div>
+                        )}
+                        <div className="message-body" dir="auto">
+                          {m.blocks.length ? (
+                            <Content blocks={m.blocks} />
+                          ) : m.role === "user" ? (
+                            <p className="user-text">{m.content}</p>
+                          ) : (
+                            <Md text={m.content} />
+                          )}
+                        </div>
+                        <div className="message-actions">
+                          {m.role === "user" ? (
+                            !run && (
                               <button
                                 className="icon-button"
-                                aria-label="إعادة محاولة الرسالة الأخيرة"
-                                title="إعادة محاولة الرسالة الأخيرة"
-                                onClick={retryAnswer}
-                                disabled={busy}
+                                aria-label="تعديل"
+                                title="تعديل الرسالة"
+                                onClick={() => {
+                                  setEditing(m.id);
+                                  setText(m.content);
+                                  composerInput.current?.focus();
+                                }}
                               >
-                                <Icon name="retry" size={17} />
+                                <Icon name="write" size={17} />
                               </button>
-                            )}
-                          </>
+                            )
+                          ) : (
+                            <>
+                              <CopyAnswer
+                                text={
+                                  m.content ||
+                                  m.blocks
+                                    .map(
+                                      (b) =>
+                                        b.text ||
+                                        b.latex ||
+                                        (b.headers
+                                          ? [b.headers, ...(b.rows || [])]
+                                              .map((row) => row.join(" | "))
+                                              .join("\n")
+                                          : b.caption || ""),
+                                    )
+                                    .join("\n\n")
+                                }
+                                notify={setNotice}
+                              />
+                              {!run && index === messages.length - 1 && (
+                                <button
+                                  className="icon-button"
+                                  aria-label="إعادة محاولة الرسالة الأخيرة"
+                                  title="إعادة محاولة الرسالة الأخيرة"
+                                  onClick={retryAnswer}
+                                  disabled={busy}
+                                >
+                                  <Icon name="retry" size={17} />
+                                </button>
+                              )}
+                            </>
+                          )}
+                        </div>
+                      </article>
+                      {m.role === "user" &&
+                        m.unanswered_activity &&
+                        m.unanswered_activity.run_id !== run && (
+                          <article className="message assistant pending-work">
+                            <RunActivity
+                              activity={m.unanswered_activity}
+                              open={Boolean(
+                                expandedRuns[m.unanswered_activity.run_id],
+                              )}
+                              onToggle={() =>
+                                toggleWork(m.unanswered_activity!.run_id)
+                              }
+                            />
+                          </article>
                         )}
-                      </div>
-                    </article>
+                    </React.Fragment>
                   ))
                 )}
                 {delta && (
@@ -1227,10 +1294,22 @@ function App() {
                     </div>
                   </article>
                 )}
-                {run && !delta && (
-                  <div className="run-status" role="status">
-                    <span className="pulse-dot" /> جارٍ تنفيذ طلبك…
-                  </div>
+                {(run || activeActivity) && (
+                  <article className="message assistant pending-work">
+                    <RunActivity
+                      activity={
+                        activeActivity || {
+                          run_id: run,
+                          status: "queued",
+                          items: [],
+                        }
+                      }
+                      open={Boolean(
+                        expandedRuns[activeActivity?.run_id || run],
+                      )}
+                      onToggle={() => toggleWork(activeActivity?.run_id || run)}
+                    />
+                  </article>
                 )}
                 {warnings.map((w, i) => (
                   <p className="warning" key={i}>

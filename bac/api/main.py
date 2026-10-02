@@ -19,6 +19,7 @@ from bac.core.auth import (
 )
 from bac.core.db import uid, js
 from bac.core.presentation import public_message, public_event
+from bac.core.activity import Activity, PUBLIC_EVENTS, run_activity, attach_activity
 from bac.learning.contracts import Overrides
 from bac.learning.private import PrivateFiles
 from bac.learning.api import router as learning_router
@@ -317,12 +318,14 @@ def create_app(services=None):
             "SELECT * FROM messages WHERE conversation_id=? AND active=1 ORDER BY created_at",
             (id,),
         )
-        messages = [public_message(m) for m in messages]
+        messages = attach_activity(
+            s.db, id, user["id"], [public_message(m) for m in messages]
+        )
         return {
             **c,
             "messages": messages,
             "active_run": s.db.one(
-                "SELECT id,status FROM agent_runs WHERE conversation_id=? AND status IN ('QUEUED','RUNNING')",
+                "SELECT id,status,message_id FROM agent_runs WHERE conversation_id=? AND status IN ('QUEUED','RUNNING')",
                 (id,),
             ),
         }
@@ -379,14 +382,8 @@ def create_app(services=None):
     @app.get("/api/runs/{id}")
     def get_run(id: str, user=Depends(current)):
         r = run_owned(id, user)
-        return {
-            k: r[k]
-            for k in (
-                "id",
-                "status",
-                "created_at",
-                "finished_at",
-            )
+        return {k: r[k] for k in ("id", "status", "created_at", "finished_at")} | {
+            "activity": run_activity(s.db, r)
         }
 
     @app.get("/api/science/results/{id}")
@@ -438,6 +435,12 @@ def create_app(services=None):
 
         async def stream():
             nonlocal cursor
+            projection = Activity(id)
+            for prior in s.db.rows(
+                "SELECT id,type,payload FROM run_events WHERE run_id=? AND id<=? ORDER BY id",
+                (id, cursor),
+            ):
+                projection.feed(prior)
             while True:
                 if await request.is_disconnected():
                     return
@@ -453,9 +456,14 @@ def create_app(services=None):
                 )
                 for row in rows:
                     cursor = row["id"]
-                    payload = public_event(row["type"], json.loads(row["payload"]))
-                    if payload is not None:
-                        yield f"id: {cursor}\nevent: {row['type']}\ndata: {js(payload)}\n\n"
+                    projection.feed(row)
+                    kind = row["type"]
+                    if kind in ("answer", "error"):
+                        payload = public_event(kind, json.loads(row["payload"]))
+                        payload["activity"] = projection.snapshot()
+                        yield f"id: {cursor}\nevent: {kind}\ndata: {js(payload)}\n\n"
+                    elif kind in PUBLIC_EVENTS:
+                        yield f"id: {cursor}\nevent: progress\ndata: {js(projection.snapshot())}\n\n"
                 r = s.db.one("SELECT status FROM agent_runs WHERE id=?", (id,))
                 if not r or (r["status"] not in ("QUEUED", "RUNNING") and not rows):
                     return

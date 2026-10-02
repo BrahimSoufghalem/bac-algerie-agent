@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useRef, useId } from "react";
 import { Icon } from "./ChatUI";
 type API = (path: string, method?: string, body?: unknown) => Promise<any>;
 type Props = {
@@ -245,83 +245,225 @@ export function PrivateUploads({
   ensureChat: () => Promise<string | undefined>;
 }) {
   const [rows, setRows] = useState<any[]>([]);
+  const [open, setOpen] = useState(false);
+  const [dragging, setDragging] = useState(false);
+  const [transferring, setTransferring] = useState(false);
+  const [error, setError] = useState("");
+  const input = useRef<HTMLInputElement>(null);
+  const container = useRef<HTMLDivElement>(null);
+  const currentChat = useRef(chat);
+  currentChat.current = chat;
+  const id = useId();
   const { go, busy } = useAction(notify);
-  const refresh = async () =>
-    setRows((await api(`/api/conversations/${chat}/uploads`)).items);
+  const refresh = async (target = chat) => {
+    const result = await api(`/api/conversations/${target}/uploads`);
+    if (currentChat.current === target) setRows(result.items);
+  };
   useEffect(() => {
-    if (chat) go(refresh);
-    else setRows([]);
+    setRows([]);
+    setError("");
+    if (chat) go(() => refresh(chat));
   }, [chat]);
+  useEffect(() => {
+    if (!open) return;
+    const outside = (event: PointerEvent) => {
+      if (!container.current?.contains(event.target as Node)) setOpen(false);
+    };
+    const escape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setOpen(false);
+        setDragging(false);
+        container.current
+          ?.querySelector<HTMLButtonElement>(".attachment-trigger")
+          ?.focus();
+      }
+    };
+    document.addEventListener("pointerdown", outside);
+    document.addEventListener("keydown", escape);
+    return () => {
+      document.removeEventListener("pointerdown", outside);
+      document.removeEventListener("keydown", escape);
+    };
+  }, [open]);
+  const upload = (file?: File) => {
+    if (!file || busy) return;
+    setError("");
+    if (file.size > 10 * 1024 * 1024 || rows.length >= 5) {
+      setError(
+        file.size > 10 * 1024 * 1024
+          ? "حجم الملف أكبر من 10 MB. اختر ملفًا أصغر."
+          : "يمكن إرفاق خمسة ملفات. احذف ملفًا قبل إضافة آخر.",
+      );
+      return;
+    }
+    if (!/\.(pdf|png|jpe?g|webp|txt)$/i.test(file.name)) {
+      setError("اختر ملف PDF أو صورة PNG/JPG/WebP أو نص TXT.");
+      return;
+    }
+    setTransferring(true);
+    go(async () => {
+      try {
+        const target = currentChat.current || (await ensureChat());
+        if (!target) return;
+        const data = new FormData();
+        data.set("file", file);
+        await api(`/api/conversations/${target}/upload`, "POST", data);
+        await refresh(target);
+      } catch (failure) {
+        setError((failure as Error).message);
+        throw failure;
+      } finally {
+        setTransferring(false);
+      }
+    });
+  };
   return (
-    <details
-      className="private-files"
-      onKeyDown={(e) => {
-        if (e.key === "Escape") {
-          e.currentTarget.removeAttribute("open");
-          e.currentTarget.querySelector<HTMLElement>("summary")?.focus();
-        }
-      }}
-    >
-      <summary
+    <div className="private-files" ref={container}>
+      <button
+        type="button"
+        className="attachment-trigger"
         aria-label="إرفاق ملف خاص مؤقتًا · 24 ساعة"
-        title="إرفاق ملف خاص مؤقتًا · 24 ساعة"
+        title="إرفاق ملف"
+        aria-expanded={open}
+        aria-controls={id}
+        onClick={() => setOpen(!open)}
       >
         <Icon name="attach" />
         <span className="attachment-count">{rows.length || ""}</span>
-      </summary>
-      <div className="attachment-panel">
-        <strong>إرفاق ملف خاص مؤقتًا · 24 ساعة</strong>
-        <p>
-          PDF حتى 20 صفحة أو صورة أو TXT، حتى 10 MB، خمسة ملفات. لا يُنشر ولا
-          يُفهرس. قراءة الصور تتطلب نموذجًا بصريًا وقد تُحتسب من رصيد المزوّد
-          عند إرسال سؤالك.
-        </p>
-        <label>
-          الملف الخاص
-          <input
-            type="file"
-            accept=".pdf,.png,.jpg,.jpeg,.webp,.txt"
-            disabled={busy}
-            onChange={(e) => {
-              const f = e.target.files?.[0];
-              e.target.value = "";
-              if (f)
-                go(async () => {
-                  const data = new FormData();
-                  data.set("file", f);
-                  const id = chat || (await ensureChat());
-                  if (!id) return;
-                  await api(`/api/conversations/${id}/upload`, "POST", data);
-                  setRows(
-                    (await api(`/api/conversations/${id}/uploads`)).items,
-                  );
-                });
-            }}
-          />
-        </label>
-        {rows.map((f) => (
-          <div className="private-file-row" key={f.id}>
-            <span>
-              {f.name} · {f.pages} صفحة · ينتهي{" "}
-              {new Date(f.expires_at * 1000).toLocaleString()}
-            </span>
-            <a href={`/api/private/${f.id}/original`}>تحميل الأصل</a>
-            <button
-              type="button"
-              onClick={() =>
-                go(async () => {
-                  await api("/api/private/" + f.id, "DELETE");
-                  await refresh();
-                })
-              }
-            >
-              حذف الملف
-            </button>
+      </button>
+      <div
+        id={id}
+        className={"attachment-panel " + (open ? "is-open" : "")}
+        aria-label="إرفاق الملفات"
+        role="region"
+        aria-hidden={!open}
+        inert={!open}
+      >
+        <div className="attachment-heading">
+          <span className="attachment-heading-icon">
+            <Icon name="attach" size={19} />
+          </span>
+          <div>
+            <strong>أضف سياقًا لسؤالك</strong>
+            <small>ملفاتك هنا خاصة ومؤقتة</small>
           </div>
-        ))}
-        {busy && <p role="status">جارٍ رفع الملف…</p>}
+          <button
+            type="button"
+            className="icon-button"
+            aria-label="إغلاق الإرفاق"
+            onClick={() => {
+              setOpen(false);
+              container.current
+                ?.querySelector<HTMLButtonElement>(".attachment-trigger")
+                ?.focus();
+            }}
+          >
+            <Icon name="close" size={17} />
+          </button>
+        </div>
+        <input
+          id={id + "-file"}
+          ref={input}
+          className="attachment-input"
+          type="file"
+          aria-label="الملف الخاص"
+          tabIndex={-1}
+          accept=".pdf,.png,.jpg,.jpeg,.webp,.txt"
+          disabled={busy}
+          onChange={(event) => {
+            const file = event.target.files?.[0];
+            event.target.value = "";
+            upload(file);
+          }}
+        />
+        <button
+          type="button"
+          className={"attachment-dropzone " + (dragging ? "is-dragging" : "")}
+          disabled={busy}
+          onClick={() => input.current?.click()}
+          onDragOver={(event) => {
+            event.preventDefault();
+            setDragging(true);
+          }}
+          onDragLeave={() => setDragging(false)}
+          onDrop={(event) => {
+            event.preventDefault();
+            setDragging(false);
+            upload(event.dataTransfer.files[0]);
+          }}
+        >
+          <span className="dropzone-icon">
+            <Icon name={transferring ? "retry" : "plus"} size={23} />
+          </span>
+          <strong>
+            {transferring ? "جارٍ رفع الملف…" : "اختر ملفًا أو اسحبه هنا"}
+          </strong>
+          <span>PDF · صور · TXT</span>
+          <small>حتى 10 MB للملف · 20 صفحة للـPDF</small>
+        </button>
+        {error && (
+          <p className="attachment-error" role="alert">
+            {error}
+          </p>
+        )}
+        {rows.length > 0 && (
+          <div className="attachment-list-heading">
+            المرفقات <span>{rows.length}/5</span>
+          </div>
+        )}
+        <div className="attachment-file-list">
+          {rows.map((file) => (
+            <div className="private-file-row" key={file.id}>
+              <span className="file-type-mark">
+                <Icon name="note" size={19} />
+              </span>
+              <div className="attachment-file-info">
+                <strong title={file.name}>{file.name}</strong>
+                <small>{file.pages} صفحة · محفوظ لمدة 24 ساعة</small>
+              </div>
+              <a
+                href={`/api/private/${file.id}/original`}
+                className="file-action"
+                aria-label={"تحميل " + file.name}
+                title="تحميل ملفك"
+              >
+                <Icon name="down" size={16} />
+              </a>
+              <button
+                type="button"
+                className="file-action"
+                aria-label={"حذف الملف " + file.name}
+                title="حذف الملف"
+                disabled={busy}
+                onClick={() =>
+                  go(async () => {
+                    await api("/api/private/" + file.id, "DELETE");
+                    await refresh();
+                  })
+                }
+              >
+                <Icon name="trash" size={16} />
+              </button>
+            </div>
+          ))}
+        </div>
+        <p className="attachment-privacy">
+          <Icon name="shield" size={14} />
+          <span>
+            لا يُنشر الملف أو يُضاف إلى مراجع مشتركة. رفعه لا يرسل سؤالًا.
+          </span>
+        </p>
+        <p className="attachment-cost">
+          قد تُحتسب قراءة المحتوى عند إرسال سؤالك. تُحذف الملفات المؤقتة بعد
+          انتهاء صلاحيتها.
+        </p>
+        {transferring && (
+          <span className="attachment-upload-status" role="status">
+            جارٍ رفع الملف…
+          </span>
+        )}
       </div>
-    </details>
+    </div>
   );
 }
 export function MaterialsPanel({ api, role, notify, request, render }: Props) {

@@ -339,7 +339,7 @@ class Phase4RoutedFixture:
             self.delegate=FixtureLearning() if 'مهمة تعليمية' in question or 'ملف خاص' in question else RoutedFixture()
         async for item in self.delegate.stream(messages,tools):yield item
 s.chat_factory=lambda cfg,key:Phase4RoutedFixture()
-for name,role in [('learning','student'),('teacher','teacher'),('practice','student')]:
+for name,role in [('learning','student'),('teacher','teacher'),('practice','student'),('work-ui','teacher')]:
     email=name+'@test.invalid'
     if not s.db.one('SELECT 1 FROM users WHERE email=?',(email,)):create_user(s.db,email,'Test-learning-password-1','حساب '+name,role)
 if not s.db.one('SELECT 1 FROM users WHERE email=?',('security@test.invalid',)):
