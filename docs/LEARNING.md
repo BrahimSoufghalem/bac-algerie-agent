@@ -53,3 +53,9 @@ Prices per million input/output/cached input are owner supplied in the model UI;
 ## Deployment/verification limits
 
 This is single-host Linux/SQLite/local-disk architecture. Migrations are serialized using a Linux file lock during API/worker startup. Private-file cleanup runs with the worker; persistent TTL file deletion requires the services to run. Back up DB/files/encryption key consistently, protect data directory, use HTTPS/secure cookies before external access. Full native parser audit, quotas/orphan sweep/load testing, privacy retention policy, provider quality testing, backups/restore and production acceptance remain Phase 5. New visual inspection is pending if the image tool is unavailable; functional browser assertions are not a visual approval.
+
+## Actual-read evidence and retry recovery
+
+Teaching runs and generated teaching materials now require selected actual delivered read evidence, not locator snippets or unstructured model prose. Missing evidence requires a bounded clarification, not an unsupported general lesson. The read gate is structural provenance enforcement, not semantic entailment/automatic topic-relevance certification. Simple social exchanges and actual standalone computations have separate bounded routes.
+
+History/export also preserve earlier failed attempts after a successful retry. Cached source reload is a fresh scoped content read and has its own generic stage. Prior real equations/tables are included in follow-up model context, without converting old scientific results into current-run proof. Operator diagnostics remain local-only and scrubbed, never part of public activity. See [acceptance](acceptance/grounded-teaching-recovery.md).

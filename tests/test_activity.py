@@ -97,7 +97,10 @@ class WorkProvider:
             if self.step == 1
             else (
                 "render_answer",
-                {"blocks": [{"type": "text", "text": "الناتج أربعة."}]},
+                {
+                    "blocks": [{"type": "text", "text": "الناتج أربعة."}],
+                    "response_kind": "calculation",
+                },
             )
         )
         yield {
@@ -179,7 +182,7 @@ async def test_replayed_sse_is_ordered_sanitized_and_restores_prior_running_entr
     client = TestClient(create_app(services))
     login(client, "student@example.com")
     engine = AgentEngine(services)
-    rid = engine.enqueue(chat, user, "ما الناتج؟")
+    rid = engine.enqueue(chat, user, "ما ناتج 2+2؟")
     await engine.process(engine.claim())
     start = services.db.one(
         "SELECT id FROM run_events WHERE run_id=? AND type='tool_start'", (rid,)

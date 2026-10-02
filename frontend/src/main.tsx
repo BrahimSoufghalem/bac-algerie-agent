@@ -69,6 +69,7 @@ type Message = {
   sources: Source[];
   activity?: WorkActivity;
   unanswered_activity?: WorkActivity;
+  previous_activities?: WorkActivity[];
 };
 type Chat = { id: string; title: string };
 let csrf = "";
@@ -1266,6 +1267,22 @@ function App() {
                         </div>
                       </article>
                       {m.role === "user" &&
+                        m.previous_activities?.map((activity, attempt) => (
+                          <article
+                            key={activity.run_id}
+                            className="message assistant historical-work"
+                          >
+                            <p className="work-caption">
+                              محاولة سابقة {attempt + 1}
+                            </p>
+                            <RunActivity
+                              activity={activity}
+                              open={Boolean(expandedRuns[activity.run_id])}
+                              onToggle={() => toggleWork(activity.run_id)}
+                            />
+                          </article>
+                        ))}
+                      {m.role === "user" &&
                         m.unanswered_activity &&
                         m.unanswered_activity.run_id !== run && (
                           <article className="message assistant pending-work">
@@ -1278,6 +1295,20 @@ function App() {
                                 toggleWork(m.unanswered_activity!.run_id)
                               }
                             />
+                            {!run &&
+                              index === messages.length - 1 &&
+                              ["unavailable", "cancelled"].includes(
+                                m.unanswered_activity.status,
+                              ) && (
+                                <button
+                                  type="button"
+                                  className="retry-work"
+                                  onClick={retryAnswer}
+                                  disabled={busy}
+                                >
+                                  <Icon name="retry" size={15} /> إعادة المحاولة
+                                </button>
+                              )}
                           </article>
                         )}
                     </React.Fragment>

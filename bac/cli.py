@@ -18,10 +18,12 @@ def main():
             "restore",
             "reset-password",
             "verify-email",
+            "diagnose-run",
         ],
     )
     p.add_argument("--email")
     p.add_argument("--name", default="المالك")
+    p.add_argument("--run-id")
     p.add_argument("--output", type=Path)
     p.add_argument("--archive", type=Path)
     p.add_argument("--destination", type=Path)
@@ -56,7 +58,12 @@ def main():
         return
     s = Services(cfg)
     try:
-        if args.action == "bootstrap":
+        if args.action == "diagnose-run":
+            from bac.ops.diagnostics import diagnose_run
+            from bac.core.db import js
+
+            print(js(diagnose_run(s.db, args.run_id)))
+        elif args.action == "bootstrap":
             if s.db.one("SELECT 1 FROM users WHERE role='owner'"):
                 raise SystemExit("Owner already exists; refusing to create another")
             if not args.email:

@@ -1,4 +1,19 @@
 /* Masar: quiet, persistent work summaries and composed utility surfaces. */
+.retry-work {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  margin: 12px 0 0;
+  padding: 7px 11px;
+  color: var(--text);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--paper);
+  font-size: 12px;
+}
+.retry-work:hover {
+  border-color: var(--control);
+}
 .sidebar {
   width: 272px;
   padding: 14px 12px 12px;

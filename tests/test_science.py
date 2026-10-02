@@ -431,6 +431,7 @@ async def test_actual_agent_science_tools_records_sse_replay_and_no_fake_pass(se
                 name, args = (
                     "render_answer",
                     {
+                        "response_kind": "calculation",
                         "blocks": [
                             {"type": "text", "text": "النتيجة المقترحة غير صحيحة."},
                             {"type": "verification", "result_id": r["result_id"]},
@@ -438,7 +439,7 @@ async def test_actual_agent_science_tools_records_sse_replay_and_no_fake_pass(se
                                 "type": "text",
                                 "text": "الصحيح هو 4، ولا توجد مراجعة رسمية.",
                             },
-                        ]
+                        ],
                     },
                 )
             yield {

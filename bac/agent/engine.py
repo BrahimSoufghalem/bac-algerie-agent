@@ -8,6 +8,9 @@ from bac.agent.provider import OpenAIChat, ModelError
 from bac.agent.tools import Tools
 from bac.learning.service import Learning
 from bac.learning.usage import record, check_budget
+from bac.agent.feedback import tool_feedback
+from bac.ops.diagnostics import safe_diagnostic
+from bac.agent.grounding import social_question
 
 
 class AgentEngine:
@@ -84,7 +87,6 @@ class AgentEngine:
                     "UPDATE messages SET active=0 WHERE conversation_id=? AND created_at>?",
                     (chat, original["created_at"]),
                 )
-                c.execute("DELETE FROM loaded_context WHERE conversation_id=?", (chat,))
             else:
                 msg = uid("msg")
                 c.execute(
@@ -210,6 +212,8 @@ class AgentEngine:
             text = js(payload)
             if "error" not in payload and len(text) < remaining // 2:
                 tools.remember(payload, scope, row.get("scope_id") or row["node_id"])
+                self.emit(run, "source_reloaded", {"scope": scope})
+                tools.delivered_sources.update(tools.sources)
                 messages.append(
                     {
                         "role": "user",
@@ -218,15 +222,34 @@ class AgentEngine:
                 )
                 remaining -= len(text)
         history = self.db.rows(
-            "SELECT role,content FROM messages WHERE conversation_id=? AND active=1 ORDER BY created_at DESC LIMIT 12",
+            "SELECT role,content,blocks FROM messages WHERE conversation_id=? AND active=1 ORDER BY created_at DESC LIMIT 12",
             (run["conversation_id"],),
         )
+        questions = [h["content"] for h in history if h["role"] == "user"]
+        tools.question = questions[0] if questions else ""
+        tools.study_context = "\n".join(questions[:3])
         chosen = []
         for h in history:
-            if len(h["content"]) > remaining:
+            content = h["content"]
+            if h["role"] == "assistant":
+                # Prior structured equations/tables are part of the real answer, not just text.
+                # Do not offer old graph/result IDs as newly-computed outputs.
+                blocks = json.loads(h.get("blocks") or "[]")
+                extras = []
+                for block in blocks:
+                    if block["type"] == "equation":
+                        extras.append("Equation: " + block["latex"])
+                    elif block["type"] == "table":
+                        extras.append(
+                            "Table: "
+                            + js({"headers": block["headers"], "rows": block["rows"]})
+                        )
+                if extras:
+                    content += "\n\n" + "\n".join(extras)
+            if len(content) > remaining:
                 break
-            chosen.append(h)
-            remaining -= len(h["content"])
+            chosen.append({"role": h["role"], "content": content})
+            remaining -= len(content)
         messages.extend(reversed(chosen))
         return messages
 
@@ -298,8 +321,8 @@ class AgentEngine:
             if search_stopped:
                 budget += (
                     "Library search is paused after repeated empty searches, not because of a round limit. Use returned locators/loaded "
-                    "sources if relevant; otherwise give a general educational explanation "
-                    "with assumptions, without revealing private files or retrieval. Do not invent provenance. "
+                    "sources if relevant; otherwise ask a brief clarification for the required passage/topic/data. "
+                    "Do not teach from memory, reveal private retrieval or invent provenance. "
                 )
             if final_round:
                 budget += (
@@ -376,14 +399,46 @@ class AgentEngine:
                 raise ModelError("TOO_MANY_TOOLS")
             if not calls:
                 content = message.get("content") or ""
-                answer, sources = tools.answer(
-                    {
-                        "blocks": [{"type": "text", "text": content}],
-                        # Unstructured text cannot select or justify citations.
-                        "source_ids": [],
-                    }
-                )
-                return self.finish(run, answer, sources)
+                try:
+                    # Only a simple social exchange may finish as unstructured text.
+                    # Teaching must explicitly select actual read evidence in render_answer.
+                    answer, sources = tools.answer(
+                        {
+                            "blocks": [{"type": "text", "text": content}],
+                            "source_ids": [],
+                            "response_kind": "conversation"
+                            if social_question(tools.question)
+                            else "teaching",
+                        }
+                    )
+                    return self.finish(run, answer, sources)
+                except (ValueError, HTTPException, KeyError) as exc:
+                    self.emit(run, "answer_rejected", {})
+                    self.emit(
+                        run,
+                        "tool_diagnostic",
+                        safe_diagnostic(
+                            "render_answer", tool_feedback("render_answer", exc)
+                        ),
+                    )
+                    if final_round:
+                        raise ModelError("FINAL_ANSWER_INVALID") from None
+                    signature = "unstructured:" + content
+                    signatures[signature] += 1
+                    if signatures[signature] > 2:
+                        raise ModelError("REPEATED_TOOL_LOOP") from None
+                    messages.append({"role": "assistant", "content": content})
+                    messages.append(
+                        {
+                            "role": "system",
+                            "content": "The proposed unstructured answer was not accepted. "
+                            "Use render_answer with an appropriate response_kind and actual relevant source_ids; "
+                            "do not repeat the ungrounded answer. "
+                            + js(tool_feedback("render_answer", exc)),
+                        }
+                    )
+                    step += 1
+                    continue
             messages.append(
                 {
                     "role": "assistant",
@@ -406,6 +461,10 @@ class AgentEngine:
                 signatures[signature] += 1
                 if signatures[signature] > 2:
                     raise ModelError("REPEATED_TOOL_LOOP")
+                if name != "render_answer":
+                    self.emit(run, "tool_start", {"name": name})
+                else:
+                    self.emit(run, "finalizing", {})
                 try:
                     args = json.loads(call["function"]["arguments"])
                     if final_round and (name != "render_answer" or len(calls) != 1):
@@ -422,7 +481,7 @@ class AgentEngine:
                     if name == "search_library" and name not in available_names:
                         result = {
                             "error": "RETRIEVAL_STOPPED",
-                            "instruction": "Use relevant evidence already returned, or explicitly label a general explanation without a library citation; finish the answer.",
+                            "instruction": "Use relevant actual read evidence, or ask a short clarification for missing information; do not teach from memory.",
                         }
                         messages.append(
                             {
@@ -433,37 +492,18 @@ class AgentEngine:
                         )
                         continue
                     tool_count += 1
-                    self.emit(
-                        run,
-                        "tool_start",
-                        {
-                            "name": name,
-                            "label": {
-                                "propose_note": "اقتراح ملاحظة تنتظر موافقتك",
-                                "list_my_notes": "قراءة ملاحظاتك المعتمدة بموافقتك",
-                                "list_private_uploads": "عرض ملفات المحادثة الخاصة",
-                                "read_private_page": "قراءة صفحة خاصة مؤقتة",
-                                "save_teaching_material": "حفظ مسودة الأستاذ الخاصة",
-                                "save_practice_test": "حفظ اختبار تدريب ذاتي غير رسمي",
-                                "search_library": "البحث في المكتبة المنشورة",
-                                "get_table_of_contents": "قراءة الفهرس",
-                                "get_lesson_full": "قراءة الدرس كاملًا",
-                                "get_section": "قراءة قسم من المصدر",
-                                "calculate": "حساب التعبير العددي",
-                                "verify_calculation": "التحقق من الناتج العددي",
-                                "verify_equation": "فحص التعويض وشروط المسألة",
-                                "symbolic_math": "إجراء حساب رمزي",
-                                "convert_units": "تحويل الوحدات",
-                                "verify_dimensions": "فحص الأبعاد والوحدات",
-                                "run_scientific_code": "تنفيذ حساب علمي مقيّد",
-                                "plot_function": "حساب نقاط المنحنى",
-                                "plot_data": "فحص بيانات الرسم",
-                                "draw_diagram": "إنشاء مخطط هندسي مقيّد",
-                                "plot_from_result": "رسم المخرجات المحسوبة فعليًا",
-                            }.get(name, "تنفيذ أداة " + name),
-                        },
-                    )
                     result = await asyncio.to_thread(tools.execute, name, args)
+                    if "error" in result:
+                        feedback = tool_feedback(
+                            name, ValueError(result.get("message", result["error"]))
+                        )
+                        result.update(
+                            {
+                                k: v
+                                for k, v in feedback.items()
+                                if k not in ("error", "message")
+                            }
+                        )
                     if name == "search_library":
                         search_count += 1
                         if "error" not in result:
@@ -496,13 +536,10 @@ class AgentEngine:
                 except ModelError:
                     raise
                 except (ValueError, HTTPException, KeyError) as exc:
-                    result = {
-                        "error": "TOOL_INPUT_OR_SOURCE_ERROR",
-                        "message": getattr(exc, "detail", str(exc))[:300],
-                    }
+                    result = tool_feedback(name, exc)
                     self.emit(
                         run,
-                        "tool_end",
+                        "answer_rejected" if name == "render_answer" else "tool_end",
                         {
                             "name": name,
                             "success": False,
@@ -573,6 +610,13 @@ class AgentEngine:
                         }
                     )
                     extra_image = None
+                if "error" in result or not fits:
+                    diagnostic_result = (
+                        result if fits else {"error": "TOOL_RESULT_EXCEEDS_BUDGET"}
+                    )
+                    self.emit(
+                        run, "tool_diagnostic", safe_diagnostic(name, diagnostic_result)
+                    )
                 messages.append(
                     {"role": "tool", "tool_call_id": call["id"], "content": serialized}
                 )
@@ -596,6 +640,16 @@ class AgentEngine:
                     messages.append(extra_image)
                     image_count += 1
                     image_bytes += len(data)
+                if fits and "error" not in result:
+                    delivered = result.get("sources", [])
+                    if result.get("source"):
+                        delivered = [*delivered, result["source"]]
+                    tools.delivered_sources.update(
+                        source.get("source_id", source.get("node_id"))
+                        for source in delivered
+                        if source.get("source_id", source.get("node_id"))
+                        in tools.sources
+                    )
                 self.db.execute(
                     "UPDATE agent_runs SET tool_calls=? WHERE id=?",
                     (tool_count, run["id"]),

@@ -93,14 +93,20 @@ class Answer(Strict):
     blocks: list[Block] = Field(min_length=1, max_length=30)
     source_ids: list[str] = Field(default_factory=list, max_length=30)
     warnings: list[str] = Field(default_factory=list, max_length=20)
+    response_kind: Literal[
+        "teaching", "calculation", "conversation", "clarification", "refusal"
+    ] = "teaching"
+
 
 VisibleBlock = Annotated[
     TextBlock | EquationBlock | TableBlock | CodeBlock | GraphBlock,
     Field(discriminator="type"),
 ]
 
+
 class PresentedAnswer(Answer):
     """The model may not request display of scans or internal execution records."""
+
     blocks: list[VisibleBlock] = Field(min_length=1, max_length=30)
 
 

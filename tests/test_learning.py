@@ -350,6 +350,13 @@ def test_teacher_role_drafts_marks_and_student_private_access(services):
     with pytest.raises(ValueError):
         tools.execute("save_teaching_material", p | {"kind": "lesson_plan"})
     services.db.execute("UPDATE users SET role='teacher' WHERE id=?", (u["id"],))
+    f = PrivateFiles(services).add(
+        u, chat, "instruction.txt", b"Given x+1=2, solve x=1."
+    )
+    source, _ = PrivateFiles(services).page(u, f["id"], 1, chat)
+    tools.credit_private(source)
+    tools.delivered_sources.add(source["source"]["source_id"])
+    p["answer"]["source_ids"] = [source["source"]["source_id"]]
     lesson = tools.execute("save_teaching_material", p | {"kind": "lesson_plan"})
     assert lesson["kind"] == "lesson_plan"
     with pytest.raises(ValueError):
@@ -574,6 +581,16 @@ def test_all_teacher_material_modes_same_engine(services, kind):
         "total": 2,
         "solution": "Separate generated solution",
     }
+    f = PrivateFiles(services).add(
+        u,
+        chat,
+        "instruction.txt",
+        b"Explicit synthetic instruction for this educational draft.",
+    )
+    source, _ = PrivateFiles(services).page(u, f["id"], 1, chat)
+    tools.credit_private(source)
+    tools.delivered_sources.add(source["source"]["source_id"])
+    material["answer"]["source_ids"] = [source["source"]["source_id"]]
     saved = tools.execute("save_teaching_material", material)
     payload = Learning(services).materials(u, saved["id"])["payload"]
     assert (
