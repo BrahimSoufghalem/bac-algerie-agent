@@ -6,7 +6,7 @@ import re
 import unicodedata
 from difflib import SequenceMatcher
 from bac.vendor.bookforge.models.page import PageDocument
-from bac.vendor.bookforge.markdown.generator import element_markdown
+from bac.vendor.bookforge.markdown.generator import element_markdown, heading_title
 from bac.vendor.bookforge.database.db import dumps
 
 RANK = {'part':1,'chapter':2,'unit':2,'module':3,'lesson':4,'section':5,'appendix':2,'front_matter':1,'toc':1,'index':1,'bibliography':1}
@@ -49,7 +49,7 @@ def gather_pages(book_id,db,storage):
         for index,el in enumerate(doc.elements):
             items.append({'element':el,'page':page['pdf_page'],'page_id':page['id'],
                           'ordinal':page['pdf_page']*1_000_000+index,'asset_file':asset_map.get(el.id),
-                          'printed_page':doc.printed_page})
+                          'printed_page':doc.printed_page,'page_height':doc.height})
     return pages,items
 
 
@@ -104,16 +104,42 @@ def detect_structure(book, pages, items):
             # Preserve explicit heading levels underneath the latest semantic parent.
             parent_base=next((n['rank'] for n in reversed(stack) if n['kind']!='section'),0)
             rank=parent_base+el.level
+        title = heading_title(el)
+        label = el.label or (t.number if t else None)
+        # Running unit/chapter/lesson headers are source content, not new boundaries.
+        # Only coalesce a later top-of-page repeat of the still-active ancestor.
+        # A changed title/label, another parent, same-page repeat, or TOC target
+        # remains a real boundary. Raw page content and every repeated heading stay.
+        if kind in ('part', 'chapter', 'unit', 'module', 'lesson') and not t:
+            active = next((n for n in reversed(stack) if n['rank'] == rank), None)
+            box = el.bbox
+            height = h.get('page_height')
+            at_top = (box is not None and len(box) == 4 and height
+                      and 0 <= box[1] < box[3] <= height * 0.15)
+            first_box = active['evidence'].get('heading_bbox') if active else None
+            first_height = active['evidence'].get('page_height') if active else None
+            same_header_position = (
+                at_top and first_box is not None and len(first_box) == 4 and first_height
+                and 0 <= first_box[1] < first_box[3] <= first_height * 0.15
+                and abs(box[1] / height - first_box[1] / first_height) <= 0.04
+            )
+            if (active and same_header_position and h['page'] > active['start_page']
+                    and active['kind'] == kind
+                    and normalize(active['title']) == normalize(title)
+                    and normalize(active['label'] or '') == normalize(label or '')):
+                active['evidence'].setdefault('repeated_running_headings', []).append(
+                    {'heading_element': el.id, 'pdf_page': h['page'],
+                     'bbox': box, 'reason': 'same_active_ancestor_at_page_top'})
+                continue
         while len(stack)>1 and stack[-1]['rank'] >= rank:
             previous=stack.pop(); previous['end_order']=h['ordinal']-1
             previous['end_page']=max(previous['start_page'],h['page'] if (h['ordinal']%1_000_000)>0 else h['page']-1)
         node_id=book['id']+':'+hashlib.sha256((str(h['page'])+':'+el.id).encode()).hexdigest()[:16]
-        title=el.text
-        if el.label and not title.startswith(el.label): title=el.label+' '+title
         node={'id':node_id,'book_id':book['id'],'parent_id':stack[-1]['id'],'kind':kind,'title':title,
-              'label':el.label or (t.number if t else None),'start_order':h['ordinal'],'end_order':last,
+              'label':label,'start_order':h['ordinal'],'end_order':last,
               'start_page':h['page'],'end_page':book['page_count'],
               'evidence':{'source':source,'heading_element':el.id,'pdf_page':h['page'],
+                          'heading_bbox':el.bbox,'page_height':h.get('page_height'),
                           'toc':t.model_dump() if t else None},'rank':rank}
         nodes.append(node); stack.append(node)
     return nodes

@@ -24,6 +24,18 @@ def suggest_kind(filename):
     return "book"
 
 
+def transcribed_search_text(meta):
+    """Index all literal fields, including complex-table cells on parent nodes."""
+    return "\n".join(
+        [meta.get("text", ""), meta.get("caption", ""), meta.get("latex", "")]
+        + meta.get("headers", [])
+        + [" ".join(row) for row in meta.get("rows", [])]
+        + [cell.get("text", "") for cell in meta.get("cells", [])]
+        + meta.get("footnotes", [])
+        + [entry.get("title", "") for entry in meta.get("toc_entries", [])]
+    )
+
+
 class Library(Reader):
     def __init__(self, s):
         self.s = s
@@ -548,13 +560,7 @@ class Library(Reader):
                         )
                     ]
                     body = "\n".join(
-                        str(
-                            e["metadata"].get("text")
-                            or e["metadata"].get("latex")
-                            or e["metadata"].get("caption")
-                            or e["metadata"].get("rows")
-                            or ""
-                        )
+                        transcribed_search_text(e["metadata"])
                         for e in own
                     )
                 if n["kind"] in ("exam", "exercise_collection"):
