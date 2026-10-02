@@ -28,6 +28,18 @@ class Note(Strict):
     content: str = Field(min_length=1, max_length=1000)
 
 
+class AgentNote(Note):
+    id: str | None = Field(default=None, max_length=100)
+
+
+class NoteId(Strict):
+    id: str = Field(min_length=1, max_length=100)
+
+
+class SourceImage(Strict):
+    asset_id: str = Field(min_length=1, max_length=200)
+
+
 class NoteDecision(Note):
     consent: bool = False
 
@@ -57,7 +69,6 @@ class Material(Strict):
         "exam",
         "grading",
         "reference_review",
-        "self_practice",
     ]
     title: str = Field(min_length=1, max_length=150)
     answer: Answer
@@ -67,9 +78,7 @@ class Material(Strict):
 
     @model_validator(mode="after")
     def complete(self):
-        if self.kind in ("exam", "self_practice") and (
-            not self.rubric or not self.solution
-        ):
+        if self.kind == "exam" and (not self.rubric or not self.solution):
             raise ValueError("Generated tests require a rubric and a separate solution")
         if self.kind == "grading" and (
             not self.rubric or any(c.awarded is None for c in self.rubric)

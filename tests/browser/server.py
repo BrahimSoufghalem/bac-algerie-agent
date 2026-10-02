@@ -63,7 +63,6 @@ class FixtureChat:
         else:
             result = json.loads(messages[-1]["content"])
             node = result["node"]["id"]
-            figure = next(a for a in result["assets"] if a["type"] == "figure")
             yield {"type": "delta", "text": "قرأت المصدر المنشور. "}
             name, args = (
                 "render_answer",
@@ -74,11 +73,6 @@ class FixtureChat:
                             "text": "## الحرارة وانتقال الطاقة\n\nوفق الدرس المنشور، الحرارة **طاقة تنتقل من الجسم الساخن إلى الجسم البارد**. درجة الحرارة تقاس بوحدة كلفن.\n\nهذه إجابة اختبار محلي بمزوّد وهمي صريح؛ لم يُستخدم نموذج خارجي.",
                         },
                         {"type": "equation", "latex": "PV=nRT"},
-                        {
-                            "type": "image",
-                            "asset_id": figure["id"],
-                            "caption": "صورة مقصوصة من صفحة المصدر الأصلية؛ وليست صورة مولدة.",
-                        },
                         {
                             "type": "table",
                             "headers": ["الكمية", "القيمة كما في المصدر"],
@@ -320,8 +314,8 @@ class FixtureLearning:
             self.question=next(m['content'] for m in reversed(messages) if m['role']=='user' and isinstance(m['content'],str))
         if 'مهمة تعليمية' in self.question:
             if self.step==1:
-                name='save_practice_test' if any(d['function']['name']=='save_practice_test' for d in definitions) else 'save_teaching_material'
-                kind=next((k for k in ('self_practice','lesson_plan','exercise_set','exam','grading','reference_review') if 'النوع '+k in self.question),'self_practice')
+                name='save_teaching_material'
+                kind=next((k for k in ('lesson_plan','exercise_set','exam','grading','reference_review') if k in self.question or 'سلم' in self.question and k=='exam'),'exam')
                 args={'kind':kind,'title':'مسودة اختبار محلي صريح','answer':{'blocks':[{'type':'text','text':'## سؤال مولّد تجريبي\n\nاحسب 2 + 3. هذا اختبار أدوات محلي، وليس حلًا رسميًا.'}]},'rubric':[{'title':'الناتج','maximum':2,'awarded':2 if kind=='grading' else None}],'total':2,'solution':'5؛ حل مولّد للاختبار فقط.'}
             else:name,args='render_answer',{'blocks':[{'type':'text','text':'## حُفظت المسودة الخاصة\n\nمسودة مولّدة غير رسمية، للاختبار المحلي دون مزوّد خارجي.'}]}
         elif self.step==1:name,args='list_private_uploads',{}
@@ -329,10 +323,9 @@ class FixtureLearning:
             files=json.loads(messages[-1]['content'])['items'];self.file=files[0]['id'];name,args='read_private_page',{'upload_id':self.file,'page':1}
         elif self.step==3:
             payload=next(json.loads(m['content']) for m in reversed(messages) if m['role']=='tool');self.source=payload['source'];self.image=payload.get('asset_id')
-            name,args='propose_note',{'category':'goal','content':'مراجعة الملف الخاص — اقتراح ينتظر موافقتك'}
+            name,args='write_learning_note',{'category':'goal','content':'تبسيط تحويل الوحدات وفق التعلّم.'}
         else:
             blocks=[{'type':'text','text':'## قرأت الملف الخاص\n\nهذا اختبار محلي صريح للخصوصية، لا تقييم لمقدرة نموذج بصري خارجي.'}]
-            if self.image:blocks.append({'type':'image','asset_id':self.image,'caption':'صورة الملف الخاص المؤقت'})
             name,args='render_answer',{'blocks':blocks,'source_ids':[self.source['source_id']]}
         yield {'type':'usage','data':{'prompt_tokens':0,'completion_tokens':0}}
         yield {'type':'result','message':{'role':'assistant','content':None,'tool_calls':[{'id':f'learning{self.step}','type':'function','function':{'name':name,'arguments':js(args)}}]}}

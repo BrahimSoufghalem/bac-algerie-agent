@@ -10,6 +10,7 @@ from bac.learning.service import Learning
 from bac.learning.private import PrivateFiles
 from bac.learning.contracts import Preferences, Overrides, NoteDecision, AccountLimits
 from bac.learning.usage import report
+from bac.core.presentation import public_message
 from bac.vendor.bookforge.vision.provider import validate_base_url
 
 
@@ -48,20 +49,22 @@ def router(s, current):
 
     @r.get("/notes")
     def notes(user=Depends(current)):
-        return {"items": learn.notes(user)}
+        return {
+            "items": [n for n in learn.notes(user) if n.get("origin") == "agent"],
+            "read_only": True,
+        }
 
     @r.post("/notes")
     def note(p: NoteDecision, user=Depends(current)):
-        return learn.save_note(user, p.model_dump())
+        raise HTTPException(403, "Educational notes are managed by Masar")
 
     @r.put("/notes/{id}")
     def edit_note(id: str, p: NoteDecision, user=Depends(current)):
-        return learn.save_note(user, p.model_dump(), id)
+        raise HTTPException(403, "Educational notes are managed by Masar")
 
     @r.delete("/notes/{id}")
     def delete_note(id: str, user=Depends(current)):
-        learn.delete_note(user, id)
-        return {"ok": True}
+        raise HTTPException(403, "Educational notes are managed by Masar")
 
     @r.get("/materials")
     def materials(user=Depends(current)):
@@ -96,7 +99,7 @@ def router(s, current):
             (chat,),
         )
         return JSONResponse(
-            {"conversation": chat, "messages": rows},
+            {"conversation": chat, "messages": [public_message(r) for r in rows]},
             headers={"Content-Disposition": 'attachment; filename="masar-chat.json"'},
         )
 

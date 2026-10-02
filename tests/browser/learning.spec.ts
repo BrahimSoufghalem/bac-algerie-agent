@@ -21,7 +21,7 @@ async function mobile(page: Page, name: string) {
   await snapshot(page, name + "-mobile");
 }
 
-test("student: preferences → own private image pixels → pending note → explicit edited consent → export/delete", async ({
+test("student: preferences → own private image pixels → agent-managed read-only notes → export/delete account", async ({
   page,
 }) => {
   const errors: string[] = [];
@@ -58,55 +58,39 @@ test("student: preferences → own private image pixels → pending note → exp
   await expect(
     page.getByRole("heading", { name: "قرأت الملف الخاص" }),
   ).toBeVisible({ timeout: 30000 });
-  await expect(page.locator(".message.assistant img")).toBeVisible();
-  const src = await page.locator(".message.assistant img").getAttribute("src");
-  expect(src).toMatch(/^\/api\/private\//);
+  await expect(page.locator(".message.assistant img")).toHaveCount(0);
   await mobile(page, "learning-private-answer");
-  await navigate(page, "ملاحظاتي التعليمية");
+  await navigate(page, "ملاحظات مسار التعليمية");
   await expect(
-    page.getByText("هدف · اقتراح غير معتمد", { exact: true }),
+    page.getByRole("heading", { name: "ملاحظات مسار التعليمية" }),
   ).toBeVisible();
-  await page
-    .getByRole("button", { name: "مراجعة وتعديل", exact: true })
-    .click();
-  await page.getByLabel("نص الملاحظة").fill("هدفي المعتمد: مراجعة الوحدات");
   await expect(
-    page.getByRole("button", { name: "اعتماد التعديل" }),
-  ).toBeDisabled();
-  await page
-    .getByRole("checkbox", {
-      name: "أوافق صراحة على حفظ هذه الملاحظة كذاكرة تعليمية",
-    })
-    .check();
-  await page.getByRole("button", { name: "اعتماد التعديل" }).click();
-  await expect(
-    page.getByText("هدف · معتمدة بموافقتك", { exact: true }),
+    page.getByText("تبسيط تحويل الوحدات وفق التعلّم."),
   ).toBeVisible();
-  await mobile(page, "learning-notes");
-  await page.getByRole("button", { name: "حذف الملاحظة", exact: true }).click();
-  await expect(
-    page.getByText("هدفي المعتمد: مراجعة الوحدات", { exact: true }),
-  ).toHaveCount(0);
+  await expect(page.getByRole("textbox", { name: "نص الملاحظة" })).toHaveCount(
+    0,
+  );
+  await expect(page.getByRole("button", { name: "حذف الملاحظة" })).toHaveCount(
+    0,
+  );
+  await mobile(page, "learning-notes-readonly");
   await navigate(page, "تفضيلات وخصوصية");
   const download = page.waitForEvent("download");
   await page.getByRole("button", { name: "تصدير بياناتي JSON" }).click();
   expect((await download).suggestedFilename()).toContain("export");
   expect(errors).toEqual([]);
 });
-for (const who of ["teacher", "practice"])
+for (const who of ["teacher"])
   test(`${who}: same agent engine → role-specific material tool → saved private draft/rubric/solution → reload`, async ({
     page,
   }) => {
     const errors: string[] = [];
     page.on("pageerror", (e) => errors.push(e.message));
     await signIn(page, who + "@test.invalid");
-    await navigate(
-      page,
-      who === "teacher" ? "مساحة إعداد الأستاذ" : "تدريبي الذاتي",
-    );
+    await navigate(page, "مساحة إعداد الأستاذ");
     await page
       .getByRole("combobox", { name: "المهمة", exact: true })
-      .selectOption(who === "teacher" ? "exam" : "self_practice");
+      .selectOption("exam");
     await page
       .getByLabel("الموضوع أو إجابة الطالب التي لديك")
       .fill("حساب بسيط");
@@ -116,10 +100,7 @@ for (const who of ["teacher", "practice"])
     await expect(
       page.getByRole("heading", { name: "حُفظت المسودة الخاصة" }),
     ).toBeVisible({ timeout: 30000 });
-    await navigate(
-      page,
-      who === "teacher" ? "مساحة إعداد الأستاذ" : "تدريبي الذاتي",
-    );
+    await navigate(page, "مساحة إعداد الأستاذ");
     await page
       .getByRole("button", { name: "عرض المسودة", exact: true })
       .click();
@@ -135,10 +116,7 @@ for (const who of ["teacher", "practice"])
     const materials = await (await page.request.get("/api/materials")).json();
     expect(materials.items.at(-1).payload.official).toBe(false);
     await page.reload();
-    await navigate(
-      page,
-      who === "teacher" ? "مساحة إعداد الأستاذ" : "تدريبي الذاتي",
-    );
+    await navigate(page, "مساحة إعداد الأستاذ");
     await expect(
       page.getByRole("button", { name: "عرض المسودة", exact: true }),
     ).toBeVisible();

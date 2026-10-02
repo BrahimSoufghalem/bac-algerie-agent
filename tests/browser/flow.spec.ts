@@ -86,9 +86,9 @@ test("owner upload → extract → review → publish → student tool retrieval
     .getByRole("button", { name: "اعتماد المراجعة", exact: true })
     .click();
   await expect(
-    page.getByRole("button", { name: "نشر للطلاب", exact: true }),
+    page.getByRole("button", { name: "تفعيل للوكيل", exact: true }),
   ).toBeEnabled();
-  await page.getByRole("button", { name: "نشر للطلاب", exact: true }).click();
+  await page.getByRole("button", { name: "تفعيل للوكيل", exact: true }).click();
   await expect
     .poll(
       async () =>
@@ -120,24 +120,21 @@ test("owner upload → extract → review → publish → student tool retrieval
   );
   await student
     .getByRole("textbox", { name: "رسالتك" })
-    .fill("اشرح درس الحرارة من المكتبة مع صورة المصدر والمعادلة.");
+    .fill("اشرحلي درس الحرارة مع المعادلة.");
   await student.getByRole("button", { name: "إرسال ↑", exact: true }).click();
   await expect(
     student.getByRole("heading", { name: "الحرارة وانتقال الطاقة" }),
   ).toBeVisible({ timeout: 20000 });
-  await expect(student.locator(".sources button")).toHaveCount(1);
+  await expect(student.locator(".sources button")).toHaveCount(0);
   await expect(student.locator(".katex-display")).toHaveCount(1);
-  await expect(student.locator(".message.assistant figure img")).toBeVisible();
+  await expect(student.locator(".message.assistant figure img")).toHaveCount(0);
+  await expect(student.locator(".activity")).toHaveCount(0);
   await snapshot(student, "chat-answer-desktop");
   await assertNoOverflow(student);
   await student.reload();
   await expect(
     student.getByRole("heading", { name: "الحرارة وانتقال الطاقة" }),
   ).toBeVisible();
-  await student.locator(".sources button").click();
-  await expect(student.getByRole("dialog")).toBeVisible();
-  await snapshot(student, "source-desktop");
-  await student.getByRole("button", { name: "إغلاق المصدر" }).click();
   await student.setViewportSize({ width: 390, height: 844 });
   await assertNoOverflow(student);
   await snapshot(student, "chat-answer-mobile");
@@ -145,15 +142,16 @@ test("owner upload → extract → review → publish → student tool retrieval
   await snapshot(student, "menu-mobile");
   await student.getByRole("button", { name: "إغلاق القائمة" }).click();
   await expect(student.locator(".sidebar")).not.toBeVisible();
-  await student.getByRole("button", { name: "فتح القائمة" }).click();
-  await student.getByRole("button", { name: "▤ المكتبة المنشورة" }).click();
+  expect((await student.request.get("/api/library/documents")).status()).toBe(
+    404,
+  );
+  expect((await student.request.get("/api/agent/books")).status()).toBe(404);
   await expect(
-    student.getByRole("heading", { name: "مصادر جاهزة للتعلّم" }),
-  ).toBeVisible();
-  await student.getByRole("button", { name: "استكشف الفهرس" }).click();
-  await expect(student.getByRole("dialog")).toBeVisible();
-  await assertNoOverflow(student);
-  await snapshot(student, "library-mobile");
+    student.getByRole("button", { name: "المكتبة", exact: true }),
+  ).toHaveCount(0);
+  await expect(
+    student.getByRole("button", { name: "تدريبي الذاتي", exact: true }),
+  ).toHaveCount(0);
   await navigate(page, "◷ الاستخدام");
   await expect(
     page.getByRole("heading", { name: "استخدام معلَن، لا تقديرات وهمية" }),

@@ -53,25 +53,13 @@ cache للمحتوى غير قابل للتغيير، process-local، افترا
 
 الصفحات الفاشلة تحفظ الأصل وتبقى بتحذير وعلامة gap صريحة في الحزمة. `extraction_complete=false` عند فقد استخراج صفحة؛ اعتماد المالك لا يجعل النص غير المقروء مقروءًا.
 
-## HTTP API للوكيل الخارجي
+## وصول داخلي فقط
 
-لا anonymous access. استخدم حساب طالب مخصصًا، login cookie، وCSRF للكتابة؛ لا تمنح حساب owner لوكيل خارجي. service tokens المقيدة وخادم MCP adapter مكتمل ضمن التقوية اللاحقة.
+هذه العقود تخص عامل التدريس والمراجعة المصرّح بها للمالك. لا حساب طالب للخدمة ولا service token خارجي ولا MCP adapter عام للمراجع. `/api/library/*` و`/api/agent/*` تتطلب مالكًا؛ الطالب والأستاذ يحصلان على 404 ولو عرفا ID. source IDs والروابط والصور لا تنتقل عبر جواب المحادثة أو SSE أو التصدير. الصور الأصلية تُفحص داخليًا فقط عند الحاجة.
 
-| Endpoint | معنى الاستدعاء |
-|---|---|
-| `GET /api/library/documents?kind=exam&year=2025&session=June` | نشر حالي، تصفية الهوية |
-| `GET /api/library/documents/{id}` / `/toc` | metadata + الهيكل الحقيقي |
-| `GET /api/library/search?q=...&kind=book&document_id=...` | BM25، metadata filters |
-| `GET /api/library/lessons/{node_id}` | درس كامل؛ figures/tables/equations منظّمة بالإضافة إلى Markdown |
-| `GET /api/library/nodes/{node_id}` | عقدة أصلية، أسلاف/أبناء/مصادر؛ للحزم استخدم endpoint التالي |
-| `GET /api/library/nodes/{node_id}/parts` | أجزاء درس ثابتة |
-| `GET /api/library/parts/{part_id}` | جزء كامل ومصدره الفعلي |
-| `GET /api/library/nodes/{node_id}/bundle` | الموضوع كاملًا والحل المطابق الاختياري، assets ومصادر الملفين |
-| `GET /api/library/assets/{asset_id}` / `/metadata` | crop الأصلي وbbox/هوية/صفحة |
-| `GET /api/library/documents/{id}/page/{n}?file_id=...` | raster المصدر المعتمد، PDF page وليس printed page |
-| `GET /api/library/documents/{id}/page/{n}/json?file_id=...` | JSON محفوظ + Markdown + status وprinted_page |
+`render_answer` يرفض image blocks والتفاصيل التقنية ومعرّفات/روابط المرجع. حارس إضافي يمنع تطابق 40 كلمة متتابعة من نص مرجع مقروء، حتى مع تغيير علامات الترقيم أو تقسيم blocks. التعريف القصير والمعادلة لا يُمنعان تلقائيًا. هذا منع للنسخ الطويل المباشر، **ليس ضمانًا ضد التسريب بالترجمة أو الترميز أو إعادة الصياغة**؛ اختبارات إساءة الاستعمال وتدقيق مستقل مطلوبان قبل الإطلاق العام.
 
-`source_id` في جواب الأداة هو قيمة الاستشهاد؛ `node_id` يحدد عقدة الكتاب/الحزمة، و`file_id` يميز الموضوع عن الحل. احتفظ بهذه القيم كما جاءت؛ لا تبنِ معرّفات من عنوان الدرس. APIs الخارجية لا تفرض tool char cap لأنها قد تخدم قارئ ملفات/واجهة؛ عميل Agent مسؤول عن ميزانية النموذج وعدم تسمية جزء مبتور «كاملًا».
+أصول المالك يجب ألا توضع في public/static/CDN. من يملك الجهاز أو النسخ الاحتياطية يملك البيانات؛ ليست تشفيرًا طرفًا لطرف عن مدير الخادم.
 
 ## ترقية بيانات المرحلة الأولى
 

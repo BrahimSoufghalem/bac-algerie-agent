@@ -63,5 +63,5 @@ async def test_snapshot_unchanged_after_raw_source_reprocessing_and_revocation(
     services.db.execute(
         "UPDATE documents SET status='ARCHIVED' WHERE id=?", (doc["id"],)
     )
-    with pytest.raises(ValueError, match="revoked"):
+    with pytest.raises(ValueError, match="private"):
         tools.answer({"blocks": [{"type": "image", "asset_id": asset}]})

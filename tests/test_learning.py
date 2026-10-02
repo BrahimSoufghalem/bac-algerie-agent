@@ -58,27 +58,16 @@ def test_preferences_and_consent_no_escalation(services):
         ).status_code
         == 200
     )
-    note = {"category": "goal", "content": "مراجعة الوحدات"}
-    assert c.post("/api/notes", json=note, headers=h).status_code == 422
-    result = c.post("/api/notes", json=note | {"consent": True}, headers=h)
-    assert result.status_code == 200
-    other, oh, ou = setup_client(services, email="b@example.com")
-    assert other.get("/api/notes").json()["items"] == []
-    assert (
-        other.put(
-            "/api/notes/" + result.json()["id"],
-            json=note | {"consent": True},
-            headers=oh,
-        ).status_code
-        == 404
-    )
+    note = {"category": "goal", "content": "مراجعة الوحدات", "consent": True}
+    assert c.post("/api/notes", json=note, headers=h).status_code == 403
+    assert c.get("/api/notes").json()["read_only"] is True
     exported = c.get("/api/privacy/export")
     assert (
         exported.status_code == 200
         and "password_hash" not in exported.text
         and "encrypted_key" not in exported.text
     )
-    assert len(exported.json()["notes"]) == 1
+    assert exported.json()["notes"] == []
 
 
 def test_note_proposal_pending_snapshot_and_stale_source(services):
@@ -116,10 +105,7 @@ def test_note_proposal_pending_snapshot_and_stale_source(services):
     job2 = engine.claim()
     tools = Tools(services, u, chat, run2)
     context = engine.context(job2, tools, u)
-    assert (
-        "I confirm this difficulty" in js(context)
-        and "I confirm this difficulty" not in context[0]["content"]
-    )
+    assert "I confirm this difficulty" not in js(context)
     note2 = learn.propose(u, run2, {"category": "mistake", "content": "proposed"})
     services.db.execute(
         "UPDATE messages SET active=0 WHERE id=?", (job2["message_id"],)
@@ -277,7 +263,6 @@ class PrivateScript:
                 {
                     "blocks": [
                         {"type": "text", "text": "Read private image"},
-                        {"type": "image", "asset_id": self.upload + ":1"},
                     ],
                     "source_ids": [self.upload + ":1"],
                 },
@@ -321,7 +306,7 @@ async def test_private_actual_pixels_credit_and_no_base64_persistence(services):
     assert script.saw_pixels
     message = services.db.one("SELECT * FROM messages WHERE role='assistant'")
     blocks = json.loads(message["blocks"])
-    assert blocks[1]["asset_url"].startswith("/api/private/")
+    assert all(b["type"] != "image" for b in blocks)
     assert "base64" not in js(services.db.rows("SELECT * FROM run_events"))
     assert services.db.rows("SELECT * FROM loaded_context") == []
     usage = services.db.rows("SELECT * FROM model_usage")
@@ -360,8 +345,8 @@ def test_teacher_role_drafts_marks_and_student_private_access(services):
         "total": 2,
         "solution": "x=1",
     }
-    material = tools.execute("save_practice_test", p)
-    assert material["official"] is False
+    with pytest.raises(ValueError):
+        tools.execute("save_practice_test", p)
     with pytest.raises(ValueError):
         tools.execute("save_teaching_material", p | {"kind": "lesson_plan"})
     services.db.execute("UPDATE users SET role='teacher' WHERE id=?", (u["id"],))
@@ -384,11 +369,11 @@ def test_teacher_role_drafts_marks_and_student_private_access(services):
     )
     other = services.db.one("SELECT * FROM users WHERE id=?", (other_id,))
     with pytest.raises(HTTPException):
-        Learning(services).materials(other, material["id"])
+        Learning(services).materials(other, lesson["id"])
     # Owner also cannot read another user's private draft.
     services.db.execute("UPDATE users SET role='owner' WHERE id=?", (other_id,))
     with pytest.raises(HTTPException):
-        Learning(services).materials(other, material["id"])
+        Learning(services).materials(other, lesson["id"])
 
 
 def test_real_usage_nulls_pricing_cache_and_budget(services):
@@ -554,7 +539,7 @@ def test_migrations_concurrent_startup(tmp_path):
     path = tmp_path / "fresh.sqlite3"
     with ThreadPoolExecutor(max_workers=4) as pool:
         list(pool.map(lambda _: DB(path), range(4)))
-    assert len(DB(path).rows("SELECT * FROM migrations")) == 5
+    assert len(DB(path).rows("SELECT * FROM migrations")) == 6
 
 
 @pytest.mark.parametrize(
@@ -565,7 +550,6 @@ def test_migrations_concurrent_startup(tmp_path):
         "exam",
         "grading",
         "reference_review",
-        "self_practice",
     ],
 )
 def test_all_teacher_material_modes_same_engine(services, kind):
@@ -621,17 +605,18 @@ def test_account_erasure_completed_run_notes_materials_and_files(services):
     engine.claim()
     learn = Learning(services)
     learn.propose(u, run, {"category": "goal", "content": "Pending"})
-    tools = Tools(services, u, chat, run)
-    tools.execute(
-        "save_practice_test",
-        {
-            "kind": "self_practice",
-            "title": "Test",
-            "answer": {"blocks": [{"type": "text", "text": "Test"}]},
-            "rubric": [{"title": "mark", "maximum": 1}],
-            "total": 1,
-            "solution": "x",
-        },
+    services.db.execute(
+        "INSERT INTO teaching_materials VALUES(?,?,?,?,?,?,?,?)",
+        (
+            "legacy",
+            u["id"],
+            run,
+            "self_practice",
+            "Legacy",
+            "{}",
+            time.time(),
+            time.time(),
+        ),
     )
     PrivateFiles(services).add(u, chat, "x.txt", b"private")
     services.db.execute("UPDATE agent_runs SET status='COMPLETED' WHERE id=?", (run,))

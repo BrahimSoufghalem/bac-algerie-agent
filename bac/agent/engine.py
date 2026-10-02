@@ -16,6 +16,9 @@ class AgentEngine:
         self.db = s.db
         self.stop = asyncio.Event()
 
+    def remaining_time(self, deadline):
+        return deadline - time.monotonic()
+
     def enqueue(self, chat, user, text, edit_id=None, retry=False):
         if len(text) > 8000 or not text.strip():
             raise HTTPException(422, "Message must contain 1–8000 characters")
@@ -260,11 +263,75 @@ class AgentEngine:
         messages = self.context(run, tools, user)
         signatures = Counter()
         tool_count = 0
+        search_count = empty_searches = 0
+        search_stopped = False
+        definitions = tools.definitions()
+        deadline = time.monotonic() + self.s.settings.max_run_seconds
+        final_reserve = min(30, self.s.settings.max_run_seconds * 0.2)
         image_count = image_bytes = 0
         feature = "teacher" if user["role"] == "teacher" else "teaching"
-        for step in range(self.s.settings.max_run_steps):
+        step = 0
+        while True:
+            remaining = self.remaining_time(deadline)
+            context_size = sum(
+                len(js(m))
+                for m in messages
+                if isinstance(m.get("content"), (str, type(None)))
+            )
+            final_round = (
+                remaining <= final_reserve
+                or context_size >= self.s.settings.max_context_chars * 0.9
+            )
+            available = [
+                t
+                for t in definitions
+                if (not final_round or t["function"]["name"] == "render_answer")
+                and (not search_stopped or t["function"]["name"] != "search_library")
+            ]
+            available_names = {t["function"]["name"] for t in available}
+            budget = (
+                f"Server remaining time: {max(0, int(remaining))} seconds. "
+                "There is no fixed model-round limit. Balance useful tool work against "
+                "token/time cost. Stop when evidence is sufficient; do not repeat completed "
+                "work or expand the task unnecessarily. Finish the answer promptly. "
+            )
+            if search_stopped:
+                budget += (
+                    "Library search is paused after repeated empty searches, not because of a round limit. Use returned locators/loaded "
+                    "sources if relevant; otherwise give a general educational explanation "
+                    "with assumptions, without revealing private files or retrieval. Do not invent provenance. "
+                )
+            if final_round:
+                budget += (
+                    "FINAL ROUND: only render_answer is allowed. Answer the student's "
+                    "question using existing evidence; perform no more tool work. State "
+                    "any uncertainty or incomplete requested action, without exposing sources, tools or internal details. "
+                    "Never claim unperformed checks or provide unloaded assets/results. "
+                    "Supply only source IDs actually relevant to this question, never all "
+                    "previous context by default. If unable to finish, explain the limitation "
+                    "honestly in render_answer; do not fabricate a successful solution."
+                )
+                self.emit(
+                    run,
+                    "finalizing",
+                    {
+                        "label": "صياغة الإجابة بالمعلومات المتاحة",
+                    },
+                )
+            # Transient server policy, not a tool-result/user instruction.
+            request_messages = [
+                messages[0],
+                {"role": "system", "content": budget},
+                *messages[1:],
+            ]
             self.emit(
-                run, "model_start", {"label": "جارٍ إعداد الإجابة", "step": step + 1}
+                run,
+                "model_start",
+                {
+                    "label": "صياغة الإجابة" if final_round else "جارٍ إعداد الإجابة",
+                    "step": step + 1,
+                    "final_round": final_round,
+                },
             )
             self.db.execute(
                 "UPDATE agent_runs SET steps=? WHERE id=?", (step + 1, run["id"])
@@ -280,7 +347,12 @@ class AgentEngine:
             usage = {}
             call_status = "error"
             try:
-                async for item in provider.stream(messages, tools.definitions()):
+                stream = (
+                    getattr(provider, "final_stream", provider.stream)
+                    if final_round
+                    else provider.stream
+                )
+                async for item in stream(request_messages, available):
                     if item["type"] == "delta":
                         self.emit(run, "delta", {"text": item["text"]})
                     elif item["type"] == "usage":
@@ -307,7 +379,8 @@ class AgentEngine:
                 answer, sources = tools.answer(
                     {
                         "blocks": [{"type": "text", "text": content}],
-                        "source_ids": list(tools.sources),
+                        # Unstructured text cannot select or justify citations.
+                        "source_ids": [],
                     }
                 )
                 return self.finish(run, answer, sources)
@@ -320,18 +393,46 @@ class AgentEngine:
             )
             for call in calls:
                 name = call["function"]["name"]
-                signature = name + ":" + call["function"]["arguments"]
+                try:
+                    canonical_args = json.dumps(
+                        json.loads(call["function"]["arguments"]),
+                        sort_keys=True,
+                        ensure_ascii=False,
+                        separators=(",", ":"),
+                    )
+                except (ValueError, TypeError):
+                    canonical_args = call["function"]["arguments"]
+                signature = name + ":" + canonical_args
                 signatures[signature] += 1
                 if signatures[signature] > 2:
                     raise ModelError("REPEATED_TOOL_LOOP")
                 try:
                     args = json.loads(call["function"]["arguments"])
+                    if final_round and (name != "render_answer" or len(calls) != 1):
+                        raise ModelError("FINAL_ANSWER_REQUIRED")
                     if name == "render_answer":
+                        if final_round:
+                            try:
+                                answer, sources = tools.answer(args)
+                            except (ValueError, HTTPException, KeyError):
+                                raise ModelError("FINAL_ANSWER_INVALID") from None
+                            return self.finish(run, answer, sources)
                         answer, sources = tools.answer(args)
                         return self.finish(run, answer, sources)
+                    if name == "search_library" and name not in available_names:
+                        result = {
+                            "error": "RETRIEVAL_STOPPED",
+                            "instruction": "Use relevant evidence already returned, or explicitly label a general explanation without a library citation; finish the answer.",
+                        }
+                        messages.append(
+                            {
+                                "role": "tool",
+                                "tool_call_id": call["id"],
+                                "content": js(result),
+                            }
+                        )
+                        continue
                     tool_count += 1
-                    if tool_count > 20:
-                        raise ModelError("TOOL_BUDGET_EXCEEDED")
                     self.emit(
                         run,
                         "tool_start",
@@ -363,6 +464,13 @@ class AgentEngine:
                         },
                     )
                     result = await asyncio.to_thread(tools.execute, name, args)
+                    if name == "search_library":
+                        search_count += 1
+                        if "error" not in result:
+                            empty_searches = (
+                                empty_searches + 1 if not result.get("items") else 0
+                            )
+                        search_stopped = empty_searches >= 2
                     if "error" not in result and name == "save_teaching_material":
                         feature = "teacher"
                     self.emit(
@@ -404,6 +512,30 @@ class AgentEngine:
                 pending = tools.pending_private
                 tools.pending_private = None
                 extra_image = None
+                source_image = tools.pending_source
+                tools.pending_source = None
+                if source_image and "error" not in result:
+                    asset_id, data = source_image
+                    if image_count >= 4 or image_bytes + len(data) > 6_000_000:
+                        result = {"error": "SOURCE_IMAGE_BUDGET_EXCEEDED"}
+                    else:
+                        extra_image = {
+                            "role": "user",
+                            "content": [
+                                {
+                                    "type": "text",
+                                    "text": "Private source pixels for model understanding only. Never display, link or reveal this asset: "
+                                    + asset_id,
+                                },
+                                {
+                                    "type": "image_url",
+                                    "image_url": {
+                                        "url": "data:image/jpeg;base64,"
+                                        + base64.b64encode(data).decode()
+                                    },
+                                },
+                            ],
+                        }
                 if pending and "error" not in result:
                     payload, image = pending
                     if image:
@@ -460,6 +592,10 @@ class AgentEngine:
                         image_bytes += len(data)
                         feature = "private_vision"
                     tools.credit_private(result)
+                elif source_image and fits and "error" not in result and extra_image:
+                    messages.append(extra_image)
+                    image_count += 1
+                    image_bytes += len(data)
                 self.db.execute(
                     "UPDATE agent_runs SET tool_calls=? WHERE id=?",
                     (tool_count, run["id"]),
@@ -473,7 +609,7 @@ class AgentEngine:
                     > self.s.settings.max_context_chars
                 ):
                     raise ModelError("CONTEXT_BUDGET_EXCEEDED")
-        raise ModelError("STEP_BUDGET_EXCEEDED")
+            step += 1
 
     def finish(self, run, answer, sources):
         id = uid("msg")
@@ -520,7 +656,7 @@ class AgentEngine:
             await asyncio.wait_for(task, timeout=self.s.settings.max_run_seconds)
         except (Exception, asyncio.CancelledError) as exc:
             row = self.db.one(
-                "SELECT cancel_requested FROM agent_runs WHERE id=?", (run["id"],)
+                "SELECT cancel_requested,steps FROM agent_runs WHERE id=?", (run["id"],)
             )
             status = "CANCELLED" if row and row["cancel_requested"] else "FAILED"
             code = (
@@ -550,6 +686,7 @@ class AgentEngine:
                                 {
                                     "code": code,
                                     "label": "توقف التنفيذ؛ يمكنك تعديل الرسالة أو إعادة المحاولة.",
+                                    "steps": row["steps"] if row else 0,
                                 }
                             ),
                             time.time(),

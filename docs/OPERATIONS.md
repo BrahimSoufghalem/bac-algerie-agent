@@ -2,7 +2,7 @@
 
 ## الحدود الصريحة
 
-هذه قدرات تشغيلية منفّذة، وليست شهادة penetration test أو دقة تعليمية أو نشرًا فعليًا على نطاقك. اختبار المزود المأذون حُجب قبل التنفيذ، **صفر طلبات توليد مدفوعة**. الأداة الاختيارية مقيّدة بطلبين، دون retries، 2200 max output tokens مجموعًا؛ ترميز الصورة/المدخلات وتسعير المزود منفصل. إعادة محاولة حقيقية تحتاج تأكيد المستخدم بعد الحجب. المراجعة البصرية الجديدة ما زالت معلقة بسبب `computer_helper_failed`؛ اختبار DOM/هاتف ليس بديلًا للمراجعة البصرية. بيانات المثال اصطناعية وليست منهجًا رسميًا.
+هذه قدرات تشغيلية وليست شهادة أمن أو دقة تعليمية أو نشرًا على جهاز المستخدم. راجع [أحدث اختبار فعلي وحدوده](acceptance/private-autonomous-chat.md). البيانات الاصطناعية في اختبارات المتصفح ليست منهجًا رسميًا.
 
 ## تشغيل وإعادة فتح التطبيق
 
@@ -38,29 +38,18 @@ CI يبني الصورة ويفحص Compose/UID/health/401/persistence؛ شها�
 - البريد في outbox مشفّر. worker يطالب بlease، 5 محاولات كحد أقصى مع backoff، scrubs secret بعد نجاح/إلغاء/فشل نهائي. `SENT` تعني قبول SMTP وليست وصولًا مؤكّدًا لصندوق المستلم؛ crash بعد الإرسال قد يكرر الرسالة لكن الرابط نفسه one-use. الأخطاء نوع exception فقط، لا SMTP password/link/address.
 - إذا لم تُهيأ SMTP تعرض الواجهة ذلك، ولا تدعي إرسال بريد. operator على الخادم يمكنه `python -m bac.cli reset-password --email ...` (getpass لا command line)، أو `verify-email` كتأكيد بشري موثّق في audit. bootstrap يتأكد بالبريد يدويًا باعتباره إجراء مشغّل موثوقًا؛ لا تتحول الحسابات العامة إلى verified تلقائيًا.
 
-## الوكلاء الخارجيون — العقد نفسه وليس owner token
+## مراجع سرية، لا وكلاء خارجيون
 
-المالك يفتح **وصول الوكلاء** ويختار كتبًا **منشورة** محددة وصلاحية1–365 يومًا. لا اختيار شامل ضمني. رمز يظهر مرة واحدة ويُحفظ SHA-256 فقط، ≥256bit entropy، قابل للإلغاء، 60 طلب/minute لكل رمز، أقصى25 رمزًا نشطًا. تعطيل/تغيير دور المصدر أو أرشفة/تغيير نشر الكتاب يوقف الوصول فورًا للطلبات الجديدة. بيانات أعيدت سابقًا لا يمكن استرجاعها من وكيل خارجي.
+كل طرق `/api/library/*` و`/api/agent/*` تتطلب جلسة المالك؛ الطالب والأستاذ لا يقرآنها حتى بمعرّفات صحيحة. service tokens القديمة مسحوبة وإنشاؤها مرفوض. عامل التدريس يقرأ النسخ المعتمدة داخليًا، ويستطيع فحص pixels دون نشرها في المحادثة. الأدوات والسجلات التقنية لا تُعرض لأي دور. `/api/science/*` وOpenAPI غير متاحين في التطبيق العام.
 
-```text
-Authorization: Bearer <SERVICE_TOKEN>
-GET /api/agent/capabilities
-GET /api/agent/books
-GET /api/agent/books/{book_id}/toc?kind=lesson
-GET /api/agent/search?q=...&book_id=...
-GET /api/agent/get_lesson/{lesson_id}?max_chars=60000
-GET /api/agent/nodes/{id}/bundle
-GET /api/agent/nodes/{lesson_id}/parts
-GET /api/agent/parts/{part_id}
-GET /api/agent/assets/{asset_id}/metadata
-GET /api/agent/assets/{asset_id}
-GET /api/agent/books/{book_id}/pages/{pdf_page}/json?file_id=...
-GET /api/agent/books/{book_id}/pages/{pdf_page}?file_id=...
-```
+### تحديث النسخة الموجودة بأمان
 
-`get_lesson` يعيد book/chapter(أو null إذا لا يوجد)/lesson/full content/pages/figures/tables/equations/ancestors/sources/assets. النسخ والأرقام الأصلية ثابتة، روابط الصور تستعمل `/api/agent/assets` لا routes المتصفح التي يرفضها bearer. إذا تجاوز **payload كاملًا** max_chars (1000–500000) يعيد manifest URL و`content_complete:false` بلا نص مقتطع أو citation credit مصطنع. اقرأ كل الأجزاء أو حدّد الجزء المطلوب واعترف بنطاق ما قرأته. جدول/معادلة لا تنقسم منتصف العنصر. exam+solution وexercise_collection تبقى حزم كاملة. الوكيل التعليمي الداخلي يحتفظ بقياس ميزانية السياق قبل source credit في docs/RETRIEVAL.md؛ API الخارجي لا يعرف سياق وكيلك.
-
-كل route يتحقق من scope/current publication قبل القراءة؛ search يطبق scope **قبل** ranking. bearer مرفوض في كل routes الخاصة/المالك/المتصفح وحتى recovery، لا POST/DELETE أو وصول لمزوّد. لا تضع الرمز في URL/browser storage/source code. النموذج يتعامل مع الكتاب كبيانات غير موثوقة، لا تعليمات عليا. [client قابل للتشغيل](../examples/agent_client.py) يستخدم env/TLS وحدودًا، دون أي model call ضمن الاسترجاع.
+1. أوقف API وworker وخذ backup كاملًا بـDBs وkeys وPDFs وsnapshots، واحفظه خارج مجلد البيانات ولا تشاركه.
+2. حدّث الكود ثم شغّل API وworker من النسخة نفسها. Docker: `docker compose up -d --build api worker` بعد `git pull --ff-only`؛ لا `down -v`.
+3. migration006 يضيف origin للملاحظات، يعزل الملاحظات اليدوية القديمة، يسحب المفاتيح الخارجية ويحذف سجلات التدريب الذاتي. العودة للنسخة القديمة تتطلب استعادة النسخة الاحتياطية والكود القديم معًا، لا حذف migration.
+4. احفظ مفتاح المزود الحالي في إعداد النماذج على جهازك؛ حفظه في بيئة الاختبار لا يغيّر localhost الخاص بك. لا تضعه في Git أو ملف توثيق.
+5. `MAX_RUN_STEPS` القديم يُتجاهل؛ `MAX_RUN_SECONDS=180` افتراضيًا، قابل للضبط حتى 600. تكرار لا يحرز تقدمًا والسياق والحساب والحدود اليومية ما زالت تضبط التشغيل. لا تشغيل مدفوع لا نهائي ولا retries خفية.
+6. اختبر سؤالًا عاديًا، تبسيطه، الإيقاف، إعادة فتح المحادثة، عدم وجود مكتبة/صور أصلية/نشاط أدوات، وملاحظات القراءة فقط على جهاز النشر الفعلي.
 
 ## نسخة احتياطية واستعادة مجرّبة
 

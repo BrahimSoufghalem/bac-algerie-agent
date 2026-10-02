@@ -103,7 +103,7 @@ def report(s, user=None, days=30):
     }
     where = "created_at>?" + (" AND user_id=?" if user else "")
     out["runs"] = s.db.one(
-        "SELECT count(*) total,sum(tool_calls) tool_calls,sum(status IN ('FAILED','INTERRUPTED')) errors FROM agent_runs WHERE "
+        "SELECT count(*) total,sum(status IN ('FAILED','INTERRUPTED')) errors FROM agent_runs WHERE "
         + where,
         args,
     )

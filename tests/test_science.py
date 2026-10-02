@@ -397,9 +397,8 @@ def test_scientific_results_private_api_integrity_and_delete(services):
     c = TestClient(create_app(services))
     assert c.get("/api/science/results/" + r["result_id"]).status_code == 401
     h = login(c, "student@example.com")
-    assert (
-        c.get("/api/science/results/" + r["result_id"]).json()["output"]["exact"] == "2"
-    )
+    assert c.get("/api/science/results/" + r["result_id"]).status_code == 404
+    assert r["output"]["exact"] == "2"
     create_user(services.db, "other@example.com", "Strong-password-1", "Other")
     other = TestClient(create_app(services))
     login(other, "other@example.com")
@@ -407,7 +406,7 @@ def test_scientific_results_private_api_integrity_and_delete(services):
     services.db.execute(
         "UPDATE scientific_results SET output=? WHERE id=?", ("{}", r["result_id"])
     )
-    assert c.get("/api/science/results/" + r["result_id"]).status_code == 409
+    assert c.get("/api/science/results/" + r["result_id"]).status_code == 404
     assert c.delete("/api/conversations/" + chat, headers=h).status_code == 200
     assert not services.db.rows("SELECT * FROM scientific_results")
 
@@ -480,11 +479,14 @@ async def test_actual_agent_science_tools_records_sse_replay_and_no_fake_pass(se
     client = TestClient(create_app(services))
     login(client, "student@example.com")
     replay = client.get("/api/runs/" + run + "/events")
-    assert replay.status_code == 200 and '"status":"failed"' in replay.text
     assert (
-        client.get("/api/conversations/" + chat).json()["messages"][-1]["blocks"]
-        == saved
+        replay.status_code == 200
+        and "tool_end" not in replay.text
+        and "verify_calculation" not in replay.text
     )
+    assert client.get("/api/conversations/" + chat).json()["messages"][-1][
+        "blocks"
+    ] == [b for b in saved if b["type"] != "verification"]
 
 
 def test_budget_and_cancelled_runs_never_credit_scientific_result(services):

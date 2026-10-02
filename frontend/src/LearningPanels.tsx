@@ -53,8 +53,8 @@ export function PreferencesPanel({ api, chat, notify, role }: Props) {
     <section className="page-content">
       <h1>تفضيلات التعلّم والخصوصية</h1>
       <p>
-        التفضيلات سياق للشرح، لا تغيّر الصلاحيات. تغييرها أو حذف ملاحظة يوقف
-        التشغيل الجاري؛ لا يمكن سحب بيانات أُرسلت بالفعل للمزوّد.
+        التفضيلات سياق للشرح، لا تغيّر الصلاحيات. تغييرها يوقف التشغيل الجاري؛
+        لا يمكن سحب بيانات أُرسلت بالفعل للمزوّد.
       </p>
       <form
         className="panel"
@@ -132,16 +132,7 @@ export function PreferencesPanel({ api, chat, notify, role }: Props) {
             <option value="direct">مباشر</option>
           </select>
         </label>
-        <label className="check">
-          <input
-            type="checkbox"
-            checked={p.include_approved_notes}
-            onChange={(e) =>
-              setP({ ...p, include_approved_notes: e.target.checked })
-            }
-          />
-          أوافق على استعمال ملاحظاتي المعتمدة في سياق النموذج
-        </label>
+
         <button className="primary" disabled={busy}>
           حفظ التفضيلات
         </button>
@@ -214,15 +205,10 @@ export function PreferencesPanel({ api, chat, notify, role }: Props) {
   );
 }
 export function NotesPanel({ api, notify }: Props) {
-  const [rows, setRows] = useState<any[]>([]),
-    [id, setId] = useState(""),
-    [content, setContent] = useState(""),
-    [category, setCategory] = useState("goal"),
-    [consent, setConsent] = useState(false);
-  const { go, busy } = useAction(notify);
-  const refresh = async () => setRows((await api("/api/notes")).items);
+  const [rows, setRows] = useState<any[]>([]);
+  const { go } = useAction(notify);
   useEffect(() => {
-    go(refresh);
+    go(async () => setRows((await api("/api/notes")).items));
   }, []);
   const labels: any = {
     goal: "هدف",
@@ -232,105 +218,16 @@ export function NotesPanel({ api, notify }: Props) {
   };
   return (
     <section className="page-content">
-      <h1>ملاحظاتي التعليمية</h1>
+      <h1>ملاحظات مسار التعليمية</h1>
       <p>
-        اقتراح الوكيل يبقى معلّقًا. راجعه وعدّله قبل الموافقة. لا تُحوّل كل
-        رسالة إلى حقيقة دائمة.
+        يكتب مسار هذه الملاحظات ويحدّثها وفق تقدّمك في التعلّم. هي ملاحظات
+        تعليمية قابلة للمراجعة، وليست تقييمًا دائمًا لشخصك. للقراءة فقط.
       </p>
-      <form
-        className="panel"
-        onSubmit={(e) => {
-          e.preventDefault();
-          go(async () => {
-            await api(
-              "/api/notes" + (id ? "/" + id : ""),
-              id ? "PUT" : "POST",
-              { category, content, consent },
-            );
-            setId("");
-            setContent("");
-            setConsent(false);
-            await refresh();
-          });
-        }}
-      >
-        <label>
-          نوع الملاحظة
-          <select
-            value={category}
-            onChange={(e) => setCategory(e.target.value)}
-          >
-            {Object.entries(labels).map(([k, v]) => (
-              <option key={k} value={k}>
-                {String(v)}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label>
-          نص الملاحظة
-          <textarea
-            required
-            maxLength={1000}
-            value={content}
-            onChange={(e) => setContent(e.target.value)}
-          />
-        </label>
-        <label className="check">
-          <input
-            type="checkbox"
-            checked={consent}
-            onChange={(e) => setConsent(e.target.checked)}
-          />
-          أوافق صراحة على حفظ هذه الملاحظة كذاكرة تعليمية
-        </label>
-        <button disabled={busy || !consent || !content} className="primary">
-          {id ? "اعتماد التعديل" : "حفظ الملاحظة"}
-        </button>
-        {id && (
-          <button
-            type="button"
-            onClick={() => {
-              setId("");
-              setContent("");
-              setConsent(false);
-            }}
-          >
-            إلغاء التعديل
-          </button>
-        )}
-      </form>
+      {!rows.length && <p className="muted">لا توجد ملاحظات تعليمية بعد.</p>}
       {rows.map((n) => (
         <article className="panel" key={n.id}>
-          <strong>
-            {labels[n.category]} ·{" "}
-            {n.status === "pending" ? "اقتراح غير معتمد" : "معتمدة بموافقتك"}
-          </strong>
+          <strong>{labels[n.category] || "ملاحظة"}</strong>
           <p>{n.content}</p>
-          <p className="muted">
-            المصدر: {n.message_id ? "رسالتك " + n.message_id : "أضفتها يدويًا"}{" "}
-            · {new Date(n.created_at * 1000).toLocaleString()}
-          </p>
-          <button
-            onClick={() => {
-              setId(n.id);
-              setContent(n.content);
-              setCategory(n.category);
-              setConsent(false);
-            }}
-          >
-            مراجعة وتعديل
-          </button>
-          <button
-            onClick={() =>
-              go(async () => {
-                await api("/api/notes/" + n.id, "DELETE");
-                await refresh();
-              })
-            }
-          >
-            حذف الملاحظة
-          </button>
         </article>
       ))}
     </section>
@@ -430,9 +327,7 @@ export function PrivateUploads({
 export function MaterialsPanel({ api, role, notify, request, render }: Props) {
   const [rows, setRows] = useState<any[]>([]),
     [selected, setSelected] = useState<any>(null),
-    [kind, setKind] = useState(
-      role === "student" ? "self_practice" : "lesson_plan",
-    ),
+    [kind, setKind] = useState("lesson_plan"),
     [topic, setTopic] = useState(""),
     [level, setLevel] = useState("الثالثة ثانوي"),
     [difficulty, setDifficulty] = useState("متوسط");
@@ -447,11 +342,10 @@ export function MaterialsPanel({ api, role, notify, request, render }: Props) {
     exam: "اختبار كامل مع حل وسلم",
     grading: "تصحيح وإبداء ملاحظات",
     reference_review: "مراجعة شرح أو مرجع",
-    self_practice: "اختبار تدريب ذاتي",
   };
   return (
     <section className="page-content">
-      <h1>{role === "student" ? "تدريبي الذاتي" : "مساحة إعداد الأستاذ"}</h1>
+      <h1>مساحة إعداد الأستاذ</h1>
       <p>
         محرك واحد، وأدوات بحسب الدور. المخرجات مسودات خاصة مولّدة، ليست حلولًا
         رسمية. راجعها قبل استعمالها.
@@ -462,7 +356,7 @@ export function MaterialsPanel({ api, role, notify, request, render }: Props) {
           e.preventDefault();
           go(async () =>
             request(
-              `مهمة تعليمية: ${labels[kind]}. الموضوع/المعطيات: ${topic}. المستوى: ${level}. الصعوبة: ${difficulty}. ابحث في المكتبة واقرأ المصدر المناسب إن وجد. افحص الحسابات اللازمة. لا تخترع حلًا رسميًا أو مدخلات تصحيح ناقصة. احفظ مسودة من النوع ${kind} عبر ${role === "student" ? "save_practice_test" : "save_teaching_material"} مع الحل المنفصل وسلم متسق عند الحاجة، ثم اعرض الشرح. إذا كانت بيانات التصحيح غير كافية اسأل بدل اختراع العلامة.`,
+              `مهمة تعليمية: ${labels[kind]}. الموضوع/المعطيات: ${topic}. المستوى: ${level}. الصعوبة: ${difficulty}. قدّم محتوى تعليميًا مناسبًا مع الحسابات اللازمة، وحل منفصل وسلم متسق عند الحاجة. احفظه مسودة تعليمية، لا حلًا رسميًا. إذا كانت بيانات التصحيح غير كافية اسأل بدل اختراع العلامة.`,
             ),
           );
         }}
@@ -471,7 +365,7 @@ export function MaterialsPanel({ api, role, notify, request, render }: Props) {
           المهمة
           <select value={kind} onChange={(e) => setKind(e.target.value)}>
             {Object.entries(labels)
-              .filter(([k]) => role !== "student" || k === "self_practice")
+
               .map(([k, v]) => (
                 <option key={k} value={k}>
                   {String(v)}

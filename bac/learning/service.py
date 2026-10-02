@@ -5,6 +5,8 @@ from fastapi import HTTPException
 from bac.core.db import uid, js
 from bac.core.auth import owned_chat
 from bac.learning.contracts import Preferences, Overrides, Note, NoteDecision, Material
+from bac.learning.contracts import AgentNote
+from bac.core.presentation import public_message, public_answer
 
 
 class Learning:
@@ -65,15 +67,13 @@ class Learning:
                 **Overrides.model_validate(over).model_dump(exclude_none=True),
             }
         ).model_dump()
-        notes = []
-        if pref["include_approved_notes"]:
-            notes = [
-                dict(r)
-                for r in c.execute(
-                    "SELECT id,category,content,created_at FROM learning_notes WHERE user_id=? AND status='approved' ORDER BY updated_at DESC LIMIT 6",
-                    (user,),
-                )
-            ]
+        notes = [
+            dict(r)
+            for r in c.execute(
+                "SELECT id,category,content,created_at FROM learning_notes WHERE user_id=? AND status='approved' AND origin='agent' AND (message_id IS NULL OR message_id IN (SELECT id FROM messages WHERE active=1)) ORDER BY updated_at DESC LIMIT 6",
+                (user,),
+            )
+        ]
         return pref, notes
 
     def notes(self, user):
@@ -101,7 +101,7 @@ class Learning:
             id = uid("note")
             now = time.time()
             c.execute(
-                "INSERT INTO learning_notes VALUES(?,?,?,?,?,?,?,?)",
+                "INSERT INTO learning_notes(id,user_id,category,content,status,message_id,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?)",
                 (
                     id,
                     user["id"],
@@ -161,7 +161,7 @@ class Learning:
                 id = uid("note")
                 now = time.time()
                 c.execute(
-                    "INSERT INTO learning_notes VALUES(?,?,?,?,?,?,?,?)",
+                    "INSERT INTO learning_notes(id,user_id,category,content,status,message_id,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?)",
                     (id, user["id"], p.category, p.content, "approved", None, now, now),
                 )
             c.execute(
@@ -183,6 +183,75 @@ class Learning:
                 (js(notes), r["run_id"]),
             )
 
+    def agent_note(self, user, run, values, delete=False):
+        """No HTTP writer. Only a currently active own agent run may change memory."""
+        p = AgentNote.model_validate(values) if not delete else None
+        id = values.get("id")
+        with self.db.tx() as c:
+            r = c.execute(
+                "SELECT message_id FROM agent_runs WHERE id=? AND user_id=? AND status='RUNNING' AND cancel_requested=0",
+                (run, user["id"]),
+            ).fetchone()
+            if (
+                not r
+                or not c.execute(
+                    "SELECT 1 FROM users WHERE id=? AND active=1", (user["id"],)
+                ).fetchone()
+            ):
+                raise ValueError("Active own run required")
+            if id:
+                n = c.execute(
+                    "SELECT id FROM learning_notes WHERE id=? AND user_id=? AND origin='agent'",
+                    (id, user["id"]),
+                ).fetchone()
+                if not n:
+                    raise ValueError("Own agent-managed note not found")
+            if delete:
+                c.execute(
+                    "DELETE FROM learning_notes WHERE id=? AND user_id=?",
+                    (id, user["id"]),
+                )
+                self.scrub_note_snapshots(c, user["id"], id)
+                return {"ok": True}
+            if not id:
+                if (
+                    c.execute(
+                        "SELECT count(*) FROM learning_notes WHERE user_id=? AND origin='agent'",
+                        (user["id"],),
+                    ).fetchone()[0]
+                    >= 100
+                ):
+                    raise ValueError("Memory full; revise existing notes")
+                id = uid("note")
+                c.execute(
+                    "INSERT INTO learning_notes(id,user_id,category,content,status,message_id,created_at,updated_at,origin) VALUES(?,?,?,?,?,?,?,?,?)",
+                    (
+                        id,
+                        user["id"],
+                        p.category,
+                        p.content,
+                        "approved",
+                        r["message_id"],
+                        time.time(),
+                        time.time(),
+                        "agent",
+                    ),
+                )
+            else:
+                c.execute(
+                    "UPDATE learning_notes SET category=?,content=?,message_id=?,updated_at=? WHERE id=? AND user_id=?",
+                    (
+                        p.category,
+                        p.content,
+                        r["message_id"],
+                        time.time(),
+                        id,
+                        user["id"],
+                    ),
+                )
+                self.scrub_note_snapshots(c, user["id"], id)
+        return {"id": id, "status": "saved"}
+
     def delete_note(self, user, id):
         with self.db.tx() as c:
             if not c.execute(
@@ -202,12 +271,19 @@ class Learning:
         user = self.db.one(
             "SELECT role,active FROM users WHERE id=?", (tools.user["id"],)
         )
-        if (
-            not user
-            or not user["active"]
-            or (user["role"] not in ("teacher", "owner") and p.kind != "self_practice")
-        ):
+        if not user or not user["active"] or user["role"] not in ("teacher", "owner"):
             raise ValueError("Teacher permission required for this material type")
+        from bac.core.presentation import INTERNAL, IMAGE
+
+        public_fields = js(p.model_dump(exclude={"answer"}))
+        if (
+            INTERNAL.search(public_fields)
+            or IMAGE.search(public_fields)
+            or tools.source_text_guard.copied(public_fields)
+        ):
+            raise ValueError(
+                "Rewrite without private passages, identifiers, images or tool names"
+            )
         answer, sources = tools.answer(p.answer.model_dump())
         data = p.model_dump(exclude={"answer"}) | {
             "blocks": [b.model_dump() for b in answer.blocks],
@@ -258,6 +334,10 @@ class Learning:
         }
 
     def materials(self, user, id=None):
+        if user["role"] not in ("teacher", "owner"):
+            if id:
+                raise HTTPException(404, "Material not found")
+            return []
         rows = self.db.rows(
             "SELECT * FROM teaching_materials WHERE user_id=?"
             + (" AND id=?" if id else " ORDER BY updated_at DESC LIMIT 100"),
@@ -266,7 +346,7 @@ class Learning:
         if id and not rows:
             raise HTTPException(404, "Material not found")
         for r in rows:
-            r["payload"] = json.loads(r["payload"])
+            r["payload"] = public_answer(json.loads(r["payload"]))
         return rows[0] if id else rows
 
     def export(self, user):
@@ -274,7 +354,7 @@ class Learning:
             "format": "masar-personal-export-v1",
             "user": {k: user[k] for k in ("id", "email", "name", "role")},
             "preferences": self.preferences(user),
-            "notes": self.notes(user),
+            "notes": [n for n in self.notes(user) if n.get("origin") == "agent"],
             "materials": self.materials(user),
         }
         chats = self.db.rows(
@@ -297,6 +377,7 @@ class Learning:
                 "SELECT role,content,blocks,sources,active,created_at FROM messages WHERE conversation_id=? ORDER BY created_at",
                 (chat["id"],),
             )
+            chat["messages"] = [public_message(m) for m in chat["messages"]]
         data["conversations"] = chats
         data["uploads"] = self.db.rows(
             "SELECT id,conversation_id,name,kind,pages,expires_at FROM private_uploads WHERE user_id=? AND expires_at>?",

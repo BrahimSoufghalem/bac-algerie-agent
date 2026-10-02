@@ -397,39 +397,22 @@ async def test_api_bundle_filters_file_scope_and_owner_only(services):
     create_user(s.db, "a@example.com", "Strong-password-1", "Student")
     c = TestClient(create_app(s))
     h = login(c)
-    assert (
-        c.get("/api/library/nodes/" + node + "/bundle").json()["solution_status"]
-        == "not_available"
-    )
-    assert (
-        c.get("/api/library/documents?kind=exam&year=2025&session=June").json()[
-            "items"
-        ][0]["id"]
-        == d["id"]
-    )
-    assert not c.get("/api/library/search?q=Exact&kind=book").json()["items"]
-    assert (
-        c.get(f"/api/library/documents/{d['id']}/page/1?file_id=other").status_code
-        == 404
-    )
-    assert c.get(f"/api/library/documents/{d['id']}/page/1/json").json()["json"][
-        "elements"
-    ]
+    for path in [
+        "/api/library/nodes/" + node + "/bundle",
+        "/api/library/documents?kind=exam",
+        "/api/library/search?q=Exact",
+        f"/api/library/documents/{d['id']}/page/1/json",
+        "/api/library/lessons/" + node,
+    ]:
+        assert c.get(path).status_code == 404
     assert (
         c.post(
             "/api/owner/versions/" + r["version_id"] + "/clone", headers=h
         ).status_code
         == 403
     )
-    assert (
-        c.post(
-            "/api/owner/versions/" + r["version_id"] + "/solution/verify",
-            json=VERIFY,
-            headers=h,
-        ).status_code
-        == 403
-    )
-    assert c.get("/api/library/lessons/" + node).status_code == 422
+    # The same atomic bundle remains intact for the private worker.
+    assert lib.bundle(node)["solution_status"] == "not_available"
 
 
 def test_migration_backfills_real_v1_database_without_rewriting_sources(tmp_path):

@@ -123,3 +123,74 @@ async def test_truncation_never_accepted_as_finished():
                 CFG, "test", transport=httpx.MockTransport(handler)
             ).stream([], [])
         ]
+
+
+@pytest.mark.asyncio
+async def test_final_round_forces_only_render_without_retry_or_sampling_change():
+    seen = []
+
+    def handler(request):
+        body = json.loads(request.content)
+        seen.append(body)
+        return httpx.Response(
+            200,
+            json={
+                "choices": [
+                    {
+                        "finish_reason": "tool_calls",
+                        "message": {
+                            "role": "assistant",
+                            "content": None,
+                            "tool_calls": [
+                                {
+                                    "id": "f",
+                                    "type": "function",
+                                    "function": {
+                                        "name": "render_answer",
+                                        "arguments": '{"blocks":[{"type":"text","text":"hello"}],"source_ids":[]}',
+                                    },
+                                }
+                            ],
+                        },
+                    }
+                ]
+            },
+        )
+
+    tools = [
+        {
+            "type": "function",
+            "function": {"name": "render_answer", "parameters": {"type": "object"}},
+        }
+    ]
+    p = OpenAIChat(CFG, "fixture-only", transport=httpx.MockTransport(handler))
+    results = [
+        x async for x in p.final_stream([{"role": "user", "content": "hello"}], tools)
+    ]
+    assert len(seen) == 1 and seen[0]["tools"] == tools
+    assert seen[0]["tool_choice"] == {
+        "type": "function",
+        "function": {"name": "render_answer"},
+    }
+    assert seen[0]["max_tokens"] == 4000
+    assert (
+        results[-1]["message"]["tool_calls"][0]["function"]["name"] == "render_answer"
+    )
+
+
+@pytest.mark.asyncio
+async def test_final_choice_rejected_by_provider_has_no_hidden_paid_fallback():
+    calls = []
+
+    def handler(request):
+        calls.append(request)
+        return httpx.Response(400)
+
+    with pytest.raises(ModelError, match="HTTP_400"):
+        _ = [
+            i
+            async for i in OpenAIChat(
+                CFG, "fixture", transport=httpx.MockTransport(handler)
+            ).final_stream([], [])
+        ]
+    assert len(calls) == 1

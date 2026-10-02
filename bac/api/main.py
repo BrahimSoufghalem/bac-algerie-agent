@@ -18,6 +18,7 @@ from bac.core.auth import (
     owned_chat,
 )
 from bac.core.db import uid, js
+from bac.core.presentation import public_message, public_event
 from bac.learning.contracts import Overrides
 from bac.learning.private import PrivateFiles
 from bac.learning.api import router as learning_router
@@ -146,6 +147,13 @@ def create_app(services=None):
             and getattr(request.state, "user", {}).get("role") != "owner"
         ):
             return JSONResponse({"detail": "Owner permission required"}, 403)
+        if (
+            path.startswith(("/api/library/", "/api/agent/"))
+            and getattr(request.state, "user", {}).get("role") != "owner"
+        ):
+            return JSONResponse({"detail": "Not found"}, 404)
+        if path == "/api/openapi.json" or path.startswith("/api/science/"):
+            return JSONResponse({"detail": "Not found"}, 404)
         if path.endswith("/upload"):
             try:
                 length = int(request.headers.get("content-length", "0"))
@@ -309,9 +317,7 @@ def create_app(services=None):
             "SELECT * FROM messages WHERE conversation_id=? AND active=1 ORDER BY created_at",
             (id,),
         )
-        for m in messages:
-            m["blocks"] = json.loads(m["blocks"])
-            m["sources"] = json.loads(m["sources"])
+        messages = [public_message(m) for m in messages]
         return {
             **c,
             "messages": messages,
@@ -378,9 +384,6 @@ def create_app(services=None):
             for k in (
                 "id",
                 "status",
-                "error",
-                "steps",
-                "tool_calls",
                 "created_at",
                 "finished_at",
             )
@@ -450,7 +453,9 @@ def create_app(services=None):
                 )
                 for row in rows:
                     cursor = row["id"]
-                    yield f"id: {cursor}\nevent: {row['type']}\ndata: {row['payload']}\n\n"
+                    payload = public_event(row["type"], json.loads(row["payload"]))
+                    if payload is not None:
+                        yield f"id: {cursor}\nevent: {row['type']}\ndata: {js(payload)}\n\n"
                 r = s.db.one("SELECT status FROM agent_runs WHERE id=?", (id,))
                 if not r or (r["status"] not in ("QUEUED", "RUNNING") and not rows):
                     return
