@@ -11,6 +11,7 @@ from bac.learning.private import PrivateFiles
 from bac.learning.contracts import Preferences, Overrides, NoteDecision, AccountLimits
 from bac.learning.usage import report
 from bac.core.presentation import public_message
+from bac.core.activity import attach_activity
 from bac.vendor.bookforge.vision.provider import validate_base_url
 
 
@@ -95,11 +96,16 @@ def router(s, current):
     def export_chat(chat: str, user=Depends(current)):
         owned_chat(s.db, chat, user)
         rows = s.db.rows(
-            "SELECT role,content,blocks,sources,created_at FROM messages WHERE conversation_id=? ORDER BY created_at",
+            "SELECT id,role,content,blocks,sources,created_at FROM messages WHERE conversation_id=? ORDER BY created_at",
             (chat,),
         )
         return JSONResponse(
-            {"conversation": chat, "messages": [public_message(r) for r in rows]},
+            {
+                "conversation": chat,
+                "messages": attach_activity(
+                    s.db, chat, user["id"], [public_message(r) for r in rows]
+                ),
+            },
             headers={"Content-Disposition": 'attachment; filename="masar-chat.json"'},
         )
 

@@ -36,6 +36,8 @@ Files are outside shared BookForge storage, published nodes and full-text indexe
 
 ## Owner controls and actual accounting
 
+Chat history and both export paths include sanitized per-answer work summaries reconstructed from saved events. They are not model reasoning, raw tool logs or reference provenance. Fixed generic labels/states attach by actual answer-message ID; later questions do not replace earlier summaries. Legacy messages without saved events receive no fabricated record. See [current work UI acceptance](acceptance/per-answer-work-ui.md).
+
 `GET/POST /api/owner/accounts`, `PATCH /api/owner/accounts/{id}`: paginated/searchable accounts (50/page), teacher/student creation, role/active state, daily run allowance (rolling 24h; **0 disables**), observed token allowance, messages/minute, concurrent runs, estimated-cost alert. Last active owner cannot be removed. Role/active changes revoke sessions; any changed limits cancel active runs. Audit records previous/new role/limits without passwords/API keys. No user chat/notes/preferences are returned by account administration. Email verification and password recovery retain their configured-mail flows; external source service tokens are retired.
 
 Account run/token/concurrency limits govern the teaching agent, not a BookForge extraction batch. Extraction retains its own page queue, worker/retry/rate controls; its actual calls still appear in accounting. Do not treat account limits as a global extraction billing cap.

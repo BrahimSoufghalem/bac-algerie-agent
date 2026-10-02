@@ -38,7 +38,10 @@ test("student: preferences → own private image pixels → agent-managed read-o
   await page.setViewportSize({ width: 1440, height: 1000 });
   await navigate(page, "＋ محادثة جديدة");
   await page
-    .locator('summary[aria-label="إرفاق ملف خاص مؤقتًا · 24 ساعة"]')
+    .getByRole("button", {
+      name: "إرفاق ملف خاص مؤقتًا · 24 ساعة",
+      exact: true,
+    })
     .click();
   // Fixture image from the original synthetic renderer; no remote provider.
   const image = Buffer.from(

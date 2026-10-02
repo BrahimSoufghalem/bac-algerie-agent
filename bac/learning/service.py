@@ -7,6 +7,7 @@ from bac.core.auth import owned_chat
 from bac.learning.contracts import Preferences, Overrides, Note, NoteDecision, Material
 from bac.learning.contracts import AgentNote
 from bac.core.presentation import public_message, public_answer
+from bac.core.activity import attach_activity
 
 
 class Learning:
@@ -374,10 +375,15 @@ class Learning:
             )
         for chat in chats:
             chat["messages"] = self.db.rows(
-                "SELECT role,content,blocks,sources,active,created_at FROM messages WHERE conversation_id=? ORDER BY created_at",
+                "SELECT id,role,content,blocks,sources,active,created_at FROM messages WHERE conversation_id=? ORDER BY created_at",
                 (chat["id"],),
             )
-            chat["messages"] = [public_message(m) for m in chat["messages"]]
+            chat["messages"] = attach_activity(
+                self.db,
+                chat["id"],
+                user["id"],
+                [public_message(m) for m in chat["messages"]],
+            )
         data["conversations"] = chats
         data["uploads"] = self.db.rows(
             "SELECT id,conversation_id,name,kind,pages,expires_at FROM private_uploads WHERE user_id=? AND expires_at>?",

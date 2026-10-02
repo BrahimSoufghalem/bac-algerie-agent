@@ -151,7 +151,10 @@ test("composer: attachment preserves draft, deletion cannot send, IME Enter and 
   const draft = "مسودة مهمة لا تُرسل عند إرفاق الملف أو حذفه";
   await page.getByLabel("رسالتك").fill(draft);
   await page
-    .locator('summary[aria-label="إرفاق ملف خاص مؤقتًا · 24 ساعة"]')
+    .getByRole("button", {
+      name: "إرفاق ملف خاص مؤقتًا · 24 ساعة",
+      exact: true,
+    })
     .click();
   await page.getByLabel("الملف الخاص", { exact: true }).setInputFiles({
     name: "private-draft.txt",
@@ -166,7 +169,9 @@ test("composer: attachment preserves draft, deletion cannot send, IME Enter and 
     .items;
   expect(chats.length).toBe(before + 1);
   const id = new URL(page.url()).hash.slice(6);
-  await page.getByRole("button", { name: "حذف الملف", exact: true }).click();
+  await page
+    .getByRole("button", { name: "حذف الملف private-draft.txt", exact: true })
+    .click();
   await expect(page.locator(".private-file-row")).toHaveCount(0);
   await expect(page.getByLabel("رسالتك")).toHaveValue(draft);
   expect(
@@ -256,7 +261,18 @@ test("real answer controls: copy, edit, smart scrolling, retry, source-safe scie
   await page
     .getByRole("button", { name: "إعادة محاولة الرسالة الأخيرة" })
     .click();
-  expect((await rerun).ok()).toBe(true);
+  const rerunResponse = await rerun;
+  expect(rerunResponse.ok()).toBe(true);
+  const { run_id: retryRun } = await rerunResponse.json();
+  await expect
+    .poll(
+      async () => {
+        const response = await page.request.get(`/api/runs/${retryRun}`);
+        return (await response.json()).status;
+      },
+      { timeout: 30000 },
+    )
+    .toBe("COMPLETED");
   await expect(
     page.getByRole("button", { name: "إعادة محاولة الرسالة الأخيرة" }),
   ).toBeVisible({ timeout: 30000 });
