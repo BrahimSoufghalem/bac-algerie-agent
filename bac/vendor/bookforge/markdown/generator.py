@@ -1,6 +1,19 @@
 from pathlib import PurePosixPath
 import os
+import re
+import unicodedata
 from bac.vendor.bookforge.models.page import Element, PageDocument
+
+
+def heading_title(el: Element):
+    """Keep a transcribed label once, including after an Arabic heading term."""
+    if not el.label:
+        return el.text
+    title = unicodedata.normalize('NFKC', el.text)
+    label = unicodedata.normalize('NFKC', el.label).strip()
+    if not label or re.search(r'(?<!\w)' + re.escape(label) + r'(?!\w)', title):
+        return el.text
+    return el.label + ' ' + el.text
 
 
 def cell_text(text):
@@ -10,9 +23,7 @@ def cell_text(text):
 def element_markdown(el: Element, asset_file=None, base_dir=''):
     blocks=[]
     if el.type == 'heading':
-        title = el.text
-        if el.label and not title.startswith(el.label):
-            title = el.label + ' ' + title
+        title = heading_title(el)
         blocks.append('#' * min(el.level,6) + ' ' + title)
     elif el.type == 'equation':
         if el.latex:

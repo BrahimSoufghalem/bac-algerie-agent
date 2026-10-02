@@ -1254,6 +1254,8 @@ figcaption {
 }
 .katex {
   font-size: 1.15em;
+  direction: ltr;
+  unicode-bidi: isolate;
 }
 .katex-display {
   margin: 12px 0;

@@ -1,0 +1,207 @@
+{
+  "baseline_commit": "47078011b52663e37fd0309efafe6d206ddca7f9",
+  "scope": "local single-host staging acceptance; not production or exhaustive OCR certification",
+  "source": {
+    "original_sha256": "0f8ae55f3cee1f5387028c13a8269c05d7330c6141fa3598d3dc9914dad8c26e",
+    "original_pages": 27,
+    "tested_original_pdf_pages": [
+      1,
+      2,
+      3
+    ],
+    "excerpt_sha256": "559440fa53ce37e53ce8c200bd58be8fbf0e78773bd89202305ff211a93da555"
+  },
+  "model": {
+    "base_url": "https://ohhmyagent.com/v1",
+    "model": "ohh/gpt-6-astra"
+  },
+  "request_attempts": [
+    {
+      "id": 1,
+      "kind": "vision-gate",
+      "http_status": 503,
+      "usage": null
+    },
+    {
+      "id": 2,
+      "kind": "vision-gate",
+      "http_status": 200,
+      "usage": {
+        "prompt_tokens": 5143,
+        "completion_tokens": 6188,
+        "total_tokens": 11331
+      }
+    },
+    {
+      "id": 3,
+      "kind": "vision-page-3",
+      "http_status": 200,
+      "usage": {
+        "prompt_tokens": 5143,
+        "completion_tokens": 4875,
+        "total_tokens": 10018
+      }
+    },
+    {
+      "id": 4,
+      "kind": "vision-page-2",
+      "http_status": 429,
+      "usage": null
+    },
+    {
+      "id": 5,
+      "kind": "vision-page-2",
+      "http_status": 200,
+      "usage": {
+        "prompt_tokens": 5143,
+        "completion_tokens": 4558,
+        "total_tokens": 9701
+      }
+    },
+    {
+      "id": 6,
+      "kind": "teaching",
+      "http_status": 200,
+      "usage": null
+    },
+    {
+      "id": 7,
+      "kind": "teaching",
+      "http_status": 200,
+      "usage": null
+    },
+    {
+      "id": 8,
+      "kind": "teaching",
+      "http_status": 200,
+      "usage": null
+    },
+    {
+      "id": 9,
+      "kind": "teaching",
+      "http_status": 200,
+      "usage": null
+    }
+  ],
+  "usage": {
+    "generation_attempts": 9,
+    "successful_vision": 3,
+    "failed_generation_attempts": 2,
+    "successful_teaching_streams": 4,
+    "known_prompt_tokens": 15429,
+    "known_completion_tokens": 15621,
+    "known_total_tokens": 31050,
+    "known_vision_cost_estimate_usd": 0.46767,
+    "total_cost": null,
+    "unknown_usage_attempts": 6,
+    "cached_tokens": null,
+    "invoice": false
+  },
+  "regression": {
+    "backend_passed": 131,
+    "browser_passed": 18,
+    "frontend_build": true
+  },
+  "extraction": {
+    "pdf_page_1": "SUCCESS",
+    "pdf_page_2": "NEEDS_REVIEW",
+    "pdf_page_3": "SUCCESS",
+    "page_2_issue": "ILLEGIBLE_CONTENT in watermark; original raster retained, no guessed replacement",
+    "retry_only_failed_page": true,
+    "successful_page_artifacts_unchanged": true,
+    "running_unit_count": 1,
+    "repeated_headers_retained_in_original_content": true,
+    "visual_review": "all primary table/diagram boxes plus selected key formulas; not every character/cell"
+  },
+  "retrieval": {
+    "reference_complete_atomic_read": true,
+    "hierarchical_book_packaging_same_real_extraction": {
+      "same_real_extraction_reused": true,
+      "duplicate_source_detection": true,
+      "additional_model_requests": 0,
+      "tested_in_isolated_restored_data": true,
+      "published_unit_count": 1,
+      "source_pages": [
+        1,
+        3
+      ],
+      "unit_title": "الوحدة 01: المتابعة الزمنية لتحول كيميائي",
+      "actual_sections": 10,
+      "tables": 15,
+      "figures": 14,
+      "equations": 1,
+      "parent_complex_table_search_passed": true,
+      "other_document_scope_denied": true,
+      "no_invented_lessons_422": true
+    },
+    "scoped_external_api": {
+      "scoped_read": true,
+      "archive_effective_immediately": true,
+      "revoked_token_denied": true,
+      "private_owner_and_chats_denied": true,
+      "search_in_parent_table_cells": true,
+      "no_invented_lesson_reference_route_422": true,
+      "reference_atomic_complete": true,
+      "unit_heading_deduplicated_in_extraction": true,
+      "source_pages": [
+        1,
+        3
+      ],
+      "node_content_chars": 17273,
+      "tables": 15,
+      "figures": 14,
+      "equations": 1,
+      "asset_sha256": "26fdd22de5f6c77f34025966ea877200dcc148f017aecc013250351dec4520ff"
+    }
+  },
+  "teaching": {
+    "status": "COMPLETED",
+    "steps": 4,
+    "successful_tools": [
+      "search_library",
+      "get_document_metadata",
+      "get_table_of_contents",
+      "get_section",
+      "calculate",
+      "verify_calculation"
+    ],
+    "invalid_server_owned_image_url_rejected_then_model_corrected": true,
+    "original_half_time_graph_present": true,
+    "numeric_example": "User-supplied new example Xmax=8 mol; actual tools calculate and verify 8/2=4. No claim these values are in source. Numerical check does not certify whole explanation.",
+    "source_pages": [
+      1,
+      2,
+      3
+    ]
+  },
+  "live_ui": {
+    "real_saved_answer": true,
+    "real_original_source": true,
+    "desktop_1440": true,
+    "mobile_390": true,
+    "source_katex_count": 183,
+    "source_math_errors": 0,
+    "page_errors": 0,
+    "mobile_horizontal_overflow": false
+  },
+  "operations": {
+    "api_and_worker_actual_restart_cycles": 2,
+    "idle_restart_added_model_usage": false,
+    "backup_files": 280,
+    "backup_bytes": 17461926,
+    "backup_sha256": "4ea93f9623f4c49a484d8a946ba600bb719b87dcb7e168492a5f66920861682a",
+    "restore_database_integrity": true,
+    "login_publication_answer_structured_page_and_asset_hash_preserved": true,
+    "both_encryption_keys_restored_and_model_keys_decrypted": true,
+    "backup_contains_secrets_not_published": true
+  },
+  "release_limits": [
+    "Only original PDF pages 1–3/27 evaluated; no full-book approval.",
+    "Provider returned 503 and a concurrent 429; sequential retry succeeded. Recommend extraction worker 1 initially for this provider, subject to provider quota.",
+    "Provider omitted usage in four successful SSE calls despite include_usage; total billing and token-budget enforcement cannot be fully demonstrated with missing provider usage.",
+    "One watermark is marked illegible; explicitly acknowledged on staging sample, not silently removed.",
+    "Live compatibility covers this model and one teaching prompt; not load/soak or exhaustive scientific correctness.",
+    "No actual-host HTTPS/domain/SMTP/browser-device deployment acceptance in this run.",
+    "Rotate the chat-supplied key before production; never commit raw responses, fixture credentials, model keys, original PDF, or full-data backups."
+  ]
+}

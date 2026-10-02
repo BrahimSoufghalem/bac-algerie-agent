@@ -4,6 +4,7 @@ import Markdown from "react-markdown";
 import remarkMath from "remark-math";
 import remarkGfm from "remark-gfm";
 import rehypeKatex from "rehype-katex";
+import { normalizeMathDelimiters } from "./markdownMath";
 import "katex/dist/katex.min.css";
 import "@fontsource/noto-sans-arabic/400.css";
 import "@fontsource/noto-sans-arabic/600.css";
@@ -113,7 +114,7 @@ function Md({ text }: { text: string }) {
         ),
       }}
     >
-      {text}
+      {normalizeMathDelimiters(text)}
     </Markdown>
   );
 }
