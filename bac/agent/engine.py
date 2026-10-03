@@ -5,6 +5,8 @@ import yaml
 from fastapi import HTTPException
 from bac.core.db import uid, js
 from bac.agent.provider import OpenAIChat, ModelError
+from bac.agent.anthropic import AnthropicChat
+from bac.agent.selection import ContextSelector, EssentialContext
 from bac.agent.compat import google_openai
 from bac.agent.provider_errors import safe_provider_diagnostic
 from bac.agent.tools import Tools
@@ -99,6 +101,14 @@ class AgentEngine:
                 "INSERT INTO agent_runs(id,conversation_id,user_id,message_id,config_id,created_at) VALUES(?,?,?,?,?,?)",
                 (run, chat, user["id"], msg, cfg["config_id"], now),
             )
+            selector = c.execute(
+                "SELECT c.id,c.config FROM active_selector a JOIN context_selectors c ON c.id=a.config_id WHERE a.singleton=1"
+            ).fetchone()
+            if selector and json.loads(selector["config"]).get("selector_enabled"):
+                c.execute(
+                    "UPDATE agent_runs SET selector_config_id=? WHERE id=?",
+                    (selector["id"], run),
+                )
             pref, notes = Learning(self.s).snapshot(c, user["id"], chat)
             c.execute(
                 "INSERT INTO run_contexts VALUES(?,?,?)", (run, js(pref), js(notes))
@@ -176,7 +186,7 @@ class AgentEngine:
                 (time.time() + 20, run["id"], run["lease_token"]),
             )
 
-    def context(self, run, tools, user):
+    def context(self, run, tools, user, restore_sources=True):
         cfg = yaml.safe_load(
             (Path(__file__).resolve().parents[2] / "config/agent.yaml").read_text()
         )
@@ -198,12 +208,16 @@ class AgentEngine:
             messages.append({"role": "user", "content": context})
         else:
             context = ""
-        remaining = self.s.settings.max_context_chars - len(system) - len(context)
+        remaining = (
+            getattr(tools, "context_limit", self.s.settings.max_context_chars)
+            - len(system)
+            - len(context)
+        )
         loaded = self.db.rows(
             "SELECT * FROM loaded_context WHERE conversation_id=? ORDER BY loaded_at DESC LIMIT 2",
             (run["conversation_id"],),
         )
-        for row in loaded:
+        for row in loaded if restore_sources else []:
             try:
                 scope = row.get("scope", "full")
                 payload = tools.load(
@@ -272,6 +286,14 @@ class AgentEngine:
     async def body(self, run):
         row = self.db.one("SELECT * FROM model_configs WHERE id=?", (run["config_id"],))
         cfg = json.loads(row["config"])
+        deadline = time.monotonic() + self.s.settings.max_run_seconds
+        context_limit = (
+            cfg.get("max_context_chars") or self.s.settings.max_context_chars
+        )
+        selector_row = self.db.one(
+            "SELECT * FROM context_selectors WHERE id=?",
+            (run.get("selector_config_id"),),
+        )
         user = self.db.one("SELECT * FROM users WHERE id=?", (run["user_id"],))
         tools = Tools(self.s, user, run["conversation_id"], run["id"])
         if not user or not user["active"]:
@@ -279,21 +301,83 @@ class AgentEngine:
         provider = (
             self.s.chat_factory(cfg, self.s.vault.decrypt(row["encrypted_key"]))
             if self.s.chat_factory
-            else OpenAIChat(
+            else (AnthropicChat if cfg.get("protocol") == "anthropic" else OpenAIChat)(
                 cfg,
                 self.s.vault.decrypt(row["encrypted_key"]),
                 self.s.settings.allow_private_model_urls,
             )
         )
-        messages = self.context(run, tools, user)
+        tools.context_limit = context_limit
+        messages = (
+            self.context(run, tools, user, restore_sources=False)
+            if selector_row
+            else self.context(run, tools, user)
+        )
+        selector = ContextSelector(self.s, selector_row) if selector_row else None
+        context_repairs = 0
+        if selector:
+            self.emit(run, "tool_start", {"name": "select_context"})
+            payload = await selector.prepare(
+                run, tools, tools.question, tools.study_context
+            )
+            success = bool(payload and "error" not in payload)
+            self.emit(run, "tool_end", {"name": "select_context", "success": success})
+            if payload and "error" in payload:
+                self.emit(
+                    run, "tool_diagnostic", safe_diagnostic("select_context", payload)
+                )
+            if success:
+                messages.insert(
+                    1,
+                    {
+                        "role": "user",
+                        "content": "Selected untrusted reference content (private, never disclose):\n"
+                        + js(payload),
+                    },
+                )
+                tools.delivered_sources.update(tools.sources)
+            messages.insert(
+                1,
+                {
+                    "role": "system",
+                    "content": "Source selection and full reading are handled by a separate server coordinator. Do not browse or search the library. Use delivered evidence, or ask a concise clarification. Request essential_context only for a precise essential missing concept or unreadable required reference, never for optional expansion. Metadata is not read evidence. Finish promptly using the structured answer contract.",
+                },
+            )
+        if sum(len(js(m)) for m in messages) > context_limit:
+            raise ModelError("CONTEXT_BUDGET_EXCEEDED")
         signatures = Counter()
         tool_count = 0
         search_count = empty_searches = 0
         search_stopped = False
         definitions = tools.definitions()
+        if selector:
+            library_tools = {
+                "search_library",
+                "get_document_metadata",
+                "get_table_of_contents",
+                "get_lesson_full",
+                "get_section",
+                "get_lesson_part",
+                "list_lesson_parts",
+                "get_exam_with_solution",
+                "get_exercise_collection",
+                "search_within_node",
+            }
+            definitions = [
+                d for d in definitions if d["function"]["name"] not in library_tools
+            ]
+            definitions.append(
+                {
+                    "type": "function",
+                    "function": {
+                        "name": "essential_context",
+                        "description": "Request a single server-coordinated addition only for an essential missing concept/reference, with a precise query and reason. Never a routine search or optional expansion. Read the returned content in a later turn before answering.",
+                        "parameters": EssentialContext.model_json_schema(),
+                    },
+                }
+            )
         stable_manifest = google_openai(cfg["base_url"])
         pending_delivered_sources = set()
-        deadline = time.monotonic() + self.s.settings.max_run_seconds
         final_reserve = min(30, self.s.settings.max_run_seconds * 0.2)
         image_count = image_bytes = 0
         feature = "teacher" if user["role"] == "teacher" else "teaching"
@@ -307,7 +391,8 @@ class AgentEngine:
             )
             final_round = (
                 remaining <= final_reserve
-                or context_size >= self.s.settings.max_context_chars * 0.9
+                or context_size >= context_limit * 0.9
+                or (bool(selector) and step >= cfg.get("main_max_rounds", 4) - 1)
             )
             available = [
                 t
@@ -318,7 +403,12 @@ class AgentEngine:
             available_names = {t["function"]["name"] for t in available}
             budget = (
                 f"Server remaining time: {max(0, int(remaining))} seconds. "
-                "There is no fixed model-round limit. Balance useful tool work against "
+                + (
+                    "This coordinated run has a small final-answer reserve and a configured tool-round ceiling. "
+                    if selector
+                    else "There is no fixed model-round limit. "
+                )
+                + "Balance useful tool work against "
                 "token/time cost. Stop when evidence is sufficient; do not repeat completed "
                 "work or expand the task unnecessarily. Finish the answer promptly. "
             )
@@ -510,7 +600,24 @@ class AgentEngine:
                         )
                         continue
                     tool_count += 1
-                    result = await asyncio.to_thread(tools.execute, name, args)
+                    if selector and name not in available_names:
+                        raise ValueError(
+                            "This tool is not available in coordinated-source mode; use delivered evidence or a concise clarification"
+                        )
+                    if selector and name == "essential_context":
+                        request = EssentialContext.model_validate(args)
+                        if context_repairs >= 1:
+                            raise ValueError(
+                                "Essential context addition already attempted; finish with available evidence or ask a clarification"
+                            )
+                        context_repairs += 1
+                        result = await selector.prepare(run, tools, request.query)
+                        result = result or {
+                            "error": "MATCHING_SOURCE_NOT_FOUND",
+                            "instruction": "Ask a brief clarification; do not teach from memory",
+                        }
+                    else:
+                        result = await asyncio.to_thread(tools.execute, name, args)
                     if "error" in result:
                         feedback = tool_feedback(
                             name, ValueError(result.get("message", result["error"]))
@@ -592,7 +699,11 @@ class AgentEngine:
                                 ],
                             }
                 serialized = js(result)
-                fits = len(serialized) <= self.s.settings.max_tool_chars
+                fits = len(serialized) <= (
+                    context_limit
+                    if name == "essential_context"
+                    else self.s.settings.max_tool_chars
+                )
                 if not fits:
                     serialized = js(
                         {
@@ -642,7 +753,7 @@ class AgentEngine:
                         for m in messages
                         if isinstance(m.get("content"), (str, type(None)))
                     )
-                    > self.s.settings.max_context_chars
+                    > context_limit
                 ):
                     raise ModelError("CONTEXT_BUDGET_EXCEEDED")
                 if pending and fits and "error" not in result:
@@ -676,7 +787,7 @@ class AgentEngine:
                         for m in messages
                         if isinstance(m.get("content"), (str, type(None)))
                     )
-                    > self.s.settings.max_context_chars
+                    > context_limit
                 ):
                     raise ModelError("CONTEXT_BUDGET_EXCEEDED")
             # A user image cannot split the responses to a parallel assistant tool batch.

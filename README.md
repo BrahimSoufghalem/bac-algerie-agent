@@ -133,3 +133,7 @@ npm run test:browser
 ### Google AI Studio
 
 يمكن اختيار Gemini عبر رابط Google الرسمي المتوافق مع OpenAI: `https://generativelanguage.googleapis.com/v1beta/openai/`، مع API ID متاح فعليًا للمشروع، مثل `gemini-3.5-flash-lite`. المفتاح يدخل في إعداد المالك ويُحفظ مشفرًا، لا في Git أو المحادثة. اختبار الاتصال هو GET /models فقط، لا توليدًا. انظر [توافق Gemini واختباره وحدوده](docs/acceptance/gemini-openai-compatibility.md) قبل اعتبار الدروس والأدوات جاهزة.
+
+## اختيار المراجع ومزوّدون مستقلون
+
+قوالب OpenAI/Google/Claude/Vercel/OpenRouter وCustom، وخانة قرار مستقلة قابلة للتبديل. منسق المراجع تجريبي اختياري: LAYA metadata فقط ثم قراءة كاملة ثم نموذج التدريس دون loop بحث مفتوح. **اختبار LAYA الحقيقي لم يثبت دقة الدارجة؛ لا تفعّله للنشر دون قبول على بياناتك.** [الإعداد والمعمارية وDocker](docs/CONTEXT_SELECTION.md) · [حدود ونتائج الاختبار](docs/acceptance/context-selector.md). migration007 يحتاج backup كاملًا بمفاتيحه قبل الترقية.

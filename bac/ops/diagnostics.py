@@ -5,6 +5,9 @@ from bac.core.activity import LABELS
 from bac.agent.provider_errors import safe_provider_diagnostic
 
 ERROR_CODES = {
+    "INVALID_SELECTOR_RESPONSE",
+    "SELECTED_SOURCE_CHANGED",
+    "MATCHING_SOURCE_NOT_FOUND",
     "TOOL_INPUT_OR_SOURCE_ERROR",
     "SOURCE_EXCEEDS_TOOL_BUDGET",
     "ATOMIC_BUNDLE_EXCEEDS_TOOL_BUDGET",

@@ -4,6 +4,8 @@ import json
 from collections import defaultdict
 
 LABELS = {
+    "select_context": ("review", "مراجعة المعلومات"),
+    "essential_context": ("review", "مراجعة المعلومات"),
     "search_library": ("review", "مراجعة المعلومات"),
     "get_document_metadata": ("review", "مراجعة المعلومات"),
     "get_table_of_contents": ("review", "مراجعة المعلومات"),

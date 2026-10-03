@@ -238,7 +238,7 @@ class Tools:
             result["part"].pop("content_file", None)
         return result
 
-    def load(self, id, kind=None, remember=True, scope="full"):
+    def load(self, id, kind=None, remember=True, scope="full", full_context=False):
         if scope == "part":
             p = self.library.part(id)
         else:
@@ -258,7 +258,12 @@ class Tools:
             else:
                 p = self.library.node(id)
         result = self._compact(p)
-        if len(js(result)) > self.s.settings.max_tool_chars:
+        limit = (
+            getattr(self, "context_limit", self.s.settings.max_context_chars)
+            if full_context
+            else self.s.settings.max_tool_chars
+        )
+        if len(js(result)) > limit:
             error = {
                 "error": "ATOMIC_BUNDLE_EXCEEDS_TOOL_BUDGET"
                 if p.get("atomic_bundle")

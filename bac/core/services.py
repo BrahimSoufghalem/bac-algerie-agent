@@ -53,11 +53,23 @@ class Services:
 
         original_factory = self.extraction_engine.provider_factory
         self.extraction_engine.provider_factory = lambda cfg, key: MeteredVision(
-            self, original_factory(cfg, key), cfg
+            self, self.vision_provider(cfg, key, original_factory), cfg
         )
+        self.selector_transport = None
         self.connection_transport = connection_transport
         self.chat_factory = chat_factory
         self.library_cache = ContentCache()
+
+    def vision_provider(self, cfg, key, original_factory):
+        if cfg.get("protocol") == "anthropic":
+            from bac.agent.anthropic_vision import AnthropicVision
+
+            return AnthropicVision(cfg, key, self.extraction_settings)
+        from bac.agent.compat import model_identity
+
+        return original_factory(
+            cfg | {"model": model_identity(cfg["base_url"], cfg["model"])}, key
+        )
 
     def close(self):
         self.guard.close()

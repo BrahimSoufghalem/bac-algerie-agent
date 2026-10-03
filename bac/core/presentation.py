@@ -9,7 +9,7 @@ INTERNAL = re.compile(
     r"(?:https?://[^\s\"<>)]*)?/api/(?:library|agent|owner|science)/[^\s\"<>)]*"
     r"|\b(?:book|node|asset|version|science|part|doc)_[a-f0-9]{20,}\S*"
     r"|<!--.*?-->"
-    r"|\b(?:render_answer|search_library|get_lesson_full|get_section|get_table_of_contents|"
+    r"|\b(?:essential_context|select_context|render_answer|search_library|get_lesson_full|get_section|get_table_of_contents|"
     r"get_document_metadata|inspect_source_image|verify_calculation|verify_equation|"
     r"verify_dimensions|run_scientific_code|propose_note|write_learning_note|"
     r"save_practice_test|save_teaching_material|symbolic_math|convert_units|plot_function|"
