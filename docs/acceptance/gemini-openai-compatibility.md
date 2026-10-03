@@ -6,6 +6,10 @@ The operator reported `HTTP_404`, one model request and zero executed tools for 
 
 No Google key was sent to the development environment. Real Google generation acceptance is pending the operator's separately confirmed one-request greeting probe. Do not claim that metadata listing, offline tests or these compatibility changes fix the earlier 404 without a new live result. The earlier six-stage greeting failure and the latest zero-tool 404 report may describe different attempts.
 
+## Follow-up
+
+The operator later reported greeting success but a multi-round lesson failure (`HTTP_400`, 8 model requests, 7 tool calls). This historical report describes the preceding patch only; see [the later final-request protocol and diagnostic work](gemini-final-protocol.md) for current evidence and remaining live acceptance.
+
 ## Narrow fixes
 
 1. Model identity normalization is restricted to Google's official HTTPS OpenAI endpoint. `models/NAME` is equivalent to `NAME` for listing comparison; requests use the documented bare name. Other provider namespaces are unchanged; no fuzzy name matching, model substitution, native-API fallback or hidden retry was added.

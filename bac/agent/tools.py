@@ -122,7 +122,7 @@ class Tools:
             ),
             (
                 "render_answer",
-                "Finish the answer. response_kind=teaching REQUIRES relevant source_ids actually read in this run (restored context counts; search/TOC does not). Never teach from model memory without a read reference. calculation requires real computed results and cannot bypass lesson grounding. conversation is only a short greeting/thanks; clarification asks for missing information in one short text block; refusal is a short non-teaching refusal. Never expose private files/scans/titles/IDs/URLs/source passages or tool traces. No image blocks. For generated graph blocks use actual result_id only.",
+                "Finish the answer as the ONLY call in this model turn, after receiving required tool results in an earlier turn. Never batch this terminal call with reads, calculations or saves. response_kind=teaching REQUIRES relevant source_ids actually read in this run (restored context counts; search/TOC does not). Never teach from model memory without a read reference. calculation requires real computed results and cannot bypass lesson grounding. conversation is only a short greeting/thanks; clarification asks for missing information in one short text block; refusal is a short non-teaching refusal. Never expose private files/scans/titles/IDs/URLs/source passages or tool traces. No image blocks. For generated graph blocks use actual result_id only.",
                 PresentedAnswer,
             ),
             (
@@ -176,7 +176,7 @@ class Tools:
             entries.append(
                 (
                     "save_teaching_material",
-                    "Save a private generated draft: lesson plan, exercises, test with full solution/rubric, grading or reference review. Use actually loaded source IDs and actual science results; never official by default.",
+                    "Save a private generated draft: lesson plan, exercises, test with full solution/rubric, grading or reference review. Use source IDs actually read in an earlier model turn and actual science results; never batch a source read with this save, and never official by default.",
                     Material,
                 )
             )
