@@ -31,6 +31,7 @@ ERROR_CODES = {
     "TOOL_ARGUMENTS_TOO_LARGE",
     "NETWORK_OR_TIMEOUT",
     "INVALID_MODEL_RESPONSE",
+    "PROVIDER_METADATA_TOO_LARGE",
     "AGENT_EXECUTION_ERROR",
     "LEASE_LOST_OR_CANCELLED",
     "HTTP_400",
@@ -122,17 +123,21 @@ def safe_diagnostic(name, result):
 def diagnose_run(db, run_id=None):
     run = (
         db.one(
-            "SELECT id,status,error,steps,tool_calls FROM agent_runs WHERE id=?",
+            "SELECT id,status,error,steps,tool_calls,config_id,created_at FROM agent_runs WHERE id=?",
             (run_id,),
         )
         if run_id
         else db.one(
-            "SELECT id,status,error,steps,tool_calls FROM agent_runs "
+            "SELECT id,status,error,steps,tool_calls,config_id,created_at FROM agent_runs "
             "WHERE status IN ('FAILED','INTERRUPTED') ORDER BY created_at DESC LIMIT 1"
         )
     )
     if not run:
         return {"found": False}
+    active = db.one("SELECT config_id FROM active_models WHERE slot='agent'")
+    newer = db.one(
+        "SELECT 1 FROM agent_runs WHERE created_at>? LIMIT 1", (run["created_at"],)
+    )
     diagnostics = []
     rows = db.rows(
         "SELECT payload FROM run_events WHERE run_id=? AND type='tool_diagnostic' "
@@ -165,6 +170,10 @@ def diagnose_run(db, run_id=None):
         "error": safe_code(run["error"]) if run["error"] else None,
         "model_requests": run["steps"],
         "tool_calls": run["tool_calls"],
+        "uses_current_model_config": bool(
+            active and active["config_id"] == run["config_id"]
+        ),
+        "newer_run_exists": bool(newer),
         "diagnostics": diagnostics,
         "note": "No prompt, model text, arguments, source IDs/files, keys or user identity included. Older runs may have no tool diagnostics.",
     }

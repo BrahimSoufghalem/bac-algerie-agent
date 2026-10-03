@@ -2,10 +2,67 @@ from abc import ABC, abstractmethod
 import json
 import httpx
 from bac.vendor.bookforge.vision.provider import validate_base_url
+from bac.agent.compat import model_identity
 
 
 class ModelError(Exception):
     pass
+
+
+def check_error(payload):
+    if payload.get("error"):
+        error = payload["error"]
+        code = error.get("code") if isinstance(error, dict) else None
+        if isinstance(code, int) and not isinstance(code, bool) and 400 <= code <= 599:
+            raise ModelError("HTTP_" + str(code))
+        raise ModelError("INVALID_MODEL_RESPONSE")
+
+
+def merge_signature(target, incoming):
+    """Forward only the opaque continuity token; never thought text/other extras."""
+    extra = incoming.get("extra_content")
+    google = extra.get("google") if isinstance(extra, dict) else None
+    signature = google.get("thought_signature") if isinstance(google, dict) else None
+    if signature is None:
+        return
+    if not isinstance(signature, str):
+        raise ModelError("INVALID_MODEL_RESPONSE")
+    if len(signature) > 64000:
+        raise ModelError("PROVIDER_METADATA_TOO_LARGE")
+    if not signature:
+        return
+    previous = (
+        target.get("extra_content", {}).get("google", {}).get("thought_signature")
+    )
+    if previous is not None and previous != signature:
+        # A continuity token is an atom, not text to concatenate or fabricate.
+        raise ModelError("INVALID_MODEL_RESPONSE")
+    target["extra_content"] = {"google": {"thought_signature": signature}}
+
+
+def canonical_message(message):
+    content = message.get("content")
+    if content is not None and not isinstance(content, str):
+        raise ModelError("INVALID_MODEL_RESPONSE")
+    calls = []
+    for call in message.get("tool_calls") or []:
+        fn = call["function"]
+        if not isinstance(fn["name"], str) or not isinstance(fn["arguments"], str):
+            raise ModelError("INVALID_MODEL_RESPONSE")
+        if len(fn["arguments"]) > 100000:
+            raise ModelError("TOOL_ARGUMENTS_TOO_LARGE")
+        target = {
+            "id": call["id"],
+            "type": "function",
+            "function": {"name": fn["name"], "arguments": fn["arguments"]},
+        }
+        merge_signature(target, call)
+        calls.append(target)
+    if sum(len(json.dumps(c.get("extra_content", {}))) for c in calls) > 256000:
+        raise ModelError("PROVIDER_METADATA_TOO_LARGE")
+    if not content and not calls:
+        raise ModelError("EMPTY_MODEL_RESPONSE")
+    return {"role": "assistant", "content": content or None, "tool_calls": calls}
 
 
 class ChatProvider(ABC):
@@ -46,7 +103,7 @@ class OpenAIChat(ChatProvider):
         if not endpoint.endswith("/chat/completions"):
             endpoint += "/chat/completions"
         body = {
-            "model": cfg["model"],
+            "model": model_identity(cfg["base_url"], cfg["model"]),
             "messages": messages,
             "tools": tools,
             "temperature": cfg.get("temperature", 0.2),
@@ -83,9 +140,10 @@ class OpenAIChat(ChatProvider):
                         if len(payload) > 2_000_000:
                             raise ModelError("RESPONSE_TOO_LARGE")
                         result = json.loads(payload)
+                        check_error(result)
                         usage = result.get("usage", {})
                         choice = result["choices"][0]
-                        message = choice["message"]
+                        message = canonical_message(choice["message"])
                         finish = choice.get("finish_reason", "stop")
                         if message.get("content"):
                             yield {"type": "delta", "text": message["content"]}
@@ -104,6 +162,7 @@ class OpenAIChat(ChatProvider):
                         if text == "[DONE]":
                             break
                         payload = json.loads(text)
+                        check_error(payload)
                         if payload.get("usage"):
                             usage = payload["usage"]
                         for choice in payload.get("choices", []):
@@ -126,6 +185,7 @@ class OpenAIChat(ChatProvider):
                                 )
                                 if tc.get("id"):
                                     target["id"] = tc["id"]
+                                merge_signature(target, tc)
                                 fn = tc.get("function", {})
                                 target["function"]["name"] += fn.get("name", "")
                                 target["function"]["arguments"] += fn.get(
@@ -142,11 +202,13 @@ class OpenAIChat(ChatProvider):
             yield {"type": "usage", "data": usage}
             yield {
                 "type": "result",
-                "message": {
-                    "role": "assistant",
-                    "content": content or None,
-                    "tool_calls": [calls[i] for i in sorted(calls)],
-                },
+                "message": canonical_message(
+                    {
+                        "role": "assistant",
+                        "content": content or None,
+                        "tool_calls": [calls[i] for i in sorted(calls)],
+                    }
+                ),
             }
         except ModelError:
             raise

@@ -45,7 +45,11 @@ LESSON = re.compile(
 
 
 def social_question(question):
-    return len(question) <= 100 and normalized(question) in SOCIAL
+    return (
+        len(question) <= 100
+        and not re.search(r"\d|[=+*/^<>]", question)
+        and normalized(question) in SOCIAL
+    )
 
 
 def require_grounding(answer, tools):
