@@ -13,7 +13,7 @@ from bac.learning.contracts import AgentNote, NoteId, SourceImage, Material, Pri
 from bac.core.presentation import INTERNAL, IMAGE, SourceTextGuard
 from io import BytesIO
 from PIL import Image
-from bac.agent.grounding import require_grounding
+from bac.agent.grounding import require_grounding, social_question
 
 
 class EmptyArgs(Strict):
@@ -482,6 +482,16 @@ class Tools:
         raise ValueError("Unknown or unauthorized tool")
 
     def answer(self, args):
+        # A provider may omit an optional mode while giving a plain greeting.
+        # Infer only from an exact simple social request; all bounded-mode checks
+        # still run below. Never infer this route for a lesson/calculation request.
+        if (
+            self.run_id
+            and isinstance(args, dict)
+            and "response_kind" not in args
+            and social_question(self.question)
+        ):
+            args = args | {"response_kind": "conversation"}
         answer = Answer.model_validate(args)
         if any(b.type == "image" for b in answer.blocks):
             raise ValueError(

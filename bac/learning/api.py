@@ -6,6 +6,7 @@ from fastapi.responses import FileResponse, JSONResponse
 from pydantic import Field
 from bac.core.auth import create_user, owner, verify_password, owned_chat
 from bac.agent.models import Strict
+from bac.agent.compat import model_identity
 from bac.learning.service import Learning
 from bac.learning.private import PrivateFiles
 from bac.learning.contracts import Preferences, Overrides, NoteDecision, AccountLimits
@@ -323,7 +324,10 @@ def router(s, current):
                     ):
                         raise ValueError("Invalid model list")
                     found = any(
-                        isinstance(x, dict) and x.get("id") == cfg["model"]
+                        isinstance(x, dict)
+                        and isinstance(x.get("id"), str)
+                        and model_identity(base, x["id"])
+                        == model_identity(base, cfg["model"])
                         for x in payload.get("data", [])
                     )
         except HTTPException:
