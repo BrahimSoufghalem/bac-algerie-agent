@@ -7,6 +7,7 @@ from pydantic import Field
 from bac.core.auth import create_user, owner, verify_password, owned_chat
 from bac.agent.models import Strict
 from bac.agent.compat import model_identity
+from bac.agent.presets import auth_headers
 from bac.learning.service import Learning
 from bac.learning.private import PrivateFiles
 from bac.learning.contracts import Preferences, Overrides, NoteDecision, AccountLimits
@@ -283,6 +284,10 @@ def router(s, current):
             "SELECT m.* FROM active_models a JOIN model_configs m ON m.id=a.config_id WHERE a.slot=?",
             (slot,),
         )
+        if slot == "selector":
+            row = s.db.one(
+                "SELECT c.* FROM active_selector a JOIN context_selectors c ON c.id=a.config_id WHERE a.singleton=1"
+            )
         if not row:
             raise HTTPException(404, "Save model configuration first")
         cfg = json.loads(row["config"])
@@ -301,10 +306,7 @@ def router(s, current):
                 async with client.stream(
                     "GET",
                     base + "/models",
-                    headers={
-                        "Authorization": "Bearer "
-                        + s.vault.decrypt(row["encrypted_key"])
-                    },
+                    headers=auth_headers(cfg, s.vault.decrypt(row["encrypted_key"])),
                 ) as response:
                     code = response.status_code
                     if code != 200:
@@ -346,6 +348,13 @@ def router(s, current):
             "connected": True,
             "model_advertised": found,
             "generation_requests": 0,
+            "models": [
+                {"id": x["id"], "type": x.get("type", "language")}
+                for x in payload.get("data", [])
+                if isinstance(x, dict)
+                and isinstance(x.get("id"), str)
+                and __import__("re").fullmatch(r"[a-zA-Z0-9_./:-]{1,180}", x["id"])
+            ][:100],
             "warning": "Reachability/authentication/model listing only; vision, tool calling and educational quality were not tested.",
         }
 

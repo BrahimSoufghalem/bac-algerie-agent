@@ -230,11 +230,18 @@ function App() {
     [ack, setAck] = useState(false),
     [reviewNotes, setReviewNotes] = useState(""),
     [busy, setBusy] = useState(false);
+  const [providerPresets, setProviderPresets] = useState<any[]>([]);
+  const [catalog, setCatalog] = useState<any[]>([]);
   const [models, setModels] = useState<any[]>([]),
     [slot, setSlot] = useState("agent"),
-    [model, setModel] = useState({
-      base_url: "https://ohhmyagent.com/v1",
-      model: "gpt-5.6-luna",
+    [model, setModel] = useState<any>({
+      provider: "openai",
+      protocol: "openai",
+      base_url: "https://api.openai.com/v1",
+      model: "gpt-4.1-mini",
+      selector_enabled: false,
+      main_max_rounds: 4,
+      max_context_chars: null,
       temperature: 0.2,
       max_tokens: 4000,
       timeout: 90,
@@ -589,8 +596,13 @@ function App() {
       if (next === "owner-library")
         setOwnerDocs((await api("/api/owner/documents")).items);
       if (next === "models") {
-        const items = (await api("/api/owner/models")).items;
+        const [saved, offered] = await Promise.all([
+          api("/api/owner/models"),
+          api("/api/owner/model-presets?slot=" + slot),
+        ]);
+        const items = saved.items;
         setModels(items);
+        setProviderPresets(offered.items);
         const m = items.find((x: any) => x.slot === slot);
         if (m) setModel(m);
       }
@@ -680,7 +692,7 @@ function App() {
     chat: "مسار",
     library: "المكتبة المنشورة",
     "owner-library": "مراجعة المحتوى ونشره",
-    models: "نماذج التدريس والاستخراج",
+    models: "نماذج التدريس واختيار المراجع",
     usage: "الاستخدام والمحاسبة",
     security: "أمان الحساب",
     "service-tokens": "وصول الوكلاء",
@@ -1462,10 +1474,12 @@ function App() {
         )}
         {view === "models" && (
           <section className="page-content narrow">
-            <h1>نموذج واحد لكل تشغيل</h1>
+            <h1>نماذج التدريس واختيار المراجع</h1>
             <p className="muted">
-              إعدادات التدريس مستقلة عن استخراج الكتب. التغيير يخص التشغيلات
-              الجديدة؛ المفاتيح لا تُعرض بعد حفظها.
+              إعداد التدريس مستقل عن اختيار المراجع واستخراج الكتب. اختر مزوّدًا
+              ليُضبط الرابط والبروتوكول والنموذج الافتراضي؛ أدخل المفتاح فقط،
+              ويمكنك تغيير النموذج. الإعدادات الجديدة تخص تشغيلات جديدة،
+              والمفاتيح محفوظة مشفرًا ولا تُعرض.
             </p>
             <form
               className="panel"
@@ -1493,16 +1507,131 @@ function App() {
                 <select
                   value={slot}
                   onChange={(e) => {
-                    setSlot(e.target.value);
-                    const m = models.find((m) => m.slot === e.target.value);
-                    if (m) setModel(m);
+                    const next = e.target.value;
+                    setSlot(next);
                     setKey("");
+                    setCatalog([]);
+                    action(async () => {
+                      const offered = (
+                        await api("/api/owner/model-presets?slot=" + next)
+                      ).items;
+                      setProviderPresets(offered);
+                      const saved = models.find((m) => m.slot === next);
+                      const preset = offered.find(
+                        (p: any) =>
+                          p.id === (next === "selector" ? "vercel" : "openai"),
+                      );
+                      setModel(
+                        saved || {
+                          max_tokens: 4000,
+                          timeout: 90,
+                          max_context_chars: null,
+                          main_max_rounds: 4,
+                          selector_max_sources: 1,
+                          input_price_per_million: null,
+                          output_price_per_million: null,
+                          cached_price_per_million: null,
+                          provider: preset.id,
+                          protocol: preset.protocol,
+                          base_url: preset.base_url,
+                          model: preset.model,
+                          temperature: preset.temperature,
+                          selector_enabled: false,
+                        },
+                      );
+                    });
                   }}
                 >
                   <option value="agent">وكيل التدريس</option>
                   <option value="extraction">استخراج الكتب</option>
+                  <option value="selector">اختيار المراجع — LAYA</option>
                 </select>
               </label>
+              <label>
+                المزوّد
+                <select
+                  value={model.provider || "custom"}
+                  onChange={(e) => {
+                    const p = providerPresets.find(
+                      (p) => p.id === e.target.value,
+                    );
+                    if (!p) return;
+                    setModel({
+                      ...model,
+                      provider: p.id,
+                      protocol: p.protocol,
+                      base_url: p.base_url,
+                      model: p.model,
+                      temperature: p.temperature,
+                      input_price_per_million: null,
+                      output_price_per_million: null,
+                      cached_price_per_million: null,
+                    });
+                    setKey("");
+                    setCatalog([]);
+                    setNotice(
+                      "ضُبط القالب فقط؛ لم يُرسل أي طلب توليد. أدخل مفتاح المزوّد الجديد، والنموذج الافتراضي قابل للتغيير حسب إتاحة حسابك.",
+                    );
+                  }}
+                >
+                  {providerPresets.map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {p.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <p className="muted">
+                البروتوكول:{" "}
+                {model.protocol === "anthropic"
+                  ? "Anthropic Messages الأصلي"
+                  : model.protocol === "evaluation"
+                    ? "Typed Evaluation — ليس Chat Completions"
+                    : "OpenAI-compatible Chat"}
+              </p>
+              {slot === "selector" && (
+                <>
+                  <label>
+                    <input
+                      type="checkbox"
+                      checked={!!model.selector_enabled}
+                      onChange={(e) =>
+                        setModel({
+                          ...model,
+                          selector_enabled: e.target.checked,
+                        })
+                      }
+                    />{" "}
+                    تفعيل اختيار المراجع المنسّق للتشغيلات الجديدة
+                  </label>
+                  <label>
+                    سقف المراجع المختارة لكل طلب
+                    <input
+                      type="number"
+                      min={1}
+                      max={8}
+                      value={model.selector_max_sources || 1}
+                      onChange={(e) =>
+                        setModel({
+                          ...model,
+                          selector_max_sources: Number(e.target.value),
+                        })
+                      }
+                    />
+                  </label>
+                  <p className="muted">
+                    مرجع واحد افتراضيًا. لطلبات متعددة يمكنك رفع السقف؛ يختار
+                    نموذج القرار مرجعًا إضافيًا أو يتوقف عند الكفاية، قبل جلب
+                    المحتوى. كل اختيار إضافي استدعاء مستقل.
+                  </p>
+                  <p className="muted">
+                    تجريبي: يحتاج اختبار دقة على مراجعك والدارجة. لا يرى إلا
+                    بيانات المراجع المرشحة، ولا يقرأ الدروس أو يعرضها للطالب.
+                    يمكن تبديل المزوّد إلى نموذج قرار يدعم OpenAI أو Anthropic،
+                    أو واجهة Evaluation مخصصة.
+                  </p>
+                </>
+              )}
               <label>
                 Base URL
                 <input
@@ -1510,22 +1639,56 @@ function App() {
                   dir="ltr"
                   required
                   value={model.base_url}
+                  readOnly={!!model.provider && model.provider !== "custom"}
                   onChange={(e) =>
                     setModel({ ...model, base_url: e.target.value })
                   }
                 />
               </label>
+              {(!model.provider || model.provider === "custom") && (
+                <label>
+                  بروتوكول المزوّد المخصص
+                  <select
+                    value={model.protocol || "openai"}
+                    onChange={(e) => {
+                      setModel({ ...model, protocol: e.target.value });
+                      setKey("");
+                    }}
+                  >
+                    {slot === "selector" && (
+                      <option value="evaluation">
+                        Typed Evaluation / LAYA
+                      </option>
+                    )}
+                    <option value="openai">OpenAI-compatible</option>
+                    <option value="anthropic">Anthropic Messages</option>
+                  </select>
+                </label>
+              )}
               <label>
                 Model
                 <input
                   dir="ltr"
                   required
                   value={model.model}
+                  list="provider-model-list"
                   onChange={(e) =>
                     setModel({ ...model, model: e.target.value })
                   }
                 />
               </label>
+              <datalist id="provider-model-list">
+                {catalog
+                  .filter(
+                    (m) =>
+                      slot !== "selector" ||
+                      model.protocol !== "evaluation" ||
+                      m.type === "evaluation",
+                  )
+                  .map((m) => (
+                    <option key={m.id} value={m.id} />
+                  ))}
+              </datalist>
               <label>
                 API Key
                 <input
@@ -1571,6 +1734,50 @@ function App() {
                   />
                 </label>
               </div>
+              {slot === "agent" && (
+                <details>
+                  <summary>السياق وجولات الأدوات</summary>
+                  <label>
+                    ميزانية السياق بالحروف — حسب قدرة النموذج
+                    <input
+                      type="number"
+                      min="10000"
+                      max="4000000"
+                      value={model.max_context_chars ?? ""}
+                      placeholder="الحد الافتراضي للخادم"
+                      onChange={(e) =>
+                        setModel({
+                          ...model,
+                          max_context_chars:
+                            e.target.value === ""
+                              ? null
+                              : Number(e.target.value),
+                        })
+                      }
+                    />
+                  </label>
+                  <label>
+                    جولات النموذج عند تفعيل المنسّق
+                    <input
+                      type="number"
+                      min="2"
+                      max="8"
+                      value={model.main_max_rounds ?? 4}
+                      onChange={(e) =>
+                        setModel({
+                          ...model,
+                          main_max_rounds: Number(e.target.value),
+                        })
+                      }
+                    />
+                  </label>
+                  <p className="muted">
+                    المنسّق يجلب المحتوى كاملًا دون حد نتيجة قراءة الأداة
+                    القديم. ميزانية السياق مستقلة وقابلة للزيادة؛ لا يحدث قصّ
+                    صامت. الرجوع للمراجع مسموح لإضافة أساسية واحدة فقط.
+                  </p>
+                </details>
+              )}
               <fieldset>
                 <legend>
                   أسعار تقديرية لكل مليون رمز — وحدة العملة التي تعتمدها
@@ -1627,6 +1834,7 @@ function App() {
                         "POST",
                         { confirm: true },
                       );
+                      setCatalog(r.models || []);
                       setNotice(
                         r.connected
                           ? (r.model_advertised

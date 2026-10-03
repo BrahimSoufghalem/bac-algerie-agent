@@ -10,7 +10,7 @@ class Settings:
     secure_cookies: bool = False
     session_hours: int = 168
     agent_workers: int = 2
-    # Legacy constructor argument only; the engine has no fixed round limit.
+    # Legacy constructor argument only; coordinated mode has a per-model ceiling.
     max_run_steps: int = 0
     max_run_seconds: int = 180
     max_context_chars: int = 60000

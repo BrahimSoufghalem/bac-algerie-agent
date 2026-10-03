@@ -1,0 +1,126 @@
+{
+  "verdict": "LAYA_source_selection_quality_not_passed; experimental_opt_in_only",
+  "live_requests": 13,
+  "live_requests_with_saved_case_reports": 12,
+  "unscored_harness_abort_requests": 1,
+  "method": "metadata_only; synthetic_reviewed_published_sources; no_live_teaching_or_vision",
+  "raw_darija": "failed",
+  "single_plain_arabic": "matching_choice",
+  "single_french": "matching_choice",
+  "two_candidate_focused_pipeline": "failed_no_accepted_selection",
+  "compact_two_candidate_pipeline": "failed_wrong_vertical_source_was_read",
+  "missing_topic_pipeline": "rejected_without_read",
+  "guarded_single_candidate_pipeline": "passed_after_backend_opposite_motion_filter; not_general_precision_evidence",
+  "live_429": "stopped_no_automatic_paid_retry",
+  "remaining_gates": [
+    "representative_Arabic_Darija_multisource_selection",
+    "candidate_recall",
+    "deployment_live_teacher_and_vision",
+    "deployment_keys_configured_locally"
+  ],
+  "pipeline": [
+    {
+      "case": "darija_focused",
+      "candidate_count": 2,
+      "expected_present": true,
+      "status": "failed",
+      "selected_expected": false,
+      "fetched_full_content": false,
+      "latency_ms": 718
+    },
+    {
+      "case": "chemistry",
+      "candidate_count": 1,
+      "expected_present": true,
+      "status": "passed",
+      "selected_expected": true,
+      "fetched_full_content": true,
+      "latency_ms": 369
+    },
+    {
+      "case": "missing_specific",
+      "candidate_count": 2,
+      "expected_present": true,
+      "status": "passed",
+      "selected_expected": true,
+      "fetched_full_content": false,
+      "latency_ms": 465
+    },
+    {
+      "reported_usage": [
+        {
+          "feature": "source_selection",
+          "input_tokens": 180,
+          "output_tokens": 0,
+          "status": "ok"
+        },
+        {
+          "feature": "source_selection",
+          "input_tokens": 135,
+          "output_tokens": 0,
+          "status": "ok"
+        },
+        {
+          "feature": "source_selection",
+          "input_tokens": 182,
+          "output_tokens": 0,
+          "status": "ok"
+        }
+      ]
+    }
+  ],
+  "compact": [
+    {
+      "case": "compact_metadata_quality",
+      "choice_alias": "C2",
+      "confidence": 0.5513,
+      "margin": 0.2837
+    },
+    {
+      "case": "darija_focused",
+      "candidate_count": 2,
+      "expected_present": true,
+      "status": "failed",
+      "selected_expected": false,
+      "fetched_full_content": true,
+      "latency_ms": 460
+    },
+    {
+      "reported_usage": [
+        {
+          "feature": "source_selection",
+          "input_tokens": 197,
+          "output_tokens": 0,
+          "status": "ok"
+        }
+      ]
+    }
+  ],
+  "guarded": [
+    {
+      "case": "guarded_metadata_quality",
+      "choice_alias": "C1",
+      "confidence": 0.7208,
+      "margin": 0.4416
+    },
+    {
+      "case": "darija_focused",
+      "candidate_count": 1,
+      "expected_present": true,
+      "status": "passed",
+      "selected_expected": true,
+      "fetched_full_content": true,
+      "latency_ms": 540
+    },
+    {
+      "reported_usage": [
+        {
+          "feature": "source_selection",
+          "input_tokens": 160,
+          "output_tokens": 0,
+          "status": "ok"
+        }
+      ]
+    }
+  ]
+}

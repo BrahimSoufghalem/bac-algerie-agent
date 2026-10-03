@@ -26,6 +26,7 @@ from bac.learning.api import router as learning_router
 from bac.learning.usage import report
 from bac.agent.engine import AgentEngine
 from bac.agent.models import ModelConfig
+from bac.agent.presets import presets, validate_preset
 from bac.library.service import Library
 from bac.library.contracts import (
     DocumentMetadata,
@@ -476,29 +477,54 @@ def create_app(services=None):
             headers={"X-Accel-Buffering": "no"},
         )
 
+    @app.get("/api/owner/model-presets")
+    def model_presets(slot: str = "agent", user=Depends(current)):
+        owner(user)
+        if slot not in ("agent", "extraction", "selector"):
+            raise HTTPException(422, "Invalid model slot")
+        return {"items": presets(slot)}
+
     @app.get("/api/owner/models")
     def models(user=Depends(current)):
         owner(user)
+        selector = s.db.one(
+            "SELECT c.* FROM active_selector a JOIN context_selectors c ON c.id=a.config_id WHERE a.singleton=1"
+        )
         return {
-            "items": [
-                {
-                    **json.loads(r["config"]),
-                    "slot": r["slot"],
-                    "id": r["id"],
-                    "key_saved": bool(r["encrypted_key"]),
-                }
-                for r in s.db.rows(
-                    "SELECT m.* FROM active_models a JOIN model_configs m ON m.id=a.config_id"
+            "items": (
+                [
+                    {
+                        **json.loads(r["config"]),
+                        "slot": r["slot"],
+                        "id": r["id"],
+                        "key_saved": bool(r["encrypted_key"]),
+                    }
+                    for r in s.db.rows(
+                        "SELECT m.* FROM active_models a JOIN model_configs m ON m.id=a.config_id"
+                    )
+                ]
+                + (
+                    [
+                        {
+                            **json.loads(selector["config"]),
+                            "slot": "selector",
+                            "id": selector["id"],
+                            "key_saved": bool(selector["encrypted_key"]),
+                        }
+                    ]
+                    if selector
+                    else []
                 )
-            ]
+            )
         }
 
     @app.put("/api/owner/models/{slot}")
     async def model(slot: str, p: ConfigRequest, user=Depends(current)):
         owner(user)
-        if slot not in ("agent", "extraction"):
+        if slot not in ("agent", "extraction", "selector"):
             raise HTTPException(422, "Invalid model slot")
         try:
+            validate_preset(p.config, slot)
             await validate_base_url(
                 p.config.base_url, s.settings.allow_private_model_urls
             )
@@ -508,16 +534,39 @@ def create_app(services=None):
             "SELECT m.* FROM active_models a JOIN model_configs m ON m.id=a.config_id WHERE a.slot=?",
             (slot,),
         )
+        if slot == "selector":
+            existing = s.db.one(
+                "SELECT c.* FROM active_selector a JOIN context_selectors c ON c.id=a.config_id WHERE a.singleton=1"
+            )
+        if existing and not p.api_key:
+            old = json.loads(existing["config"])
+            if (
+                old["base_url"].rstrip("/") != p.config.base_url.rstrip("/")
+                or old.get("protocol", "openai") != p.config.protocol
+            ):
+                raise HTTPException(
+                    422,
+                    "Enter a new key when changing provider endpoint or protocol; the stored key will not be forwarded",
+                )
         if not p.api_key and not existing:
             raise HTTPException(422, "API key is required for the first configuration")
         secret = s.vault.encrypt(p.api_key) if p.api_key else existing["encrypted_key"]
         id = uid("cfg")
         with s.db.tx() as c:
-            c.execute(
-                "INSERT INTO model_configs VALUES(?,?,?,?,?)",
-                (id, slot, p.config.model_dump_json(), secret, time.time()),
-            )
-            c.execute("INSERT OR REPLACE INTO active_models VALUES(?,?)", (slot, id))
+            if slot == "selector":
+                c.execute(
+                    "INSERT INTO context_selectors VALUES(?,?,?,?)",
+                    (id, p.config.model_dump_json(), secret, time.time()),
+                )
+                c.execute("INSERT OR REPLACE INTO active_selector VALUES(1,?)", (id,))
+            else:
+                c.execute(
+                    "INSERT INTO model_configs VALUES(?,?,?,?,?)",
+                    (id, slot, p.config.model_dump_json(), secret, time.time()),
+                )
+                c.execute(
+                    "INSERT OR REPLACE INTO active_models VALUES(?,?)", (slot, id)
+                )
         s.db.audit(
             user["id"], "model.configure", id, {"slot": slot, "model": p.config.model}
         )
