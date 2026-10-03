@@ -3,18 +3,27 @@ import json
 import httpx
 from bac.vendor.bookforge.vision.provider import validate_base_url
 from bac.agent.compat import model_identity
+from bac.agent.provider_errors import (
+    ERROR_BODY_LIMIT,
+    provider_diagnostic,
+    request_topology,
+)
 
 
 class ModelError(Exception):
-    pass
+    def __init__(self, code, diagnostic=None):
+        super().__init__(code)
+        self.diagnostic = diagnostic
 
 
-def check_error(payload):
+def check_error(payload, topology=None):
     if payload.get("error"):
         error = payload["error"]
         code = error.get("code") if isinstance(error, dict) else None
         if isinstance(code, int) and not isinstance(code, bool) and 400 <= code <= 599:
-            raise ModelError("HTTP_" + str(code))
+            raise ModelError(
+                "HTTP_" + str(code), provider_diagnostic(code, payload, topology or {})
+            )
         raise ModelError("INVALID_MODEL_RESPONSE")
 
 
@@ -113,6 +122,7 @@ class OpenAIChat(ChatProvider):
         }
         if tool_choice is not None:
             body["tool_choice"] = tool_choice
+        topology = request_topology(body)
         content = ""
         calls = {}
         finish = "stop"
@@ -132,7 +142,24 @@ class OpenAIChat(ChatProvider):
                     headers={"Authorization": "Bearer " + self.key},
                 ) as response:
                     if response.status_code != 200:
-                        raise ModelError("HTTP_" + str(response.status_code))
+                        # Bounded, transient inspection: no raw error body enters logs/events.
+                        raw = bytearray()
+                        async for chunk in response.aiter_bytes():
+                            raw.extend(chunk[: ERROR_BODY_LIMIT + 1 - len(raw)])
+                            if len(raw) > ERROR_BODY_LIMIT:
+                                break
+                        try:
+                            payload = (
+                                json.loads(raw) if len(raw) <= ERROR_BODY_LIMIT else {}
+                            )
+                        except (ValueError, TypeError):
+                            payload = {}
+                        raise ModelError(
+                            "HTTP_" + str(response.status_code),
+                            provider_diagnostic(
+                                response.status_code, payload, topology
+                            ),
+                        )
                     if "text/event-stream" not in response.headers.get(
                         "content-type", ""
                     ):
@@ -140,7 +167,7 @@ class OpenAIChat(ChatProvider):
                         if len(payload) > 2_000_000:
                             raise ModelError("RESPONSE_TOO_LARGE")
                         result = json.loads(payload)
-                        check_error(result)
+                        check_error(result, topology)
                         usage = result.get("usage", {})
                         choice = result["choices"][0]
                         message = canonical_message(choice["message"])
@@ -162,7 +189,7 @@ class OpenAIChat(ChatProvider):
                         if text == "[DONE]":
                             break
                         payload = json.loads(text)
-                        check_error(payload)
+                        check_error(payload, topology)
                         if payload.get("usage"):
                             usage = payload["usage"]
                         for choice in payload.get("choices", []):

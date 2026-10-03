@@ -5,6 +5,8 @@ import yaml
 from fastapi import HTTPException
 from bac.core.db import uid, js
 from bac.agent.provider import OpenAIChat, ModelError
+from bac.agent.compat import google_openai
+from bac.agent.provider_errors import safe_provider_diagnostic
 from bac.agent.tools import Tools
 from bac.learning.service import Learning
 from bac.learning.usage import record, check_budget
@@ -289,6 +291,8 @@ class AgentEngine:
         search_count = empty_searches = 0
         search_stopped = False
         definitions = tools.definitions()
+        stable_manifest = google_openai(cfg["base_url"])
+        pending_delivered_sources = set()
         deadline = time.monotonic() + self.s.settings.max_run_seconds
         final_reserve = min(30, self.s.settings.max_run_seconds * 0.2)
         image_count = image_bytes = 0
@@ -375,7 +379,10 @@ class AgentEngine:
                     if final_round
                     else provider.stream
                 )
-                async for item in stream(request_messages, available):
+                # Keep Gemini history and its function declaration manifest consistent.
+                # Keep role-scoped declarations stable; execution policy is still restricted.
+                wire_tools = definitions if stable_manifest else available
+                async for item in stream(request_messages, wire_tools):
                     if item["type"] == "delta":
                         self.emit(run, "delta", {"text": item["text"]})
                     elif item["type"] == "usage":
@@ -394,6 +401,10 @@ class AgentEngine:
                 )
             if not message:
                 raise ModelError("EMPTY_MODEL_RESPONSE")
+            # Source results from the preceding batch have now reached a real model response.
+            # Registration alone (or a read+render in the same batch) is not delivery evidence.
+            tools.delivered_sources.update(pending_delivered_sources)
+            pending_delivered_sources.clear()
             calls = message.get("tool_calls") or []
             if len(calls) > 6:
                 raise ModelError("TOO_MANY_TOOLS")
@@ -446,6 +457,7 @@ class AgentEngine:
                     "tool_calls": calls,
                 }
             )
+            batch_images = []
             for call in calls:
                 name = call["function"]["name"]
                 try:
@@ -470,6 +482,10 @@ class AgentEngine:
                     if final_round and (name != "render_answer" or len(calls) != 1):
                         raise ModelError("FINAL_ANSWER_REQUIRED")
                     if name == "render_answer":
+                        if len(calls) != 1:
+                            raise ValueError(
+                                "Render the answer alone, in a subsequent model turn after reading tool results; do not combine render_answer with other calls."
+                            )
                         if final_round:
                             try:
                                 answer, sources = tools.answer(args)
@@ -483,6 +499,8 @@ class AgentEngine:
                             "error": "RETRIEVAL_STOPPED",
                             "instruction": "Use relevant actual read evidence, or ask a short clarification for missing information; do not teach from memory.",
                         }
+                        self.emit(run, "tool_end", {"name": name, "success": False})
+                        self.emit(run, "tool_diagnostic", safe_diagnostic(name, result))
                         messages.append(
                             {
                                 "role": "tool",
@@ -513,39 +531,12 @@ class AgentEngine:
                         search_stopped = empty_searches >= 2
                     if "error" not in result and name == "save_teaching_material":
                         feature = "teacher"
-                    self.emit(
-                        run,
-                        "tool_end",
-                        {
-                            "name": name,
-                            "success": "error" not in result
-                            and result.get("output", {}).get("status")
-                            not in ("failed", "inconclusive"),
-                            "label": (
-                                "تعذر تأكيد الفحص؛ راجع المعطيات والشروط"
-                                if result.get("output", {}).get("status")
-                                in ("failed", "inconclusive")
-                                else "نجح الفحص المحدد، لا كل الشرح"
-                                if result.get("output", {}).get("status") == "passed"
-                                else "تم تنفيذ الأداة"
-                            )
-                            if "error" not in result
-                            else "تعذر تنفيذ الأداة ضمن حدودها",
-                        },
-                    )
                 except ModelError:
                     raise
                 except (ValueError, HTTPException, KeyError) as exc:
                     result = tool_feedback(name, exc)
-                    self.emit(
-                        run,
-                        "answer_rejected" if name == "render_answer" else "tool_end",
-                        {
-                            "name": name,
-                            "success": False,
-                            "label": "تعذر تنفيذ الأداة أو تأكيد المصدر",
-                        },
-                    )
+                    if name == "render_answer":
+                        self.emit(run, "answer_rejected", {})
                 pending = tools.pending_private
                 tools.pending_private = None
                 extra_image = None
@@ -610,7 +601,32 @@ class AgentEngine:
                         }
                     )
                     extra_image = None
+                if name != "render_answer":
+                    self.emit(
+                        run,
+                        "tool_end",
+                        {
+                            "name": name,
+                            "success": fits
+                            and "error" not in result
+                            and result.get("output", {}).get("status")
+                            not in ("failed", "inconclusive"),
+                            "label": (
+                                "تعذر تأكيد الفحص؛ راجع المعطيات والشروط"
+                                if result.get("output", {}).get("status")
+                                in ("failed", "inconclusive")
+                                else "نجح الفحص المحدد، لا كل الشرح"
+                                if result.get("output", {}).get("status") == "passed"
+                                else "تم تنفيذ الأداة"
+                            )
+                            if fits and "error" not in result
+                            else "تعذر تنفيذ الأداة ضمن حدودها",
+                        },
+                    )
                 if "error" in result or not fits:
+                    if not fits and "error" in result:
+                        # Preserve the root failure even if its corrective feedback is oversized.
+                        self.emit(run, "tool_diagnostic", safe_diagnostic(name, result))
                     diagnostic_result = (
                         result if fits else {"error": "TOOL_RESULT_EXCEEDS_BUDGET"}
                     )
@@ -631,20 +647,20 @@ class AgentEngine:
                     raise ModelError("CONTEXT_BUDGET_EXCEEDED")
                 if pending and fits and "error" not in result:
                     if extra_image:
-                        messages.append(extra_image)
+                        batch_images.append(extra_image)
                         image_count += 1
                         image_bytes += len(data)
                         feature = "private_vision"
                     tools.credit_private(result)
                 elif source_image and fits and "error" not in result and extra_image:
-                    messages.append(extra_image)
+                    batch_images.append(extra_image)
                     image_count += 1
                     image_bytes += len(data)
                 if fits and "error" not in result:
                     delivered = result.get("sources", [])
                     if result.get("source"):
                         delivered = [*delivered, result["source"]]
-                    tools.delivered_sources.update(
+                    pending_delivered_sources.update(
                         source.get("source_id", source.get("node_id"))
                         for source in delivered
                         if source.get("source_id", source.get("node_id"))
@@ -663,6 +679,8 @@ class AgentEngine:
                     > self.s.settings.max_context_chars
                 ):
                     raise ModelError("CONTEXT_BUDGET_EXCEEDED")
+            # A user image cannot split the responses to a parallel assistant tool batch.
+            messages.extend(batch_images)
             step += 1
 
     def finish(self, run, answer, sources):
@@ -727,6 +745,16 @@ class AgentEngine:
                     "SELECT 1 FROM agent_runs WHERE id=? AND lease_token=? AND status='RUNNING'",
                     (run["id"], run["lease_token"]),
                 ).fetchone():
+                    if isinstance(exc, ModelError) and exc.diagnostic is not None:
+                        c.execute(
+                            "INSERT INTO run_events(run_id,type,payload,created_at) VALUES(?,?,?,?)",
+                            (
+                                run["id"],
+                                "provider_diagnostic",
+                                js(safe_provider_diagnostic(exc.diagnostic)),
+                                time.time(),
+                            ),
+                        )
                     c.execute(
                         "UPDATE agent_runs SET status=?,error=?,finished_at=?,lease_token=NULL,lease_until=NULL WHERE id=?",
                         (status, code, time.time(), run["id"]),

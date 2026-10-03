@@ -2,9 +2,18 @@
 
 import json
 from bac.core.activity import LABELS
+from bac.agent.provider_errors import safe_provider_diagnostic
 
 ERROR_CODES = {
     "TOOL_INPUT_OR_SOURCE_ERROR",
+    "SOURCE_EXCEEDS_TOOL_BUDGET",
+    "ATOMIC_BUNDLE_EXCEEDS_TOOL_BUDGET",
+    "ATOMIC_BUNDLE_REQUIRED",
+    "SOURCE_UNAVAILABLE",
+    "SOURCE_PERMISSION_DENIED",
+    "SOURCE_NOT_READY",
+    "SOURCE_KIND_MISMATCH",
+    "RETRIEVAL_STOPPED",
     "REFERENCE_READ_REQUIRED",
     "SCIENTIFIC_SANDBOX_UNAVAILABLE",
     "SCIENTIFIC_SANDBOX_BUSY",
@@ -161,6 +170,20 @@ def diagnose_run(db, run_id=None):
             diagnostics.append(item)
         except (ValueError, TypeError):
             continue
+    provider_diagnostics = []
+    for row in reversed(
+        db.rows(
+            "SELECT payload FROM run_events WHERE run_id=? AND type='provider_diagnostic' "
+            "ORDER BY id DESC LIMIT 40",
+            (run["id"],),
+        )
+    ):
+        try:
+            provider_diagnostics.append(
+                safe_provider_diagnostic(json.loads(row["payload"]))
+            )
+        except (ValueError, TypeError):
+            continue
     return {
         "found": True,
         "status": run["status"]
@@ -175,5 +198,6 @@ def diagnose_run(db, run_id=None):
         ),
         "newer_run_exists": bool(newer),
         "diagnostics": diagnostics,
-        "note": "No prompt, model text, arguments, source IDs/files, keys or user identity included. Older runs may have no tool diagnostics.",
+        "provider_diagnostics": provider_diagnostics,
+        "note": "No prompt, model text, arguments, source IDs/files, keys or user identity included. Hints are bounded classifications, not proof of cause. Older runs may have no tool/provider diagnostics.",
     }

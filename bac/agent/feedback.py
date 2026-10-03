@@ -1,6 +1,7 @@
 """Bounded actionable private feedback; never sent to the student's drawer."""
 
 from pydantic import ValidationError
+from fastapi import HTTPException
 
 EXAMPLES = {
     "plot_function": {
@@ -40,6 +41,33 @@ def tool_feedback(name, exc):
             "never fabricate a graph or an unread lesson."
         ),
     }
+    if name in {
+        "get_section",
+        "get_lesson_full",
+        "get_lesson_part",
+        "list_lesson_parts",
+        "get_document_metadata",
+        "get_table_of_contents",
+        "search_within_node",
+        "get_exam_with_solution",
+        "get_exercise_collection",
+        "inspect_source_image",
+        "read_private_page",
+    }:
+        if isinstance(exc, HTTPException):
+            code = {
+                404: "SOURCE_UNAVAILABLE",
+                410: "SOURCE_UNAVAILABLE",
+                401: "SOURCE_PERMISSION_DENIED",
+                403: "SOURCE_PERMISSION_DENIED",
+                409: "SOURCE_NOT_READY",
+            }.get(exc.status_code)
+            if code:
+                result["error"] = code
+        elif isinstance(exc, ValueError) and str(exc).startswith(
+            "Requested node is not a "
+        ):
+            result["error"] = "SOURCE_KIND_MISMATCH"
     if isinstance(exc, ValidationError):
         result["issues"] = [
             {
