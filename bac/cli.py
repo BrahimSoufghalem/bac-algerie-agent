@@ -19,6 +19,7 @@ def main():
             "reset-password",
             "verify-email",
             "diagnose-run",
+            "diagnose-extraction",
         ],
     )
     p.add_argument("--email")
@@ -53,6 +54,23 @@ def main():
                 args.destination,
                 max_bytes=args.max_restore_gib * 1024**3,
                 max_files=args.max_restore_files,
+            )
+        )
+        return
+    if args.action == "diagnose-extraction":
+        from bac.ops.extraction import diagnose_extraction
+        from bac.vendor.bookforge.core.config import Settings as ExtractionSettings
+        from bac.core.db import js
+
+        es = ExtractionSettings.from_env()
+        print(
+            js(
+                diagnose_extraction(
+                    cfg.data_dir,
+                    cfg.extraction_workers,
+                    es.request_timeout,
+                    es.lease_seconds,
+                )
             )
         )
         return
