@@ -227,6 +227,7 @@ function App() {
     [ownerDocs, setOwnerDocs] = useState<any[]>([]),
     [version, setVersion] = useState<any>(null),
     [reviewPage, setReviewPage] = useState<any>(null),
+    [reextractConfirm, setReextractConfirm] = useState(false),
     [ack, setAck] = useState(false),
     [reviewNotes, setReviewNotes] = useState(""),
     [busy, setBusy] = useState(false);
@@ -498,6 +499,47 @@ function App() {
     );
     return () => clearInterval(timer);
   }, [version?.id, version?.status, view]);
+  const selectedPageStatus = version?.files
+    ?.find((f: any) => f.id === reviewPage?.file_id)
+    ?.pages?.find((p: any) => p.pdf_page === reviewPage?.page)?.status;
+  useEffect(() => {
+    if (
+      !version ||
+      !reviewPage ||
+      !selectedPageStatus ||
+      selectedPageStatus === reviewPage.status
+    )
+      return;
+    let cancelled = false;
+    const file = reviewPage.file_id,
+      page = reviewPage.page,
+      role = reviewPage.role;
+    api(
+      `/api/owner/versions/${version.id}/page/${page}?file_id=${encodeURIComponent(file)}`,
+    )
+      .then((data) => {
+        if (!cancelled)
+          setReviewPage((old: any) =>
+            old?.file_id === file && old?.page === page
+              ? { ...data, file_id: file, role }
+              : old,
+          );
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    version?.id,
+    reviewPage?.file_id,
+    reviewPage?.page,
+    reviewPage?.status,
+    selectedPageStatus,
+  ]);
+  useEffect(() => {
+    setReextractConfirm(false);
+  }, [version?.id, reviewPage?.file_id, reviewPage?.page]);
+
   async function authenticate(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     const f = new FormData(e.currentTarget);
@@ -621,6 +663,39 @@ function App() {
       setBusy(false);
     }
   }
+  async function reextractSelectedPage() {
+    if (!version || !reviewPage) return;
+    const selected = reviewPage;
+    let target = version;
+    let file = selected.file_id;
+    if (["REVIEWED", "PUBLISHED"].includes(target.status)) {
+      target = await api(`/api/owner/versions/${target.id}/clone`, "POST", {});
+      file = target.files.find((f: any) => f.role === selected.role)?.id;
+      if (!file)
+        throw new Error("تعذر العثور على ملف الصفحة في المسودة الجديدة.");
+      setVersion(target);
+    }
+    await api(
+      `/api/owner/versions/${target.id}/page/${selected.page}/reextract`,
+      "POST",
+      { file_id: file, confirm: true },
+    );
+    setAck(false);
+    setReviewNotes("");
+    setReextractConfirm(false);
+    setVersion(await api(`/api/owner/versions/${target.id}`));
+    setReviewPage({
+      ...(await api(
+        `/api/owner/versions/${target.id}/page/${selected.page}?file_id=${encodeURIComponent(file)}`,
+      )),
+      file_id: file,
+      role: selected.role,
+    });
+    setNotice(
+      `أُعيدت جدولة ص ${selected.page} وحدها لنموذج الاستخراج الحالي، دون إعادة استخدام النتيجة السابقة. النسخة المنشورة لا تتغير قبل المراجعة والنشر.`,
+    );
+  }
+
   async function privateSource(src: Source) {
     await action(async () => {
       const path = `/api/private/${src.node_id}/pages/${src.pages[0]}`;
@@ -2113,6 +2188,13 @@ function App() {
                     بدء المعالجة
                   </button>
                   <button
+                    disabled={
+                      busy ||
+                      ["REVIEWED", "PUBLISHED"].includes(version.status) ||
+                      version.files?.some(
+                        (f: any) => f.extraction_status === "PROCESSING",
+                      )
+                    }
                     onClick={() =>
                       action(async () => {
                         const r = await api(
@@ -2129,6 +2211,13 @@ function App() {
                     إعادة الفاشلة
                   </button>
                   <button
+                    disabled={
+                      busy ||
+                      ["REVIEWED", "PUBLISHED"].includes(version.status) ||
+                      version.files?.some(
+                        (f: any) => f.extraction_status === "PROCESSING",
+                      )
+                    }
                     onClick={() =>
                       action(async () => {
                         const r = await api(
@@ -2159,6 +2248,11 @@ function App() {
                       {f.pages?.map((p: any) => (
                         <button
                           key={p.pdf_page}
+                          disabled={busy}
+                          aria-pressed={
+                            reviewPage?.file_id === f.id &&
+                            reviewPage?.page === p.pdf_page
+                          }
                           className={p.quality.length ? "needs-review" : ""}
                           onClick={() =>
                             action(async () =>
@@ -2185,35 +2279,108 @@ function App() {
                   </div>
                 ))}
                 {reviewPage && (
-                  <div className="review-grid">
-                    <div>
-                      <h3>المصدر الأصلي · ص {reviewPage.page}</h3>
-                      <img
-                        className="source-page"
-                        src={
-                          "/api/owner/versions/" +
-                          version.id +
-                          "/page/" +
-                          reviewPage.page +
-                          "/image?file_id=" +
-                          encodeURIComponent(reviewPage.file_id)
-                        }
-                        alt="صفحة المصدر الأصلية"
-                      />
-                    </div>
-                    <div>
-                      <h3>النص المستخرج</h3>
-                      {reviewPage.quality.length > 0 && (
-                        <p className="warning">
-                          {reviewPage.quality.join(" · ")}
+                  <>
+                    <div className="page-reextract-control">
+                      <div>
+                        <strong>الصفحة المحددة · ص {reviewPage.page}</strong>
+                        <p className="muted">
+                          {reviewPage.status === "PENDING"
+                            ? version.extraction_status === "UPLOADED"
+                              ? "ابدأ المعالجة الأولية أولًا؛ بعدها يمكن إعادة استخراج صفحة وحدها."
+                              : "في طابور الاستخراج…"
+                            : reviewPage.status === "PROCESSING"
+                              ? "جارٍ استخراج هذه الصفحة…"
+                              : "يمكن إعادة استخراج هذه الصفحة حتى لو نجحت سابقًا."}
                         </p>
+                      </div>
+                      <button
+                        disabled={
+                          busy ||
+                          version.files?.some(
+                            (f: any) => f.extraction_status === "PROCESSING",
+                          ) ||
+                          !["SUCCESS", "NEEDS_REVIEW", "FAILED"].includes(
+                            reviewPage.status,
+                          )
+                        }
+                        onClick={() => setReextractConfirm(true)}
+                      >
+                        <Icon name="retry" size={16} /> إعادة استخراج ص{" "}
+                        {reviewPage.page}
+                      </button>
+                      {reextractConfirm && (
+                        <div
+                          className="page-reextract-confirm"
+                          role="group"
+                          aria-label="تأكيد إعادة استخراج الصفحة"
+                        >
+                          <p>
+                            سيُرسل أصل الصفحة المحددة مجددًا إلى نموذج الاستخراج
+                            المحفوظ حاليًا. هذا طلب جديد قد يستهلك رصيدًا، وليس
+                            مجرد إعادة عرض النص.
+                          </p>
+                          {["REVIEWED", "PUBLISHED"].includes(
+                            version.status,
+                          ) && (
+                            <p>
+                              سننشئ مسودة نسخة جديدة أولًا؛ تبقى النسخة المعتمدة
+                              والمنشورة دون تغيير.
+                            </p>
+                          )}
+                          <div className="actions">
+                            <button
+                              disabled={busy}
+                              onClick={() => action(reextractSelectedPage)}
+                            >
+                              تأكيد إعادة استخراج ص {reviewPage.page}
+                            </button>
+                            <button
+                              type="button"
+                              disabled={busy}
+                              onClick={() => setReextractConfirm(false)}
+                            >
+                              إلغاء إعادة الاستخراج
+                            </button>
+                          </div>
+                        </div>
                       )}
-                      <pre>
-                        {reviewPage.content ||
-                          "لم تُعالج الصفحة بعد؛ يمكنك معاينة الصورة دون طلب Vision."}
-                      </pre>
                     </div>
-                  </div>
+                    <div className="review-grid">
+                      <div>
+                        <h3>المصدر الأصلي · ص {reviewPage.page}</h3>
+                        <img
+                          className="source-page"
+                          src={
+                            "/api/owner/versions/" +
+                            version.id +
+                            "/page/" +
+                            reviewPage.page +
+                            "/image?file_id=" +
+                            encodeURIComponent(reviewPage.file_id)
+                          }
+                          alt="صفحة المصدر الأصلية"
+                        />
+                      </div>
+                      <div>
+                        <h3>النص المستخرج</h3>
+                        {reviewPage.quality.length > 0 && (
+                          <p className="warning">
+                            {reviewPage.quality.join(" · ")}
+                          </p>
+                        )}
+                        <pre>
+                          {reviewPage.content ||
+                            (["PENDING", "PROCESSING"].includes(
+                              reviewPage.status,
+                            )
+                              ? "في انتظار نتيجة الاستخراج؛ سيُحدّث النص هنا بعد اكتمال الصفحة."
+                              : reviewPage.status === "FAILED"
+                                ? "تعذّر استخراج الصفحة. يمكنك إعادة استخراجها بعد انتهاء المعالجة الحالية."
+                                : "لم تُعالج الصفحة بعد؛ يمكنك معاينة الصورة دون طلب Vision.")}
+                        </pre>
+                      </div>
+                    </div>
+                  </>
                 )}
                 <label className="check">
                   <input

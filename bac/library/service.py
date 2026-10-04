@@ -443,7 +443,8 @@ class Library(Reader):
             try:
                 run = self.s.extraction_queue.start(
                     list(dict.fromkeys(f["bookforge_id"] for f in v["files"])),
-                    json.loads(row["config"]) | {"_platform_config_id": row["id"], "_platform_actor_id": actor},
+                    json.loads(row["config"])
+                    | {"_platform_config_id": row["id"], "_platform_actor_id": actor},
                     self.s.vault.decrypt(row["encrypted_key"]),
                     self.s.extraction_engine.vault,
                     self.s.settings.extraction_workers,
@@ -456,6 +457,77 @@ class Library(Reader):
             )
         self.db.audit(actor, "document.process", id)
         return {"run_id": run, "version_id": id}
+
+    def reextract_page(self, id, page, file_id, actor):
+        # Serialize draft editing/review with the existing platform lock. Approved
+        # snapshots are never rewritten; a caller must clone an approved version.
+        with self.db.tx() as c:
+            self._editable(c, id)
+            files = [
+                dict(f)
+                for f in c.execute(
+                    "SELECT * FROM version_files WHERE version_id=?", (id,)
+                )
+            ]
+            source = (
+                next((f for f in files if f["id"] == file_id), None)
+                if file_id
+                else next((f for f in files if f["role"] == "primary"), None)
+            )
+            if not source:
+                raise HTTPException(404, "Source file/page not found")
+            book = self.s.extraction_db.one(
+                "SELECT * FROM books WHERE id=?", (source["bookforge_id"],)
+            )
+            if not book or not source["first_page"] <= page <= (
+                source["last_page"] or book["page_count"]
+            ):
+                raise HTTPException(404, "Source file/page not found")
+            row = c.execute(
+                "SELECT m.* FROM active_models a JOIN model_configs m ON m.id=a.config_id WHERE a.slot='extraction'"
+            ).fetchone()
+            if not row:
+                raise HTTPException(409, "Configure the extraction model first")
+            try:
+                result = self.s.extraction_queue.reextract_page(
+                    source["bookforge_id"],
+                    page,
+                    json.loads(row["config"])
+                    | {"_platform_config_id": row["id"], "_platform_actor_id": actor},
+                    self.s.vault.decrypt(row["encrypted_key"]),
+                    self.s.extraction_engine.vault,
+                    self.s.settings.extraction_workers,
+                )
+            except ValueError as exc:
+                raise HTTPException(409, str(exc)) from None
+            # Deduplicated raw PDFs may be shared by editable drafts. Fence any
+            # in-flight review of the affected page, without changing frozen versions.
+            affected = c.execute(
+                "SELECT DISTINCT v.id FROM versions v JOIN version_files f ON f.version_id=v.id WHERE f.bookforge_id=? AND v.status NOT IN ('REVIEWED','PUBLISHED') AND ? BETWEEN f.first_page AND coalesce(f.last_page,?)",
+                (source["bookforge_id"], page, book["page_count"]),
+            ).fetchall()
+            for draft in affected:
+                self._changed(c, draft["id"])
+                c.execute(
+                    "UPDATE versions SET status='PROCESSING' WHERE id=?", (draft["id"],)
+                )
+        self.db.audit(
+            actor,
+            "page.reextract",
+            id,
+            {
+                "page": page,
+                "file_id": source["id"],
+                "config_id": row["id"],
+                "affected_drafts": len(affected),
+            },
+        )
+        return {
+            **result,
+            "version_id": id,
+            "file_id": source["id"],
+            "role": source["role"],
+        }
 
     def review(self, id, actor, acknowledge_issues, notes):
         v = self.version(id)
@@ -560,8 +632,7 @@ class Library(Reader):
                         )
                     ]
                     body = "\n".join(
-                        transcribed_search_text(e["metadata"])
-                        for e in own
+                        transcribed_search_text(e["metadata"]) for e in own
                     )
                 if n["kind"] in ("exam", "exercise_collection"):
                     body += "\n" + "".join(

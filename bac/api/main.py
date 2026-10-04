@@ -79,6 +79,11 @@ class Review(Strict):
     notes: str = Field(default="", max_length=4000)
 
 
+class PageReextract(Strict):
+    file_id: str | None = Field(default=None, max_length=200)
+    confirm: bool = False
+
+
 class CombinedSolution(Strict):
     metadata: SolutionMetadata
     page_range: PageRange
@@ -747,6 +752,15 @@ def create_app(services=None):
         except (ValueError, KeyError):
             raise HTTPException(409, "Invalid retry or extraction state") from None
         return {"scheduled": n}
+
+    @app.post("/api/owner/versions/{id}/page/{page}/reextract")
+    def reextract_page(id: str, page: int, p: PageReextract, user=Depends(current)):
+        owner(user)
+        if not p.confirm:
+            raise HTTPException(
+                422, "Explicit confirmation required for a new extraction request"
+            )
+        return library.reextract_page(id, page, p.file_id, user["id"])
 
     @app.get("/api/owner/versions/{id}/page/{page}")
     def preview(id: str, page: int, file_id: str | None = None, user=Depends(current)):
