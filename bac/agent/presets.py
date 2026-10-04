@@ -66,6 +66,15 @@ def presets(slot):
         p = {**entry}
         if slot == "selector" and p["id"] in {"vercel", "custom"}:
             p.update(protocol="evaluation", model="convaiinnovations/laya")
+        if slot == "selector" and p["id"] == "google":
+            p.update(
+                name="Google AI Studio / Gemma 4 router",
+                base_url="https://generativelanguage.googleapis.com/v1beta",
+                protocol="google",
+                model="gemma-4-31b-it",
+                temperature=0,
+                max_tokens=1000,
+            )
         items.append(p)
     return items
 
@@ -73,6 +82,18 @@ def presets(slot):
 def validate_preset(config, slot):
     if config.protocol == "evaluation" and slot != "selector":
         raise ValueError("Evaluation is only supported in the context-selector slot")
+    if config.protocol == "google":
+        if slot != "selector":
+            raise ValueError(
+                "Native Google routing is only supported in the selector slot"
+            )
+        if (
+            config.base_url.rstrip("/")
+            != "https://generativelanguage.googleapis.com/v1beta"
+        ):
+            raise ValueError(
+                "Native Google routing requires the official Google endpoint"
+            )
     if config.provider != "custom":
         preset = next((p for p in presets(slot) if p["id"] == config.provider), None)
         if (
@@ -86,6 +107,8 @@ def validate_preset(config, slot):
 
 
 def auth_headers(cfg, key):
+    if cfg.get("protocol") == "google":
+        return {"x-goog-api-key": key}
     return (
         {"x-api-key": key, "anthropic-version": "2023-06-01"}
         if cfg.get("protocol") == "anthropic"

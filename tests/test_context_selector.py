@@ -4,7 +4,7 @@ import json, time
 from dataclasses import replace
 import httpx, pytest
 from bac.agent.engine import AgentEngine
-from bac.agent.selection import evaluate, selected_alias, focus, candidates
+from bac.agent.selection import evaluate, selected_aliases, focus, candidates
 from bac.agent.provider import ModelError
 from bac.agent.models import ModelConfig
 from bac.agent.tools import Tools
@@ -41,10 +41,9 @@ def selector(s, enabled=True):
 def choice(name="C1", confidence=0.92):
     return {
         "answers": {
-            "source": {
-                "type": "choice",
-                "choice": name,
-                "probabilities": {"C1": confidence, "none": 1 - confidence},
+            name if name not in ("C1", "none") else "C1": {
+                "type": "boolean",
+                "probability": confidence,
             }
         },
         "usage": {"inputTokens": 12, "outputTokens": 0},
@@ -70,7 +69,11 @@ async def test_selector_metadata_only_then_real_full_read_precedes_main_answer(
             and node not in js(b)
         )
         assert "Neglect air resistance" not in js(b) and "paragraph" not in js(b)
-        assert "غير شاقولية" in b["state"] and "ههههه" not in b["state"]
+        state = json.loads(b["state"])
+        assert "غير شاقولية" in state["student_request"]
+        assert "ههههه" not in state["student_request"]
+        assert state["selection_policy"].startswith("You are a concept-selection")
+        assert b["questions"]["C1"]["type"] == "boolean"
         return httpx.Response(200, json=choice())
 
     services.selector_transport = httpx.MockTransport(handler)
@@ -334,18 +337,18 @@ async def test_selector_429_does_not_retry_or_call_main_or_invent_sources(servic
         choice("unknown"),
         {
             "answers": {
-                "source": {
-                    "choice": "C1",
-                    "probabilities": {"C1": float("nan"), "none": 0},
+                "C1": {
+                    "type": "boolean",
+                    "probability": float("nan"),
                 }
             }
         },
-        {"answers": {"source": {"choice": "C1", "probabilities": {"C1": 0.99}}}},
+        {"answers": {"C1": {"type": "boolean", "probability": 1.1}}},
     ],
 )
 def test_unregistered_choices_or_invalid_probabilities_fail_closed(payload):
     with pytest.raises(ModelError):
-        selected_alias(payload, {"C1", "none"}, {})
+        selected_aliases(payload, ["C1"], {})
 
 
 def test_focus_preserves_nonvertical_negation_and_uses_literal_request():
@@ -555,10 +558,12 @@ async def test_switchable_chat_selector_is_one_structured_call_without_execution
     def handler(r):
         body = json.loads(r.content)
         seen.append(body)
-        assert body["tool_choice"]["function"]["name"] == "choose_source"
-        assert body["tools"][0]["function"]["parameters"]["properties"]["choice"][
-            "enum"
-        ] == ["C1", "none"]
+        assert body["tool_choice"]["function"]["name"] == "choose_sources"
+        assert set(
+            body["tools"][0]["function"]["parameters"]["properties"]["relevance"][
+                "properties"
+            ]
+        ) == {"C1", "C2"}
         return httpx.Response(
             200,
             json={
@@ -570,13 +575,12 @@ async def test_switchable_chat_selector_is_one_structured_call_without_execution
                                 {
                                     "id": "pick",
                                     "function": {
-                                        "name": "choose_source",
+                                        "name": "choose_sources",
                                         "arguments": js(
                                             {
-                                                "choice": "C1",
-                                                "probabilities": {
+                                                "relevance": {
                                                     "C1": 0.9,
-                                                    "none": 0.1,
+                                                    "C2": 0.85,
                                                 },
                                             }
                                         ),
@@ -600,14 +604,13 @@ async def test_switchable_chat_selector_is_one_structured_call_without_execution
         "PRIVATE",
         "question",
         {
-            "source": {
-                "type": "choice",
-                "criteria": {"C1": "A lesson", "none": "No suitable source"},
-            }
+            "C1": {"type": "boolean"},
+            "C2": {"type": "boolean"},
         },
         transport=httpx.MockTransport(handler),
     )
-    assert selected_alias(payload, {"C1", "none"}, {}) == "C1" and len(seen) == 1
+    assert selected_aliases(payload, ["C1", "C2"], {}) == ["C1", "C2"]
+    assert len(seen) == 1
     assert payload["usage"] == {"inputTokens": 9, "outputTokens": 4}
 
 
@@ -663,7 +666,7 @@ async def test_essential_addition_is_single_and_same_batch_cannot_render(service
         services.db.one("SELECT status FROM agent_runs WHERE id=?", (rid,))["status"]
         == "COMPLETED"
     )
-    assert len(requests) == 2 and len(turns) == 3
+    assert len(requests) == 1 and len(turns) == 3
 
 
 @pytest.mark.asyncio
@@ -906,17 +909,15 @@ async def test_multisource_choices_finish_before_any_full_read(services, monkeyp
         b = json.loads(r.content)
         assert "read" not in sequence
         sequence.append("choose")
-        criteria = b["questions"]["source"]["criteria"]
-        if len(sequence) == 2:
-            assert "already_selected_metadata" in b["state"]
-            assert first not in b["state"] and second not in b["state"]
-        probabilities = {
-            k: 0.9 if k == "C1" else 0.1 / (len(criteria) - 1) for k in criteria
-        }
+        assert json.loads(b["state"])["already_selected_metadata"] == []
+        assert first not in js(b["state"]) and second not in js(b["state"])
+        assert set(b["questions"]) == {"C1", "C2"}
         return httpx.Response(
             200,
             json={
-                "answers": {"source": {"choice": "C1", "probabilities": probabilities}},
+                "answers": {
+                    k: {"type": "boolean", "probability": 0.9} for k in b["questions"]
+                },
                 "usage": {"inputTokens": 4, "outputTokens": 0},
             },
         )
@@ -929,7 +930,7 @@ async def test_multisource_choices_finish_before_any_full_read(services, monkeyp
     data = await ContextSelector(services, row).prepare(
         run, tools, "اشرح حركة القذف وحساب الجمع"
     )
-    assert sequence == ["choose", "choose", "read", "read"]
+    assert sequence == ["choose", "read", "read"]
     assert {r["node"]["id"] for r in data["selected_references"]} == {first, second}
 
 
@@ -947,14 +948,15 @@ async def test_multisource_stops_when_decider_says_enough(services):
 
     def handler(r):
         calls.append(r)
-        criteria = json.loads(r.content)["questions"]["source"]["criteria"]
-        selected = "C1" if len(calls) == 1 else "none"
-        scores = {
-            k: 0.9 if k == selected else 0.1 / (len(criteria) - 1) for k in criteria
-        }
+        questions = json.loads(r.content)["questions"]
         return httpx.Response(
             200,
-            json={"answers": {"source": {"choice": selected, "probabilities": scores}}},
+            json={
+                "answers": {
+                    k: {"type": "boolean", "probability": 0.9 if k == "C1" else 0.05}
+                    for k in questions
+                }
+            },
         )
 
     services.selector_transport = httpx.MockTransport(handler)
@@ -964,7 +966,7 @@ async def test_multisource_stops_when_decider_says_enough(services):
     data = await ContextSelector(services, row).prepare(
         run, Tools(services, user, chat, rid), "اشرح حركة القذف وحساب الجمع"
     )
-    assert len(calls) == 2 and "node" in data and "selected_references" not in data
+    assert len(calls) == 1 and "node" in data and "selected_references" not in data
 
 
 @pytest.mark.parametrize(

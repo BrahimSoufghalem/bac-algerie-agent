@@ -36,14 +36,17 @@ test("owner: independent provider presets clear secrets and never auto-generate"
     .getByRole("combobox", { name: "الاستخدام", exact: true })
     .selectOption("selector");
   await expect(page.getByLabel("Model", { exact: true })).toHaveValue(
-    "convaiinnovations/laya",
+    "gemma-4-31b-it",
   );
   await expect(page.getByLabel("Base URL", { exact: true })).toHaveValue(
-    "https://ai-gateway.vercel.sh/v1",
+    "https://generativelanguage.googleapis.com/v1beta",
   );
   await expect(
     page.getByLabel("تفعيل اختيار المراجع المنسّق للتشغيلات الجديدة"),
   ).not.toBeChecked();
+  await expect(
+    page.getByText("Google GenerateContent الأصلي", { exact: false }),
+  ).toBeVisible();
   await page
     .getByRole("combobox", { name: "المزوّد", exact: true })
     .selectOption("openai");

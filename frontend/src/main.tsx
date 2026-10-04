@@ -1594,15 +1594,15 @@ function App() {
                       const saved = models.find((m) => m.slot === next);
                       const preset = offered.find(
                         (p: any) =>
-                          p.id === (next === "selector" ? "vercel" : "openai"),
+                          p.id === (next === "selector" ? "google" : "openai"),
                       );
                       setModel(
                         saved || {
-                          max_tokens: 4000,
+                          max_tokens: preset.max_tokens || 4000,
                           timeout: 90,
                           max_context_chars: null,
                           main_max_rounds: 4,
-                          selector_max_sources: 1,
+                          selector_max_sources: 3,
                           input_price_per_million: null,
                           output_price_per_million: null,
                           cached_price_per_million: null,
@@ -1619,7 +1619,9 @@ function App() {
                 >
                   <option value="agent">وكيل التدريس</option>
                   <option value="extraction">استخراج الكتب</option>
-                  <option value="selector">اختيار المراجع — LAYA</option>
+                  <option value="selector">
+                    راوتر اختيار المراجع — Gemma / LAYA
+                  </option>
                 </select>
               </label>
               <label>
@@ -1638,6 +1640,7 @@ function App() {
                       base_url: p.base_url,
                       model: p.model,
                       temperature: p.temperature,
+                      max_tokens: p.max_tokens ?? model.max_tokens,
                       input_price_per_million: null,
                       output_price_per_million: null,
                       cached_price_per_million: null,
@@ -1662,7 +1665,9 @@ function App() {
                   ? "Anthropic Messages الأصلي"
                   : model.protocol === "evaluation"
                     ? "Typed Evaluation — ليس Chat Completions"
-                    : "OpenAI-compatible Chat"}
+                    : model.protocol === "google"
+                      ? "Google GenerateContent الأصلي — راوتر Gemma"
+                      : "OpenAI-compatible Chat"}
               </p>
               {slot === "selector" && (
                 <>
@@ -1685,7 +1690,7 @@ function App() {
                       type="number"
                       min={1}
                       max={8}
-                      value={model.selector_max_sources || 1}
+                      value={model.selector_max_sources || 3}
                       onChange={(e) =>
                         setModel({
                           ...model,
@@ -1695,15 +1700,18 @@ function App() {
                     />
                   </label>
                   <p className="muted">
-                    مرجع واحد افتراضيًا. لطلبات متعددة يمكنك رفع السقف؛ يختار
-                    نموذج القرار مرجعًا إضافيًا أو يتوقف عند الكفاية، قبل جلب
-                    المحتوى. كل اختيار إضافي استدعاء مستقل.
+                    حتى ثلاثة مراجع افتراضيًا، بسقف قابل للضبط من 1 إلى 8. قرار
+                    واحد يقيم كل المرشحين بصورة مستقلة ويستطيع اختيار عدة مراجع
+                    معًا، أو لا شيء. لا تتنافس المراجع الصحيحة على خانة واحدة؛
+                    تُقرأ المراجع كاملة بعد انتهاء القرار.
                   </p>
                   <p className="muted">
                     تجريبي: يحتاج اختبار دقة على مراجعك والدارجة. لا يرى إلا
                     بيانات المراجع المرشحة، ولا يقرأ الدروس أو يعرضها للطالب.
-                    يمكن تبديل المزوّد إلى نموذج قرار يدعم OpenAI أو Anthropic،
-                    أو واجهة Evaluation مخصصة.
+                    المسار الافتراضي الجديد هو Gemma 4 31B عبر AI Studio. يعيد
+                    قرارات true/false صريحة، لا احتمالات ثقة مصطنعة. يمكن اختيار
+                    LAYA أو OpenAI أو Anthropic يدويًا؛ لا رجوع تلقائي إلى نموذج
+                    آخر عند الفشل.
                   </p>
                 </>
               )}
@@ -1733,6 +1741,11 @@ function App() {
                     {slot === "selector" && (
                       <option value="evaluation">
                         Typed Evaluation / LAYA
+                      </option>
+                    )}
+                    {slot === "selector" && (
+                      <option value="google">
+                        Google GenerateContent / Gemma router
                       </option>
                     )}
                     <option value="openai">OpenAI-compatible</option>

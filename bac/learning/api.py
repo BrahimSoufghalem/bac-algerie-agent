@@ -321,16 +321,34 @@ def router(s, current):
                                 502, "Provider model list exceeds safe limit"
                             )
                     payload = json.loads(data)
-                    if not isinstance(payload, dict) or not isinstance(
-                        payload.get("data", []), list
-                    ):
+                    catalog = (
+                        payload.get("models", [])
+                        if isinstance(payload, dict) and cfg.get("protocol") == "google"
+                        else payload.get("data", [])
+                        if isinstance(payload, dict)
+                        else None
+                    )
+                    if not isinstance(payload, dict) or not isinstance(catalog, list):
                         raise ValueError("Invalid model list")
+                    if cfg.get("protocol") == "google":
+                        catalog = [
+                            {
+                                "id": x["name"].removeprefix("models/"),
+                                "type": "language",
+                            }
+                            for x in catalog
+                            if isinstance(x, dict) and isinstance(x.get("name"), str)
+                        ]
                     found = any(
                         isinstance(x, dict)
                         and isinstance(x.get("id"), str)
-                        and model_identity(base, x["id"])
-                        == model_identity(base, cfg["model"])
-                        for x in payload.get("data", [])
+                        and (
+                            x["id"] == cfg["model"].removeprefix("models/")
+                            if cfg.get("protocol") == "google"
+                            else model_identity(base, x["id"])
+                            == model_identity(base, cfg["model"])
+                        )
+                        for x in catalog
                     )
         except HTTPException:
             raise
@@ -350,7 +368,7 @@ def router(s, current):
             "generation_requests": 0,
             "models": [
                 {"id": x["id"], "type": x.get("type", "language")}
-                for x in payload.get("data", [])
+                for x in catalog
                 if isinstance(x, dict)
                 and isinstance(x.get("id"), str)
                 and __import__("re").fullmatch(r"[a-zA-Z0-9_./:-]{1,180}", x["id"])

@@ -1,0 +1,589 @@
+{
+  "summary": {
+    "model": "gemma-4-31b-it",
+    "prompt_sha256": "6709fd780e0a988a5a1158c39b971f8918480becc3562d9cabeb3d769dce288a",
+    "dataset_sha256": "e01fbb9f2184d95a01c46183716d378cde4c99516abb77062bb83625aa6a9e0b",
+    "planned": 24,
+    "attempted": 24,
+    "answered": 15,
+    "correct": 15,
+    "wrong": 0,
+    "blocked": 9,
+    "not_run": 0,
+    "answered_exact_match_rate": 1.0,
+    "groups": [
+      {
+        "group": "previous",
+        "planned": 9,
+        "correct": 6,
+        "wrong": 0,
+        "blocked": 3,
+        "not_run": 0
+      },
+      {
+        "group": "holdout",
+        "planned": 15,
+        "correct": 9,
+        "wrong": 0,
+        "blocked": 6,
+        "not_run": 0
+      }
+    ],
+    "provider_errors": {
+      "HTTP_500": 8,
+      "NETWORK_OR_TIMEOUT": 1
+    },
+    "wrong_examples": [],
+    "no_per_case_retries": true,
+    "user_authorized_rerun": true,
+    "no_prompt_or_model_tuning": true,
+    "synthetic_metadata_not_real_book": true,
+    "qa": {
+      "python_tests": 323,
+      "native_tests": 19,
+      "browser_tests": 22,
+      "ruff_F": "passed",
+      "frontend_build": "passed"
+    },
+    "profile_interpretation": "Missing selected/exact_match means no valid provider answer, not empty selection or false. Missing error means no provider error; legitimate answered [] remains explicit JSON.",
+    "comparison_plan": [
+      {
+        "grain": "one frozen case",
+        "population": "24-case authorized rerun",
+        "unit": "exact-set outcomes and unavailable answers",
+        "finding": "Report semantic correctness separately from provider failures.",
+        "derivation": "Exact selected-set comparison; provider errors excluded from the valid-answer accuracy denominator.",
+        "disposition": "prose",
+        "reason": "User requested the rerun tally, not a model or subgroup comparison; three outcome totals suffice."
+      }
+    ]
+  },
+  "results": [
+    {
+      "case": "old_english_control",
+      "group": "previous",
+      "expected": [
+        "projectile"
+      ],
+      "status": "answered",
+      "selected": [
+        "projectile"
+      ],
+      "decisions": {
+        "vertical": false,
+        "projectile": true,
+        "chemical_half": false,
+        "newton": false
+      },
+      "usage": {
+        "inputTokens": 710,
+        "outputTokens": 32,
+        "cachedTokens": null
+      },
+      "exact_match": true,
+      "latency_ms": 27661
+    },
+    {
+      "case": "old_darija",
+      "group": "previous",
+      "expected": [
+        "projectile"
+      ],
+      "status": "answered",
+      "selected": [
+        "projectile"
+      ],
+      "decisions": {
+        "chemical_half": false,
+        "vertical": false,
+        "newton": false,
+        "projectile": true
+      },
+      "usage": {
+        "inputTokens": 770,
+        "outputTokens": 32,
+        "cachedTokens": null
+      },
+      "exact_match": true,
+      "latency_ms": 44812
+    },
+    {
+      "case": "old_arabic",
+      "group": "previous",
+      "expected": [
+        "projectile"
+      ],
+      "status": "answered",
+      "selected": [
+        "projectile"
+      ],
+      "decisions": {
+        "projectile": true,
+        "newton": false,
+        "chemical_half": false,
+        "vertical": false
+      },
+      "usage": {
+        "inputTokens": 715,
+        "outputTokens": 32,
+        "cachedTokens": null
+      },
+      "exact_match": true,
+      "latency_ms": 21720
+    },
+    {
+      "case": "old_french",
+      "group": "previous",
+      "expected": [
+        "newton"
+      ],
+      "status": "answered",
+      "selected": [
+        "newton"
+      ],
+      "decisions": {
+        "projectile": false,
+        "vertical": false,
+        "chemical_half": false,
+        "newton": true
+      },
+      "usage": {
+        "inputTokens": 712,
+        "outputTokens": 32,
+        "cachedTokens": null
+      },
+      "exact_match": true,
+      "latency_ms": 26839
+    },
+    {
+      "case": "old_greeting",
+      "group": "previous",
+      "expected": [],
+      "status": "blocked",
+      "error": "HTTP_500",
+      "diagnostic": {
+        "status": "INTERNAL",
+        "hint": "REQUEST_INVALID_UNKNOWN",
+        "forced_final": false,
+        "http_status": 500,
+        "missing_declaration_count": 0,
+        "prior_tool_calls": 0,
+        "signed_prior_tool_calls": 0,
+        "declared_tool_count": 0
+      },
+      "latency_ms": 201
+    },
+    {
+      "case": "old_missing",
+      "group": "previous",
+      "expected": [],
+      "status": "blocked",
+      "error": "HTTP_500",
+      "diagnostic": {
+        "status": "INTERNAL",
+        "hint": "REQUEST_INVALID_UNKNOWN",
+        "forced_final": false,
+        "http_status": 500,
+        "missing_declaration_count": 0,
+        "prior_tool_calls": 0,
+        "signed_prior_tool_calls": 0,
+        "declared_tool_count": 0
+      },
+      "latency_ms": 391
+    },
+    {
+      "case": "old_chemistry",
+      "group": "previous",
+      "expected": [
+        "chemical_half"
+      ],
+      "status": "blocked",
+      "error": "HTTP_500",
+      "diagnostic": {
+        "status": "INTERNAL",
+        "hint": "REQUEST_INVALID_UNKNOWN",
+        "forced_final": false,
+        "http_status": 500,
+        "missing_declaration_count": 0,
+        "prior_tool_calls": 0,
+        "signed_prior_tool_calls": 0,
+        "declared_tool_count": 0
+      },
+      "latency_ms": 384
+    },
+    {
+      "case": "old_missing_specific",
+      "group": "previous",
+      "expected": [],
+      "status": "answered",
+      "selected": [],
+      "decisions": {
+        "rc": false,
+        "vertical": false,
+        "newton": false,
+        "projectile": false
+      },
+      "usage": {
+        "inputTokens": 716,
+        "outputTokens": 32,
+        "cachedTokens": null
+      },
+      "exact_match": true,
+      "latency_ms": 33471
+    },
+    {
+      "case": "old_comparison",
+      "group": "previous",
+      "expected": [
+        "nuclear_half",
+        "chemical_half"
+      ],
+      "status": "answered",
+      "selected": [
+        "nuclear_half",
+        "chemical_half"
+      ],
+      "decisions": {
+        "chemical_half": true,
+        "nuclear_half": true,
+        "rc": false
+      },
+      "usage": {
+        "inputTokens": 647,
+        "outputTokens": 27,
+        "cachedTokens": null
+      },
+      "exact_match": true,
+      "latency_ms": 40104
+    },
+    {
+      "case": "holdout_negation",
+      "group": "holdout",
+      "expected": [
+        "projectile"
+      ],
+      "status": "answered",
+      "selected": [
+        "projectile"
+      ],
+      "decisions": {
+        "vertical": false,
+        "newton": false,
+        "rc": false,
+        "projectile": true
+      },
+      "usage": {
+        "inputTokens": 727,
+        "outputTokens": 32,
+        "cachedTokens": null
+      },
+      "exact_match": true,
+      "latency_ms": 38455
+    },
+    {
+      "case": "holdout_half_correction",
+      "group": "holdout",
+      "expected": [
+        "chemical_half"
+      ],
+      "status": "blocked",
+      "error": "HTTP_500",
+      "diagnostic": {
+        "status": "INTERNAL",
+        "hint": "REQUEST_INVALID_UNKNOWN",
+        "forced_final": false,
+        "http_status": 500,
+        "declared_tool_count": 0,
+        "missing_declaration_count": 0,
+        "prior_tool_calls": 0,
+        "signed_prior_tool_calls": 0
+      },
+      "latency_ms": 210
+    },
+    {
+      "case": "holdout_topic_change",
+      "group": "holdout",
+      "expected": [
+        "rc"
+      ],
+      "status": "blocked",
+      "error": "NETWORK_OR_TIMEOUT",
+      "diagnostic": null,
+      "latency_ms": 60080
+    },
+    {
+      "case": "holdout_rl_correction",
+      "group": "holdout",
+      "expected": [
+        "rl"
+      ],
+      "status": "answered",
+      "selected": [
+        "rl"
+      ],
+      "decisions": {
+        "rc": false,
+        "nuclear_half": false,
+        "rl": true,
+        "newton": false
+      },
+      "usage": {
+        "inputTokens": 724,
+        "outputTokens": 32,
+        "cachedTokens": null
+      },
+      "exact_match": true,
+      "latency_ms": 30800
+    },
+    {
+      "case": "holdout_ambiguous",
+      "group": "holdout",
+      "expected": [],
+      "status": "blocked",
+      "error": "HTTP_500",
+      "diagnostic": {
+        "status": "INTERNAL",
+        "hint": "REQUEST_INVALID_UNKNOWN",
+        "forced_final": false,
+        "http_status": 500,
+        "prior_tool_calls": 0,
+        "declared_tool_count": 0,
+        "missing_declaration_count": 0,
+        "signed_prior_tool_calls": 0
+      },
+      "latency_ms": 213
+    },
+    {
+      "case": "holdout_rc_rl_comparison",
+      "group": "holdout",
+      "expected": [
+        "rc",
+        "rl"
+      ],
+      "status": "answered",
+      "selected": [
+        "rc",
+        "rl"
+      ],
+      "decisions": {
+        "rc": true,
+        "rl": true,
+        "rate": false,
+        "newton": false
+      },
+      "usage": {
+        "inputTokens": 719,
+        "outputTokens": 32,
+        "cachedTokens": null
+      },
+      "exact_match": true,
+      "latency_ms": 36364
+    },
+    {
+      "case": "holdout_three",
+      "group": "holdout",
+      "expected": [
+        "nuclear_half",
+        "chemical_half",
+        "rc"
+      ],
+      "status": "answered",
+      "selected": [
+        "nuclear_half",
+        "chemical_half",
+        "rc"
+      ],
+      "decisions": {
+        "rc": true,
+        "rl": false,
+        "nuclear_half": true,
+        "chemical_half": true
+      },
+      "usage": {
+        "inputTokens": 723,
+        "outputTokens": 32,
+        "cachedTokens": null
+      },
+      "exact_match": true,
+      "latency_ms": 40486
+    },
+    {
+      "case": "holdout_missing_only",
+      "group": "holdout",
+      "expected": [
+        "chemical_half"
+      ],
+      "status": "answered",
+      "selected": [
+        "chemical_half"
+      ],
+      "decisions": {
+        "rate": false,
+        "nuclear_half": false,
+        "rc": false,
+        "chemical_half": true
+      },
+      "usage": {
+        "inputTokens": 728,
+        "outputTokens": 32,
+        "cachedTokens": null
+      },
+      "exact_match": true,
+      "latency_ms": 36299
+    },
+    {
+      "case": "holdout_reselect",
+      "group": "holdout",
+      "expected": [
+        "nuclear_half"
+      ],
+      "status": "answered",
+      "selected": [
+        "nuclear_half"
+      ],
+      "decisions": {
+        "rc": false,
+        "chemical_half": false,
+        "rl": false,
+        "nuclear_half": true
+      },
+      "usage": {
+        "inputTokens": 730,
+        "outputTokens": 32,
+        "cachedTokens": null
+      },
+      "exact_match": true,
+      "latency_ms": 26966
+    },
+    {
+      "case": "holdout_covered",
+      "group": "holdout",
+      "expected": [],
+      "status": "blocked",
+      "error": "HTTP_500",
+      "diagnostic": {
+        "status": "INTERNAL",
+        "hint": "REQUEST_INVALID_UNKNOWN",
+        "forced_final": false,
+        "http_status": 500,
+        "prior_tool_calls": 0,
+        "declared_tool_count": 0,
+        "missing_declaration_count": 0,
+        "signed_prior_tool_calls": 0
+      },
+      "latency_ms": 524
+    },
+    {
+      "case": "holdout_injection",
+      "group": "holdout",
+      "expected": [
+        "rc"
+      ],
+      "status": "answered",
+      "selected": [
+        "rc"
+      ],
+      "decisions": {
+        "rl": false,
+        "chemical_half": false,
+        "newton": false,
+        "rc": true
+      },
+      "usage": {
+        "inputTokens": 731,
+        "outputTokens": 32,
+        "cachedTokens": null
+      },
+      "exact_match": true,
+      "latency_ms": 28921
+    },
+    {
+      "case": "holdout_prerequisite",
+      "group": "holdout",
+      "expected": [
+        "projectile"
+      ],
+      "status": "blocked",
+      "error": "HTTP_500",
+      "diagnostic": {
+        "status": "INTERNAL",
+        "hint": "REQUEST_INVALID_UNKNOWN",
+        "forced_final": false,
+        "http_status": 500,
+        "prior_tool_calls": 0,
+        "declared_tool_count": 0,
+        "missing_declaration_count": 0,
+        "signed_prior_tool_calls": 0
+      },
+      "latency_ms": 243
+    },
+    {
+      "case": "holdout_scope",
+      "group": "holdout",
+      "expected": [
+        "projectile"
+      ],
+      "status": "blocked",
+      "error": "HTTP_500",
+      "diagnostic": {
+        "status": "INTERNAL",
+        "hint": "REQUEST_INVALID_UNKNOWN",
+        "forced_final": false,
+        "http_status": 500,
+        "prior_tool_calls": 0,
+        "declared_tool_count": 0,
+        "missing_declaration_count": 0,
+        "signed_prior_tool_calls": 0
+      },
+      "latency_ms": 35151
+    },
+    {
+      "case": "holdout_exercise",
+      "group": "holdout",
+      "expected": [
+        "exercise"
+      ],
+      "status": "answered",
+      "selected": [
+        "exercise"
+      ],
+      "decisions": {
+        "exercise": true,
+        "heading": false,
+        "projectile": false,
+        "vertical": false
+      },
+      "usage": {
+        "inputTokens": 720,
+        "outputTokens": 32,
+        "cachedTokens": null
+      },
+      "exact_match": true,
+      "latency_ms": 23796
+    },
+    {
+      "case": "holdout_mixed",
+      "group": "holdout",
+      "expected": [
+        "rate"
+      ],
+      "status": "answered",
+      "selected": [
+        "rate"
+      ],
+      "decisions": {
+        "rc": false,
+        "rate": true,
+        "rl": false,
+        "chemical_half": false
+      },
+      "usage": {
+        "inputTokens": 717,
+        "outputTokens": 32,
+        "cachedTokens": null
+      },
+      "exact_match": true,
+      "latency_ms": 32547
+    }
+  ]
+}

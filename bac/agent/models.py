@@ -114,11 +114,11 @@ class ModelConfig(Strict):
     provider: Literal[
         "custom", "openai", "google", "anthropic", "vercel", "openrouter"
     ] = "custom"
-    protocol: Literal["openai", "anthropic", "evaluation"] = "openai"
+    protocol: Literal["openai", "anthropic", "evaluation", "google"] = "openai"
     max_context_chars: int | None = Field(default=None, ge=10000, le=4000000)
     main_max_rounds: int = Field(default=4, ge=2, le=8)
     selector_enabled: bool = False
-    selector_max_sources: int = Field(default=1, ge=1, le=8)
+    selector_max_sources: int = Field(default=3, ge=1, le=8)
     selector_min_confidence: float = Field(default=0.55, ge=0.4, le=0.99)
     selector_min_margin: float = Field(default=0.1, ge=0, le=0.8)
     base_url: str = Field(min_length=1, max_length=2048)
