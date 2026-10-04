@@ -1717,3 +1717,44 @@ a {
     animation: none !important;
   }
 }
+
+/* Explicit owner-only single-page extraction controls. */
+.page-list button[aria-pressed="true"] {
+  border-color: var(--accent);
+  background: var(--hover);
+}
+.page-reextract-control {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  align-items: center;
+  justify-content: space-between;
+  padding: 18px;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  margin: 20px 0;
+  background: var(--paper);
+}
+.page-reextract-control p {
+  margin: 8px 0 0;
+  line-height: 1.8;
+}
+.page-reextract-control > button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+.page-reextract-confirm {
+  flex: 1 1 100%;
+  border-top: 1px solid var(--line);
+  padding-top: 12px;
+}
+.page-reextract-confirm .actions {
+  margin-top: 14px;
+}
+@media (max-width: 640px) {
+  .page-reextract-control > button {
+    width: 100%;
+  }
+}
