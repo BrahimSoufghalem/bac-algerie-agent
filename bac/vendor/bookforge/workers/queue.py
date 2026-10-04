@@ -60,7 +60,8 @@ class Queue:
 
     def recover(self, c, now):
         expired = c.execute(
-            "SELECT * FROM jobs WHERE status='RUNNING' AND lease_until<?", (now,)
+            "SELECT * FROM jobs WHERE status='RUNNING' AND (lease_until IS NULL OR lease_until<=?)",
+            (now,),
         ).fetchall()
         for j in expired:
             status = (
@@ -98,7 +99,11 @@ class Queue:
         with self.db.transaction() as c:
             self.recover(c, now)
             self.schedule_structure(c, now)
-            workers = c.execute("SELECT workers FROM settings WHERE id=1").fetchone()[0]
+            # A restored database may retain a higher cap from an older deployment.
+            workers = min(
+                c.execute("SELECT workers FROM settings WHERE id=1").fetchone()[0],
+                self.settings.max_workers,
+            )
             active = c.execute(
                 "SELECT count(*) FROM jobs WHERE status='RUNNING'"
             ).fetchone()[0]
@@ -120,6 +125,16 @@ class Queue:
                     "UPDATE pages SET status='PROCESSING',error=NULL WHERE id=?",
                     (j["target_id"],),
                 )
+            c.execute(
+                "INSERT INTO events(ts,book_id,page_id,level,message) VALUES(?,?,?,?,?)",
+                (
+                    now,
+                    j["book_id"],
+                    j["target_id"] if j["kind"] == "page" else None,
+                    "INFO",
+                    "EXTRACTION_STAGE:claimed",
+                ),
+            )
             return dict(
                 c.execute("SELECT * FROM jobs WHERE id=?", (j["id"],)).fetchone()
             )

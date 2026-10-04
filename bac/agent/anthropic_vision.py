@@ -3,7 +3,11 @@
 import base64, json
 from bac.agent.anthropic import AnthropicChat
 from bac.agent.provider import ModelError
-from bac.vendor.bookforge.vision.provider import VisionProvider, ProviderError
+from bac.vendor.bookforge.vision.provider import (
+    VisionProvider,
+    ProviderError,
+    ModelDNSFailure,
+)
 from bac.vendor.bookforge.models.page import PageDocument
 import yaml
 
@@ -64,6 +68,8 @@ class AnthropicVision(VisionProvider):
             return PageDocument.model_validate(
                 json.loads(calls[0]["function"]["arguments"])
             ), usage
+        except ModelDNSFailure:
+            raise ProviderError("NETWORK_DNS_ERROR", retryable=True) from None
         except ModelError as exc:
             raise ProviderError(
                 str(exc),
