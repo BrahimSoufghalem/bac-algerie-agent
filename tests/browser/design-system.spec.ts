@@ -184,3 +184,96 @@ test("tablet drawer retains owner navigation after desktop rail collapse", async
   expect((await checkbox.boundingBox())!.width).toBe(18);
   expect((await checkbox.boundingBox())!.height).toBe(18);
 });
+
+test("navigation icon columns stay aligned in administration and account settings", async ({
+  page,
+}) => {
+  await signIn(page);
+  await navigate(page, "الحسابات والحدود");
+  async function alignedRows(selector: string, label: string) {
+    const rows = await page.locator(selector).evaluateAll((buttons) =>
+      buttons.map((button) => {
+        const box = button.getBoundingClientRect();
+        const icon = button
+          .querySelector<HTMLElement>(".ui-icon")!
+          .getBoundingClientRect();
+        const text = button
+          .querySelector<HTMLElement>("span")
+          ?.getBoundingClientRect();
+        return {
+          iconX: icon.x,
+          width: icon.width,
+          height: icon.height,
+          rowHeight: box.height,
+          gap: text ? icon.left - text.right : null,
+        };
+      }),
+    );
+    expect(rows.length, label).toBeGreaterThan(1);
+    const positions = rows.map((row) => row.iconX);
+    expect(
+      Math.max(...positions) - Math.min(...positions),
+      label + " fixed icon column",
+    ).toBeLessThanOrEqual(1);
+    for (const row of rows) {
+      expect(row.width, label).toBe(20);
+      expect(row.height, label).toBe(20);
+      expect(row.rowHeight, label).toBeGreaterThanOrEqual(44);
+      if (row.gap !== null) expect(row.gap, label).toBeGreaterThanOrEqual(8);
+    }
+  }
+  for (const theme of ["light", "dark"] as const) {
+    for (const width of [1440, 740, 390, 360]) {
+      await page.setViewportSize({
+        width,
+        height: width === 1440 ? 1000 : 900,
+      });
+      const drawer = page.getByRole("button", {
+        name: "فتح القائمة",
+        exact: true,
+      });
+      if (await drawer.isVisible()) await drawer.click();
+      await page
+        .getByRole("button", { name: "إعدادات الحساب", exact: true })
+        .click();
+      await expect(page.locator(".account-panel")).toBeVisible();
+      await page
+        .getByRole("button", {
+          name: theme === "light" ? "مظهر فاتح" : "مظهر داكن",
+          exact: true,
+        })
+        .click();
+      await snapshot(page, `icon-columns-${theme}-${width}`);
+      await alignedRows(
+        ".primary-nav button:not(.new-chat), .workspace-navigation nav button",
+        "sidebar " + width,
+      );
+      await alignedRows(
+        ".account-panel nav button, .account-panel .logout-button",
+        "settings " + width,
+      );
+      await assertNoOverflow(page);
+      await page.keyboard.press("Escape");
+      const closeDrawer = page.getByRole("button", {
+        name: "إغلاق القائمة",
+        exact: true,
+      });
+      if (await closeDrawer.isVisible()) await closeDrawer.click();
+    }
+  }
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  await page
+    .getByRole("button", { name: "طي الشريط الجانبي", exact: true })
+    .click();
+  await expect(page.locator(".sidebar")).toHaveCSS("width", "64px");
+  const offset = await page
+    .locator(".primary-nav .new-chat")
+    .evaluate((button) => {
+      const row = button.getBoundingClientRect();
+      const icon = button.querySelector(".ui-icon")!.getBoundingClientRect();
+      return Math.abs(
+        (row.left + row.right) / 2 - (icon.left + icon.right) / 2,
+      );
+    });
+  expect(offset).toBeLessThanOrEqual(1);
+});

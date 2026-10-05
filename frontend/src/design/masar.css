@@ -294,6 +294,14 @@ small {
   min-height: 44px;
   padding: 9px 12px;
   border-radius: 10px;
+  /* Keep RTL navigation icons in one column, regardless of label length. */
+  justify-content: flex-start;
+}
+.sidebar nav button > .ui-icon,
+.account-panel .logout-button > .ui-icon {
+  flex: 0 0 20px;
+  inline-size: 20px;
+  block-size: 20px;
 }
 .sidebar .primary-nav .new-chat {
   background: var(--primary);
@@ -444,6 +452,10 @@ small {
 .logout-button {
   font-size: 14px;
   min-height: 44px;
+}
+.account-panel .logout-button {
+  justify-content: flex-start;
+  padding-inline: 12px;
 }
 .appearance-controls button {
   font-size: 12px;
