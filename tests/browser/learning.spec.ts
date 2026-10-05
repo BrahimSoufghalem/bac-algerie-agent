@@ -12,6 +12,8 @@ async function signIn(
   await expect(
     page.getByRole("button", { name: "إعدادات الحساب", exact: true }),
   ).toBeVisible();
+  if (email === "learning@test.invalid" || email === "practice@test.invalid")
+    await page.getByLabel("مادة المحادثة").selectOption("mathematics");
 }
 async function mobile(page: Page, name: string) {
   await assertNoOverflow(page);
@@ -28,7 +30,7 @@ test("student: preferences → own private image pixels → agent-managed read-o
   page.on("pageerror", (e) => errors.push(e.message));
   await signIn(page, "learning@test.invalid");
   await navigate(page, "تفضيلات وخصوصية");
-  await page.getByLabel("الشعبة", { exact: true }).fill("علوم تجريبية");
+  await expect(page.getByLabel("الشعبة", { exact: true })).toHaveCount(0);
   await page.getByLabel("لغة الشرح").selectOption("fr");
   await page
     .getByRole("button", { name: "حفظ التفضيلات", exact: true })

@@ -43,7 +43,9 @@ def test_preferences_and_consent_no_escalation(services):
     )
     p.update(language="fr", detail="deep", track="علوم تجريبية", subjects=["فيزياء"])
     assert c.put("/api/preferences", json=p, headers=h).status_code == 200
-    chat = c.post("/api/conversations", json={}, headers=h).json()["id"]
+    chat = c.post("/api/conversations", json={"subject": "physics"}, headers=h).json()[
+        "id"
+    ]
     assert (
         c.put(
             f"/api/conversations/{chat}/preferences",
@@ -154,8 +156,8 @@ def test_zero_allowance_concurrent_guard_and_role_admin(services):
     for _ in range(3):
         id = uid("chat")
         services.db.execute(
-            "INSERT INTO conversations VALUES(?,?,?,?,?,?)",
-            (id, u["id"], "Other", "{}", time.time(), time.time()),
+            "INSERT INTO conversations(id,user_id,title,overrides,created_at,updated_at,study_subject) VALUES(?,?,?,?,?,?,?)",
+            (id, u["id"], "Other", "{}", time.time(), time.time(), "physics"),
         )
         chats.append(id)
 
@@ -462,7 +464,9 @@ async def test_metered_extraction_records_requests_not_cached_artifacts(services
 
 def test_private_api_csrf_no_store_export_erase(services):
     c, h, u = setup_client(services)
-    chat = c.post("/api/conversations", json={}, headers=h).json()["id"]
+    chat = c.post("/api/conversations", json={"subject": "physics"}, headers=h).json()[
+        "id"
+    ]
     assert (
         c.post(
             f"/api/conversations/{chat}/upload", files={"file": ("x.txt", b"private")}
@@ -546,7 +550,7 @@ def test_migrations_concurrent_startup(tmp_path):
     path = tmp_path / "fresh.sqlite3"
     with ThreadPoolExecutor(max_workers=4) as pool:
         list(pool.map(lambda _: DB(path), range(4)))
-    assert len(DB(path).rows("SELECT * FROM migrations")) == 8
+    assert len(DB(path).rows("SELECT * FROM migrations")) == 9
 
 
 @pytest.mark.parametrize(

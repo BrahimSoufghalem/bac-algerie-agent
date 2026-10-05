@@ -31,12 +31,14 @@ with pymupdf.open() as d:
   ]);
   await page.locator("input[type=file]").first().setInputFiles(pdf);
   await page
-    .getByRole("combobox", { name: "نوع المستند", exact: true })
-    .selectOption("book");
+    .getByRole("combobox", { name: "نوع المحتوى", exact: true })
+    .selectOption("textbook");
   const title = "إعادة صفحة واحدة — اختبار غير رسمي";
   await page.getByLabel("العنوان", { exact: true }).fill(title);
-  await page.getByLabel("المادة", { exact: true }).fill("فيزياء");
-  await page.getByLabel("التخصص", { exact: true }).fill("علوم تجريبية");
+  await page
+    .getByLabel("الشعبة", { exact: true })
+    .selectOption("experimental_sciences");
+  await page.getByLabel("المادة", { exact: true }).selectOption("physics");
   await page.getByRole("button", { name: "رفع للمراجعة — ليس للنشر" }).click();
   await expect(
     page.getByText("مراجعة النسخة 1", { exact: true }),

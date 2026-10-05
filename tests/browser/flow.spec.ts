@@ -42,8 +42,10 @@ test("owner upload → extract → review → publish → student tool retrieval
   await page
     .getByLabel("العنوان", { exact: true })
     .fill("مبادئ الحرارة — مصدر اختبار");
-  await page.getByLabel("المادة", { exact: true }).fill("فيزياء");
-  await page.getByLabel("التخصص", { exact: true }).fill("علوم تجريبية");
+  await page
+    .getByLabel("الشعبة", { exact: true })
+    .selectOption("experimental_sciences");
+  await page.getByLabel("المادة", { exact: true }).selectOption("physics");
   await page
     .getByLabel("المصدر / المرجع")
     .fill("Synthetic local test, not an official curriculum");
@@ -111,6 +113,11 @@ test("owner upload → extract → review → publish → student tool retrieval
   await student
     .getByRole("button", { name: "إنشاء حساب", exact: true })
     .click();
+  await student
+    .getByLabel("الشعبة الدراسية", { exact: true })
+    .selectOption("experimental_sciences");
+  await student.getByRole("button", { name: "تأكيد الشعبة نهائيًا" }).click();
+  await student.getByLabel("مادة المحادثة").selectOption("physics");
   await expect(
     student.getByRole("heading", { name: "ما الذي تريد أن تفهمه اليوم؟" }),
   ).toBeVisible();

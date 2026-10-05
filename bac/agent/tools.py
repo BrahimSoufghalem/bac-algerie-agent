@@ -14,6 +14,7 @@ from bac.core.presentation import INTERNAL, IMAGE, SourceTextGuard
 from io import BytesIO
 from PIL import Image
 from bac.agent.grounding import require_grounding, social_question
+from bac.core.study import StudyScope
 
 
 class EmptyArgs(Strict):
@@ -53,6 +54,8 @@ class Tools:
         self.user = user
         self.chat = chat
         self.library = Library(s)
+        self.study_scope = StudyScope(s.db, user, chat)
+        self.library.study_scope = self.study_scope
         self.sources = {}
         self.source_text_guard = SourceTextGuard()
         self.assets = set()
@@ -195,13 +198,14 @@ class Tools:
     def remember(self, payload, scope="full", scope_id=None):
         if "error" in payload:
             return
+        n = payload["node"]
+        self.library._node(n["id"])
         for source in payload.get("sources", []):
             self.sources[source.get("source_id", source["node_id"])] = source
         self.assets.update(a["id"] for a in payload.get("assets", []))
         self.source_text_guard.remember(payload.get("content", ""))
         if payload.get("solution"):
             self.source_text_guard.remember(payload["solution"].get("content", ""))
-        n = payload["node"]
         self.s.db.execute(
             "INSERT OR REPLACE INTO loaded_context(conversation_id,node_id,version_id,loaded_at,scope,scope_id) VALUES(?,?,?,?,?,?)",
             (

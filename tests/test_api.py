@@ -6,7 +6,19 @@ from bac.core.auth import create_user
 def login(c, email="a@example.com", password="Strong-password-1"):
     r = c.post("/api/auth/login", json={"email": email, "password": password})
     assert r.status_code == 200
-    return {"X-CSRF-Token": r.json()["csrf"]}
+    h = {"X-CSRF-Token": r.json()["csrf"]}
+    if r.json()["user"]["role"] == "student" and not r.json()["user"].get(
+        "study_track"
+    ):
+        assert (
+            c.put(
+                "/api/auth/study-track",
+                json={"value": "experimental_sciences"},
+                headers=h,
+            ).status_code
+            == 200
+        )
+    return h
 
 
 def test_auth_rbac_and_private_conversations(services):
@@ -17,7 +29,9 @@ def test_auth_rbac_and_private_conversations(services):
     b = TestClient(app)
     assert a.get("/api/conversations").status_code == 401
     h = login(a)
-    chat = a.post("/api/conversations", json={}, headers=h).json()["id"]
+    chat = a.post("/api/conversations", json={"subject": "physics"}, headers=h).json()[
+        "id"
+    ]
     assert a.get("/api/owner/documents").status_code == 403
     assert a.post("/api/conversations", json={}).status_code == 403
     hb = login(b, "b@example.com")

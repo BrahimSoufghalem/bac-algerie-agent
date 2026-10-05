@@ -8,6 +8,7 @@ from bac.library.contracts import (
     SolutionMetadata,
     PageRange,
     SolutionVerification,
+    UploadPackage,
 )
 from bac.library.snapshots import frozen_snapshot
 from bac.library.retrieval import Reader
@@ -48,8 +49,117 @@ class Library(Reader):
             published and (d["status"] != "ACTIVE" or not d["published_version"])
         ):
             raise HTTPException(404, "Published document not found")
+        if getattr(self, "study_scope", None):
+            self.study_scope.check(id)
         d["metadata"] = json.loads(d["metadata"])
         return d
+
+    def upload_package(
+        self,
+        path,
+        filename,
+        metadata,
+        actor,
+        package,
+        solution_path=None,
+        solution_filename=None,
+        document_id=None,
+    ):
+        """Preflight all files/ranges, then bind primary + answer in one draft version."""
+        meta = DocumentMetadata.model_validate(metadata).model_dump()
+        pack = UploadPackage.model_validate(package)
+        if pack.layout == "none":
+            if (
+                solution_path
+                or pack.primary_range
+                or pack.solution_range
+                or pack.matching_confirmed
+            ):
+                raise HTTPException(422, "Choose a solution package layout")
+            return self.upload(path, filename, meta, actor, document_id)
+        if meta["kind"] not in ("exam", "exercise_collection"):
+            raise HTTPException(422, "Solutions belong only to tests or exercises")
+        if not pack.matching_confirmed:
+            raise HTTPException(
+                422, "Confirm that the uploaded answer matches this source"
+            )
+        if (pack.layout == "separate") != bool(solution_path):
+            raise HTTPException(
+                422, "Separate layout requires exactly one additional answer PDF"
+            )
+
+        def register(p, name):
+            return register_pdf(
+                p,
+                name,
+                self.s.extraction_db,
+                self.s.extraction_store,
+                self.s.extraction_settings,
+            )[0]
+
+        raw = register(path, filename)
+        sol = register(solution_path, solution_filename) if solution_path else raw
+        if pack.layout == "combined" and (
+            not pack.primary_range or not pack.solution_range
+        ):
+            raise HTTPException(422, "Specify both primary and answer page ranges")
+        primary = pack.primary_range or PageRange(
+            first_page=1, last_page=raw["page_count"]
+        )
+        answer = pack.solution_range or PageRange(
+            first_page=1, last_page=sol["page_count"]
+        )
+        if (
+            primary.last_page > raw["page_count"]
+            or answer.last_page > sol["page_count"]
+        ):
+            raise HTTPException(422, "Range exceeds PDF")
+        if raw["id"] == sol["id"] and not (
+            primary.last_page < answer.first_page
+            or answer.last_page < primary.first_page
+        ):
+            raise HTTPException(422, "Primary and answer ranges must not overlap")
+        answer_meta = {
+            k: meta.get(k) for k in ("subject", "track", "year", "session", "exam_type")
+        }
+        answer_meta.update(
+            source=meta["source"] or solution_filename or filename,
+            designation="provided",
+        )
+        SolutionMetadata.model_validate(answer_meta)
+        result = self.upload(path, filename, meta, actor, document_id)
+        try:
+            self.set_range(
+                result["version_id"],
+                result["version_id"] + ":primary",
+                primary.model_dump(),
+                actor,
+            )
+            self.attach_solution(
+                result["version_id"],
+                answer_meta,
+                actor,
+                solution_path,
+                solution_filename,
+                answer.model_dump(),
+            )
+            # Link now, but do not label an unseen answer verified/official. The existing
+            # explicit owner verification/review workflow still applies before publication.
+            return result | {"solution_linked": True, "solution_status": "pending"}
+        except Exception:
+            with self.db.tx() as c:
+                c.execute(
+                    "DELETE FROM version_files WHERE version_id=?",
+                    (result["version_id"],),
+                )
+                c.execute("DELETE FROM versions WHERE id=?", (result["version_id"],))
+                if not document_id:
+                    c.execute(
+                        "DELETE FROM documents WHERE id=? AND NOT EXISTS(SELECT 1 FROM versions WHERE document_id=?)",
+                        (result["document_id"], result["document_id"]),
+                    )
+            self.db.audit(actor, "document.package_aborted", result["document_id"])
+            raise
 
     def upload(self, path, filename, metadata, actor, document_id=None):
         meta = DocumentMetadata.model_validate(metadata).model_dump()

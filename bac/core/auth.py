@@ -103,7 +103,7 @@ def user_from_request(request: Request):
 def public_user(row):
     return {
         k: row[k]
-        for k in ("id", "email", "name", "role", "preferences", "email_verified")
+        for k in ("id", "email", "name", "role", "preferences", "email_verified", "study_track")
     }
 
 

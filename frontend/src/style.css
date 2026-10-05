@@ -1758,3 +1758,31 @@ a {
     width: 100%;
   }
 }
+
+.subject-picker {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  font-size: 0.85rem;
+  min-width: 0;
+}
+.subject-picker select {
+  max-width: 185px;
+  padding: 0.4rem;
+}
+.onboarding {
+  max-width: 560px;
+  margin: auto;
+  padding: 2rem;
+}
+@media (max-width: 640px) {
+  .subject-picker select {
+    max-width: 130px;
+  }
+  .topbar-actions .chat-title {
+    display: none;
+  }
+  .onboarding {
+    padding: 1.3rem;
+  }
+}

@@ -85,7 +85,9 @@ def test_password_change_revokes_other_sessions_tokens_and_queued_runs(services)
     app = create_app(services)
     a, b = TestClient(app), TestClient(app)
     ha, hb = login(a), login(b)
-    chat = a.post("/api/conversations", json={}, headers=ha).json()["id"]
+    chat = a.post("/api/conversations", json={"subject": "physics"}, headers=ha).json()[
+        "id"
+    ]
     assert (
         a.post(
             "/api/auth/change-password",

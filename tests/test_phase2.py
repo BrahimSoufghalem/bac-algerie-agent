@@ -231,7 +231,7 @@ async def test_combined_pdf_ranges_extract_once_and_identity_invalidation(servic
     "field,value",
     [
         ("subject", "math"),
-        ("track", "other"),
+        ("track", "mathematics"),
         ("year", "2024"),
         ("session", "other"),
         ("exam_type", "test"),

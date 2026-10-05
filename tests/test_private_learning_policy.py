@@ -2,6 +2,7 @@
 
 import time
 import pytest
+from fastapi import HTTPException
 from fastapi.testclient import TestClient
 from bac.api.main import create_app
 from bac.agent.tools import Tools
@@ -104,7 +105,7 @@ def test_notes_http_read_only_agent_writes_are_owned_and_live(services):
     )
     other, h2, u2 = setup_client(services, email="other@private.invalid")
     assert other.get("/api/notes").json()["items"] == []
-    with pytest.raises(ValueError):
+    with pytest.raises(HTTPException):
         Tools(services, u2, chat, rid).execute(
             "write_learning_note",
             {"id": n["id"], "category": "goal", "content": "forged"},
@@ -120,7 +121,9 @@ def test_notes_http_read_only_agent_writes_are_owned_and_live(services):
 
 def test_legacy_chat_replay_exports_and_results_do_not_leak_sources_or_traces(services):
     c, h, user = setup_client(services)
-    chat = c.post("/api/conversations", json={}, headers=h).json()["id"]
+    chat = c.post("/api/conversations", json={"subject": "physics"}, headers=h).json()[
+        "id"
+    ]
     # Seed an old-style answer to check upgrades, not just new rendering.
     legacy = {
         "blocks": [
@@ -338,7 +341,7 @@ def test_upgrade_retires_source_tokens_and_practice_without_erasing_other_data(
     ]
     assert db.one("SELECT * FROM service_tokens")["revoked_at"] is not None
     assert db.one("SELECT * FROM users")["name"] == "Legacy"
-    assert len(db.rows("SELECT * FROM migrations")) == 8
+    assert len(db.rows("SELECT * FROM migrations")) == 9
 
 
 def test_all_internal_tool_identifiers_are_hidden_but_ordinary_english_is_kept():

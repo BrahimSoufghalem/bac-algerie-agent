@@ -19,14 +19,16 @@ test("whole exam + explicit matched solution ranges → publish → private bund
     pdf,
   ]);
   await page.locator("input[type=file]").first().setInputFiles(pdf);
-  await expect(
-    page.getByRole("combobox", { name: "نوع المستند", exact: true }),
-  ).toHaveValue("exam");
+  await page
+    .getByLabel("نوع المحتوى", { exact: true })
+    .selectOption("bac_exams");
   await page
     .getByLabel("العنوان", { exact: true })
     .fill("امتحان الحرارة — اختبار غير رسمي");
-  await page.getByLabel("المادة", { exact: true }).fill("فيزياء");
-  await page.getByLabel("التخصص", { exact: true }).fill("علوم تجريبية");
+  await page
+    .getByLabel("الشعبة", { exact: true })
+    .selectOption("experimental_sciences");
+  await page.getByLabel("المادة", { exact: true }).selectOption("physics");
   await page.getByLabel("السنة", { exact: true }).fill("2025");
   await page.getByLabel("الدورة", { exact: true }).fill("June");
   await page.getByLabel("نوع الامتحان", { exact: true }).fill("BAC");
@@ -120,6 +122,11 @@ test("whole exam + explicit matched solution ranges → publish → private bund
   await student
     .getByRole("button", { name: "إنشاء حساب", exact: true })
     .click();
+  await student
+    .getByLabel("الشعبة الدراسية")
+    .selectOption("experimental_sciences");
+  await student.getByRole("button", { name: "تأكيد الشعبة نهائيًا" }).click();
+  await student.getByLabel("مادة المحادثة").selectOption("physics");
   await expect(student.locator(".workspace")).toBeVisible();
   await expect(
     student.getByRole("button", { name: "المكتبة", exact: true }),
@@ -156,14 +163,16 @@ test("exercise collection stays whole and missing solution is explicit", async (
     pdf,
   ]);
   await page.locator("input[type=file]").first().setInputFiles(pdf);
-  await expect(
-    page.getByRole("combobox", { name: "نوع المستند", exact: true }),
-  ).toHaveValue("exercise_collection");
+  await page
+    .getByLabel("نوع المحتوى", { exact: true })
+    .selectOption("exercises");
   await page
     .getByLabel("العنوان", { exact: true })
     .fill("سلسلة الحرارة — اختبار كامل");
-  await page.getByLabel("المادة", { exact: true }).fill("فيزياء");
-  await page.getByLabel("التخصص", { exact: true }).fill("علوم تجريبية");
+  await page
+    .getByLabel("الشعبة", { exact: true })
+    .selectOption("experimental_sciences");
+  await page.getByLabel("المادة", { exact: true }).selectOption("physics");
   await page.getByRole("button", { name: "رفع للمراجعة — ليس للنشر" }).click();
   await page.getByRole("button", { name: "بدء المعالجة", exact: true }).click();
   await expect(
@@ -203,6 +212,11 @@ test("exercise collection stays whole and missing solution is explicit", async (
   await student
     .getByRole("button", { name: "إنشاء حساب", exact: true })
     .click();
+  await student
+    .getByLabel("الشعبة الدراسية")
+    .selectOption("experimental_sciences");
+  await student.getByRole("button", { name: "تأكيد الشعبة نهائيًا" }).click();
+  await student.getByLabel("مادة المحادثة").selectOption("physics");
   await expect(student.locator(".workspace")).toBeVisible();
   await expect(
     student.getByRole("button", { name: "المكتبة", exact: true }),

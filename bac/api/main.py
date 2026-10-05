@@ -17,6 +17,7 @@ from bac.core.auth import (
     owner,
     owned_chat,
 )
+from bac.core.study import catalogue, select_track, validate_pair, SUBJECTS
 from bac.core.db import uid, js
 from bac.core.presentation import public_message, public_event
 from bac.core.activity import Activity, PUBLIC_EVENTS, run_activity, attach_activity
@@ -34,6 +35,7 @@ from bac.library.contracts import (
     SolutionMetadata,
     PageRange,
     SolutionVerification,
+    UploadPackage,
 )
 from bac.vendor.bookforge.vision.provider import validate_base_url
 
@@ -53,7 +55,12 @@ class Register(Credentials):
     name: str = Field(min_length=1, max_length=100)
 
 
+class StudyChoice(Strict):
+    value: str = Field(min_length=1, max_length=100)
+
+
 class ChatCreate(Strict):
+    subject: str | None = Field(default=None, max_length=100)
     title: str = Field(default="محادثة جديدة", min_length=1, max_length=150)
     overrides: Overrides = Field(default_factory=Overrides)
 
@@ -170,7 +177,12 @@ def create_app(services=None):
             cap = (
                 11 * 1024**2
                 if path.startswith("/api/conversations/")
-                else s.settings.max_upload_mb * 1024**2 + 1024**2
+                else (
+                    s.settings.max_upload_mb
+                    * (2 if path == "/api/owner/documents/upload" else 1)
+                    + 1
+                )
+                * 1024**2
             )
             if length > cap:
                 return JSONResponse({"detail": "File too large"}, 413)
@@ -291,32 +303,105 @@ def create_app(services=None):
         res.delete_cookie("bac_session")
         return res
 
+    @app.get("/api/study/catalogue")
+    def study_catalogue(user=Depends(current)):
+        return catalogue()
+
+    @app.put("/api/auth/study-track")
+    def choose_track(p: StudyChoice, user=Depends(current)):
+        return {"user": public_user(select_track(s.db, user, p.value))}
+
+    def chat_subject(user, value):
+        if user["role"] != "student":
+            if value is not None and value not in SUBJECTS:
+                raise HTTPException(422, "Choose a predefined subject")
+            return value
+        u = s.db.one("SELECT study_track FROM users WHERE id=?", (user["id"],))
+        if not u["study_track"]:
+            raise HTTPException(409, "Choose your study track first")
+        try:
+            return validate_pair(u["study_track"], value)[1]
+        except ValueError:
+            raise HTTPException(
+                422, "Choose a subject belonging to your study track"
+            ) from None
+
+    def insert_chat(c, user, title, subject, overrides=None):
+        id = uid("chat")
+        c.execute(
+            "INSERT INTO conversations(id,user_id,title,overrides,created_at,updated_at,study_subject) VALUES(?,?,?,?,?,?,?)",
+            (
+                id,
+                user["id"],
+                title,
+                js(overrides or {}),
+                time.time(),
+                time.time(),
+                subject,
+            ),
+        )
+        return {
+            "id": id,
+            "title": title,
+            "study_subject": subject,
+            "subject_locked": False,
+        }
+
     @app.get("/api/conversations")
     def conversations(q: str = "", user=Depends(current)):
         if len(q) > 200:
             raise HTTPException(422, "Query too long")
         return {
             "items": s.db.rows(
-                "SELECT id,title,created_at,updated_at FROM conversations WHERE user_id=? AND title LIKE ? ORDER BY updated_at DESC LIMIT 100",
+                "SELECT id,title,study_subject,created_at,updated_at FROM conversations WHERE user_id=? AND title LIKE ? ORDER BY updated_at DESC LIMIT 100",
                 (user["id"], "%" + q + "%"),
             )
         }
 
     @app.post("/api/conversations")
     def create(p: ChatCreate, user=Depends(current)):
-        id = uid("chat")
-        s.db.execute(
-            "INSERT INTO conversations VALUES(?,?,?,?,?,?)",
-            (
-                id,
-                user["id"],
-                p.title,
-                js(p.overrides.model_dump(exclude_none=True)),
-                time.time(),
-                time.time(),
-            ),
-        )
-        return {"id": id, "title": p.title}
+        subject = chat_subject(user, p.subject)
+        with s.db.tx() as c:
+            return insert_chat(
+                c, user, p.title, subject, p.overrides.model_dump(exclude_none=True)
+            )
+
+    @app.put("/api/conversations/{id}/subject")
+    def change_subject(id: str, p: StudyChoice, user=Depends(current)):
+        subject = chat_subject(user, p.value)
+        with s.db.tx() as c:
+            row = c.execute(
+                "SELECT * FROM conversations WHERE id=? AND user_id=?", (id, user["id"])
+            ).fetchone()
+            if not row:
+                raise HTTPException(404, "Conversation not found")
+            locked = bool(
+                c.execute(
+                    "SELECT 1 FROM messages WHERE conversation_id=? LIMIT 1", (id,)
+                ).fetchone()
+            )
+            if row["study_subject"] == subject:
+                return {
+                    "id": id,
+                    "study_subject": subject,
+                    "subject_locked": locked,
+                    "created_new": False,
+                }
+            if locked:
+                return insert_chat(c, user, "محادثة جديدة", subject) | {
+                    "created_new": True
+                }
+            c.execute(
+                "UPDATE conversations SET study_subject=?,updated_at=? WHERE id=?",
+                (subject, time.time(), id),
+            )
+            c.execute("DELETE FROM loaded_context WHERE conversation_id=?", (id,))
+            return {
+                "id": id,
+                "study_subject": subject,
+                "subject_locked": False,
+                "created_new": False,
+            }
 
     @app.get("/api/conversations/{id}")
     def chat(id: str, user=Depends(current)):
@@ -330,6 +415,11 @@ def create_app(services=None):
         )
         return {
             **c,
+            "subject_locked": bool(
+                s.db.one(
+                    "SELECT 1 FROM messages WHERE conversation_id=? LIMIT 1", (id,)
+                )
+            ),
             "messages": messages,
             "active_run": s.db.one(
                 "SELECT id,status,message_id FROM agent_runs WHERE conversation_id=? AND status IN ('QUEUED','RUNNING')",
@@ -496,35 +586,38 @@ def create_app(services=None):
         selector = s.db.one(
             "SELECT c.* FROM active_selector a JOIN context_selectors c ON c.id=a.config_id WHERE a.singleton=1"
         )
+
         def public_config(row, slot):
             original = json.loads(row["config"])
-            cfg = {k:v for k,v in original.items() if k in ModelConfig.model_fields}
+            cfg = {k: v for k, v in original.items() if k in ModelConfig.model_fields}
             needs_setup = slot == "selector" and not supported_router(original)
             if needs_setup:
                 # Present an unconfigured LLM form, never relabel/reuse a retired
                 # provider's secret as a working key for another endpoint.
                 preset = next(p for p in presets("selector") if p["id"] == "google")
-                cfg.update(provider=preset["id"], protocol=preset["protocol"],
-                           base_url=preset["base_url"], model=preset["model"],
-                           selector_enabled=False)
-            return cfg | {"slot":slot,"id":row["id"],
-                          "key_saved":bool(row["encrypted_key"]) and not needs_setup,
-                          "router_requires_reconfiguration":needs_setup}
+                cfg.update(
+                    provider=preset["id"],
+                    protocol=preset["protocol"],
+                    base_url=preset["base_url"],
+                    model=preset["model"],
+                    selector_enabled=False,
+                )
+            return cfg | {
+                "slot": slot,
+                "id": row["id"],
+                "key_saved": bool(row["encrypted_key"]) and not needs_setup,
+                "router_requires_reconfiguration": needs_setup,
+            }
+
         return {
             "items": (
                 [
-                    public_config(r,r["slot"])
+                    public_config(r, r["slot"])
                     for r in s.db.rows(
                         "SELECT m.* FROM active_models a JOIN model_configs m ON m.id=a.config_id"
                     )
                 ]
-                + (
-                    [
-                        public_config(selector,"selector")
-                    ]
-                    if selector
-                    else []
-                )
+                + ([public_config(selector, "selector")] if selector else [])
             )
         }
 
@@ -539,7 +632,9 @@ def create_app(services=None):
                 (p.config.selector_document_id,),
             )
             if not document:
-                raise HTTPException(422, "Select an active published document for index routing")
+                raise HTTPException(
+                    422, "Select an active published document for index routing"
+                )
         try:
             validate_preset(p.config, slot)
             await validate_base_url(
@@ -612,44 +707,60 @@ def create_app(services=None):
         metadata: str = Form(...),
         file: UploadFile = File(...),
         document_id: str | None = Form(None),
+        package: str | None = Form(None),
+        solution_file: UploadFile | None = File(None),
         user=Depends(current),
     ):
         owner(user)
-        temp = None
-        try:
-            p = Metadata.model_validate_json(metadata)
-            if not (file.filename or "").lower().endswith(".pdf"):
+        temps = []
+
+        async def save(incoming_file):
+            if not (incoming_file.filename or "").lower().endswith(".pdf"):
                 raise HTTPException(422, "PDF required")
             incoming = s.store.path("incoming")
             incoming.mkdir(exist_ok=True)
             fd, name = tempfile.mkstemp(dir=incoming)
             temp = Path(name)
+            temps.append(temp)
             length = 0
             with os.fdopen(fd, "wb") as f:
-                while chunk := await file.read(1024 * 1024):
+                while chunk := await incoming_file.read(1024 * 1024):
                     length += len(chunk)
                     if length > s.settings.max_upload_mb * 1024**2:
                         raise HTTPException(413, "File too large")
                     f.write(chunk)
+            return temp
+
+        try:
+            p = Metadata.model_validate_json(metadata)
+            pack = (
+                UploadPackage.model_validate_json(package)
+                if package
+                else UploadPackage()
+            )
+            primary = await save(file)
+            sol = await save(solution_file) if solution_file else None
             return await asyncio.to_thread(
-                library.upload,
-                temp,
+                library.upload_package,
+                primary,
                 file.filename,
                 p.model_dump(),
                 user["id"],
+                pack.model_dump(),
+                sol,
+                solution_file.filename if solution_file else None,
                 document_id,
             )
         except HTTPException:
             raise
         except (ValueError, __import__("subprocess").SubprocessError):
-            raise HTTPException(
-                422,
-                "Invalid metadata or PDF; encrypted/corrupt/resource limit exceeded",
-            ) from None
+            raise HTTPException(422, "Invalid metadata, package or PDF") from None
         finally:
-            if temp:
+            for temp in temps:
                 temp.unlink(missing_ok=True)
             await file.close()
+            if solution_file:
+                await solution_file.close()
 
     def selected_file(v, file_id, page=None):
         f = (

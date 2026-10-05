@@ -16,7 +16,11 @@ class RequestLimit:
         cap = 256 * 1024
         if path.endswith("/upload"):
             cap = (
-                11 if path.startswith("/api/conversations/") else self.max_upload_mb + 1
+                11
+                if path.startswith("/api/conversations/")
+                else self.max_upload_mb
+                * (2 if path == "/api/owner/documents/upload" else 1)
+                + 1
             ) * 1024**2
         headers = dict(scope["headers"])
         try:
