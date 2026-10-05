@@ -1,0 +1,19 @@
+{
+  "name": "read_sections",
+  "description": "Read zero to three sections from the complete supplied book index. Empty IDs mean no new source. IDs must exist in that index.",
+  "parameters": {
+    "type": "object",
+    "additionalProperties": false,
+    "required": [
+      "ids"
+    ],
+    "properties": {
+      "ids": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        }
+      }
+    }
+  }
+}
