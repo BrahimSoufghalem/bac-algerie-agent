@@ -528,6 +528,14 @@ def create_app(services=None):
         owner(user)
         if slot not in ("agent", "extraction", "selector"):
             raise HTTPException(422, "Invalid model slot")
+        if (slot == "selector" and p.config.selector_strategy == "full_index"
+                and p.config.selector_document_id):
+            document = s.db.one(
+                "SELECT id FROM documents WHERE id=? AND status='ACTIVE' AND published_version IS NOT NULL",
+                (p.config.selector_document_id,),
+            )
+            if not document:
+                raise HTTPException(422, "Select an active published document for index routing")
         try:
             validate_preset(p.config, slot)
             await validate_base_url(

@@ -326,6 +326,13 @@ class AgentEngine:
                 self.emit(
                     run, "tool_diagnostic", safe_diagnostic("select_context", payload)
                 )
+            if payload and payload.get("route_status") == "clarify":
+                answer, sources = tools.answer({
+                    "response_kind": "clarification",
+                    "blocks": [{"type": "text", "text": payload["question"]}],
+                    "source_ids": [],
+                })
+                return self.finish(run, answer, sources)
             if success:
                 messages.insert(
                     1,

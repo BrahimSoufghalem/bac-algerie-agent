@@ -1,0 +1,82 @@
+[
+  {
+    "name": "route_sections",
+    "description": "Route distinct requested goals to minimal indexed sections, or request clarification/no new read.",
+    "parameters": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "status",
+        "goals",
+        "question"
+      ],
+      "properties": {
+        "status": {
+          "type": "string",
+          "enum": [
+            "read",
+            "clarify",
+            "no_new"
+          ]
+        },
+        "goals": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "goal",
+              "ids"
+            ],
+            "properties": {
+              "goal": {
+                "type": "string"
+              },
+              "ids": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "question": {
+          "type": "string"
+        }
+      }
+    }
+  },
+  {
+    "name": "verify_sections",
+    "description": "Keep only minimal sufficient actual read sources, or ask for clarification.",
+    "parameters": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "status",
+        "ids",
+        "question"
+      ],
+      "properties": {
+        "status": {
+          "type": "string",
+          "enum": [
+            "read",
+            "clarify",
+            "no_new"
+          ]
+        },
+        "ids": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "question": {
+          "type": "string"
+        }
+      }
+    }
+  }
+]

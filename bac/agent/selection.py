@@ -390,6 +390,11 @@ class ContextSelector:
         return chosen
 
     async def prepare(self, run, tools, question, context=""):
+        if self.cfg.get("selector_strategy") == "full_index":
+            from bac.agent.full_index import FullIndexCoordinator
+            return await FullIndexCoordinator(self.s, self.row).prepare(
+                run, tools, question, context
+            )
         query = focus(question, context)
         if social_question(question):
             return None

@@ -118,6 +118,8 @@ class ModelConfig(Strict):
     max_context_chars: int | None = Field(default=None, ge=10000, le=4000000)
     main_max_rounds: int = Field(default=4, ge=2, le=8)
     selector_enabled: bool = False
+    selector_strategy: Literal["candidates", "full_index"] = "candidates"
+    selector_document_id: str | None = Field(default=None, min_length=1, max_length=200)
     selector_max_sources: int = Field(default=3, ge=1, le=8)
     selector_min_confidence: float = Field(default=0.55, ge=0.4, le=0.99)
     selector_min_margin: float = Field(default=0.1, ge=0, le=0.8)
@@ -130,3 +132,9 @@ class ModelConfig(Strict):
     output_price_per_million: float | None = Field(default=None, ge=0)
     cached_price_per_million: float | None = Field(default=None, ge=0)
     output_mode: Literal["json_object", "json_schema", "none"] = "json_object"
+
+    @model_validator(mode="after")
+    def index_protocol(self):
+        if self.selector_strategy == "full_index" and self.protocol not in ("openai", "google"):
+            raise ValueError("Full-index routing requires OpenAI-compatible or native Google protocol")
+        return self
