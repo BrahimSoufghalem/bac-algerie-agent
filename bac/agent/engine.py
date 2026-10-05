@@ -6,7 +6,12 @@ from fastapi import HTTPException
 from bac.core.db import uid, js
 from bac.agent.provider import OpenAIChat, ModelError
 from bac.agent.anthropic import AnthropicChat
-from bac.agent.full_index import FullIndexCoordinator, EssentialContext, supported_router
+from bac.agent.full_index import (
+    FullIndexCoordinator,
+    EssentialContext,
+    supported_router,
+)
+from bac.core.study import StudyScope
 from bac.agent.compat import google_openai
 from bac.agent.provider_errors import safe_provider_diagnostic
 from bac.agent.tools import Tools
@@ -65,12 +70,18 @@ class AgentEngine:
             ).fetchone()[0]
             if used >= limit:
                 raise HTTPException(429, "Daily run allowance reached")
+            StudyScope(self.db, user, chat)
             selector = c.execute(
                 "SELECT c.id,c.config FROM active_selector a JOIN context_selectors c ON c.id=a.config_id WHERE a.singleton=1"
             ).fetchone()
-            if (selector and json.loads(selector["config"]).get("selector_enabled")
-                    and not supported_router(json.loads(selector["config"]))):
-                raise HTTPException(409, "Reconfigure the retired reference router with an LLM provider")
+            if (
+                selector
+                and json.loads(selector["config"]).get("selector_enabled")
+                and not supported_router(json.loads(selector["config"]))
+            ):
+                raise HTTPException(
+                    409, "Reconfigure the retired reference router with an LLM provider"
+                )
             if edit_id:
                 original = c.execute(
                     "SELECT * FROM messages WHERE id=? AND conversation_id=? AND role='user' AND active=1",
@@ -194,6 +205,17 @@ class AgentEngine:
             (Path(__file__).resolve().parents[2] / "config/agent.yaml").read_text()
         )
         system = cfg["system"] + "\nAuthenticated role=" + user["role"]
+        if tools.study_scope.track:
+            system += (
+                "\nFixed authorized study scope="
+                + js(
+                    {
+                        "track": tools.study_scope.track,
+                        "subject": tools.study_scope.subject,
+                    }
+                )
+                + ". Only published sources within this scope are accessible. Other subjects require a new conversation; never substitute their lessons."
+            )
         messages = [{"role": "system", "content": system}]
         snapshot = self.db.one(
             "SELECT * FROM run_contexts WHERE run_id=?", (run.get("id", ""),)
@@ -330,11 +352,13 @@ class AgentEngine:
                     run, "tool_diagnostic", safe_diagnostic("select_context", payload)
                 )
             if payload and payload.get("route_status") == "clarify":
-                answer, sources = tools.answer({
-                    "response_kind": "clarification",
-                    "blocks": [{"type": "text", "text": payload["question"]}],
-                    "source_ids": [],
-                })
+                answer, sources = tools.answer(
+                    {
+                        "response_kind": "clarification",
+                        "blocks": [{"type": "text", "text": payload["question"]}],
+                        "source_ids": [],
+                    }
+                )
                 return self.finish(run, answer, sources)
             if success:
                 messages.insert(

@@ -3,6 +3,7 @@
 import hashlib, json, re
 from fastapi import HTTPException
 from bac.core.db import js
+from bac.core.study import TRACKS, SUBJECTS, aliases, resolve
 from bac.library.parts import legacy_blocks, TARGET_CHARS
 
 
@@ -17,10 +18,25 @@ class Reader:
         ]
 
     def _filters(self, sql, args, filters, prefix="d."):
+        if getattr(self, "study_scope", None):
+            sql, args = self.study_scope.sql(sql, args, prefix)
         for key, value in (filters or {}).items():
             if not value:
                 continue
-            if key in ("subject", "track", "kind", "year"):
+            if key in ("subject", "track") and (
+                code := resolve(SUBJECTS if key == "subject" else TRACKS, value)
+            ):
+                values = aliases(SUBJECTS if key == "subject" else TRACKS, code)
+                sql += (
+                    " AND lower(trim("
+                    + prefix
+                    + key
+                    + ")) IN ("
+                    + ",".join("?" for _ in values)
+                    + ")"
+                )
+                args.extend(x.casefold() for x in values)
+            elif key in ("subject", "track", "kind", "year"):
                 sql += " AND " + prefix + key + "=?"
                 args.append(value)
             elif key == "document_id":
@@ -47,6 +63,7 @@ class Reader:
         )
         if not n:
             raise HTTPException(404, "Published node not found")
+        self.get_doc(n["document_id"], True)
         n["metadata"] = json.loads(n["metadata"])
         return n
 
@@ -335,5 +352,6 @@ class Reader:
         )
         if not a:
             raise HTTPException(404, "Published asset not found")
+        self.get_doc(a["document_id"], True)
         a["metadata"] = json.loads(a["metadata"])
         return a

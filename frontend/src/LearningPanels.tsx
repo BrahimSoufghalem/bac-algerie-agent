@@ -68,10 +68,14 @@ export function PreferencesPanel({ api, chat, notify, role }: Props) {
               scope === "chat" ? "PUT" : "PUT",
               {
                 ...p,
-                subjects: subjectText
-                  .split(",")
-                  .map((x) => x.trim())
-                  .filter(Boolean),
+                ...(role === "student" ? { track: "", subjects: [] } : {}),
+                subjects:
+                  role === "student"
+                    ? []
+                    : subjectText
+                        .split(",")
+                        .map((x) => x.trim())
+                        .filter(Boolean),
               },
             );
             notify("حُفظت التفضيلات");
@@ -85,21 +89,31 @@ export function PreferencesPanel({ api, chat, notify, role }: Props) {
             {chat && <option value="chat">هذه المحادثة فقط</option>}
           </select>
         </label>
-        <label>
-          الشعبة
-          <input
-            value={p.track}
-            maxLength={100}
-            onChange={(e) => setP({ ...p, track: e.target.value })}
-          />
-        </label>
-        <label>
-          المواد (فاصلة بين المواد)
-          <input
-            value={subjectText}
-            onChange={(e) => setSubjectText(e.target.value)}
-          />
-        </label>
+        {role !== "student" && (
+          <>
+            <label>
+              الشعبة
+              <input
+                value={p.track}
+                maxLength={100}
+                onChange={(e) => setP({ ...p, track: e.target.value })}
+              />
+            </label>
+            <label>
+              المواد (فاصلة بين المواد)
+              <input
+                value={subjectText}
+                onChange={(e) => setSubjectText(e.target.value)}
+              />
+            </label>
+          </>
+        )}
+        {role === "student" && (
+          <p className="muted">
+            الشعبة ثابتة في حسابك. اختر المادة من أعلى المحادثة؛ تغييرها بعد أول
+            رسالة يفتح محادثة جديدة.
+          </p>
+        )}
         <label>
           لغة الشرح
           <select

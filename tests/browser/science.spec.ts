@@ -13,6 +13,7 @@ for (const mode of ["line", "bar", "scatter"])
       .fill(`science-${mode}@test.invalid`);
     await page.getByLabel("كلمة المرور").fill("Test-science-password-1");
     await page.getByRole("button", { name: "دخول", exact: true }).click();
+    await page.getByLabel("مادة المحادثة").selectOption("physics");
     await page
       .getByRole("textbox", { name: "رسالتك" })
       .fill(

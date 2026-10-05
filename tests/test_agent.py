@@ -58,12 +58,15 @@ class Scripted:
         yield {"type": "result", "message": msg}
 
 
-def chat_and_config(s):
+def chat_and_config(s, subject="physics"):
     user = create_user(s.db, "student@example.com", "Strong-password-1", "Student")
+    s.db.execute(
+        "UPDATE users SET study_track='experimental_sciences' WHERE id=?", (user,)
+    )
     chat = uid("chat")
     s.db.execute(
-        "INSERT INTO conversations(id,user_id,title,created_at,updated_at) VALUES(?,?,?,?,?)",
-        (chat, user, "Test", time.time(), time.time()),
+        "INSERT INTO conversations(id,user_id,title,created_at,updated_at,study_subject) VALUES(?,?,?,?,?,?)",
+        (chat, user, "Test", time.time(), time.time(), subject),
     )
     cfg = uid("cfg")
     s.db.execute(

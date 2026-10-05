@@ -4,6 +4,7 @@ import json, time
 from fastapi import HTTPException
 from bac.core.db import uid, js
 from bac.core.auth import owned_chat
+from bac.core.study import StudyScope, TRACKS, SUBJECTS, resolve
 from bac.learning.contracts import Preferences, Overrides, Note, NoteDecision, Material
 from bac.learning.contracts import AgentNote
 from bac.core.presentation import public_message, public_answer
@@ -30,6 +31,14 @@ class Learning:
 
     def set_preferences(self, user, values):
         p = Preferences.model_validate(values)
+        if user["role"] == "student" and p.track:
+            actual = self.db.one(
+                "SELECT study_track FROM users WHERE id=?", (user["id"],)
+            )["study_track"]
+            if resolve(TRACKS, p.track) != actual:
+                raise HTTPException(
+                    409, "Study track is fixed; choose it only during onboarding"
+                )
         with self.db.tx() as c:
             c.execute(
                 "UPDATE users SET preferences=? WHERE id=?",
@@ -44,6 +53,15 @@ class Learning:
     def overrides(self, user, chat, values):
         owned_chat(self.db, chat, user)
         p = Overrides.model_validate(values)
+        if user["role"] == "student" and (p.track or p.subjects):
+            scope = StudyScope(self.db, user, chat)
+            if (p.track and resolve(TRACKS, p.track) != scope.track) or (
+                p.subjects
+                and any(resolve(SUBJECTS, x) != scope.subject for x in p.subjects)
+            ):
+                raise HTTPException(
+                    409, "Choose the subject from the conversation selector"
+                )
         with self.db.tx() as c:
             c.execute(
                 "UPDATE conversations SET overrides=?,updated_at=? WHERE id=?",
@@ -68,6 +86,12 @@ class Learning:
                 **Overrides.model_validate(over).model_dump(exclude_none=True),
             }
         ).model_dump()
+        if u["role"] == "student":
+            subject = c.execute(
+                "SELECT study_subject FROM conversations WHERE id=?", (chat,)
+            ).fetchone()[0]
+            pref["track"] = TRACKS[u["study_track"]][0] if u["study_track"] else ""
+            pref["subjects"] = [SUBJECTS[subject][0]] if subject else []
         notes = [
             dict(r)
             for r in c.execute(

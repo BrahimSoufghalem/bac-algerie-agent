@@ -43,10 +43,14 @@ async def benchmark(requests=200, concurrency=8, runs=40):
                 u = create_user(
                     s.db, f"load{i}@example.invalid", "Load-test-password-123", "Load"
                 )
+                s.db.execute(
+                    "UPDATE users SET study_track='experimental_sciences' WHERE id=?",
+                    (u,),
+                )
                 chat = uid("chat")
                 s.db.execute(
-                    "INSERT INTO conversations(id,user_id,title,created_at,updated_at) VALUES(?,?,?,?,?)",
-                    (chat, u, "Load", time.time(), time.time()),
+                    "INSERT INTO conversations(id,user_id,title,created_at,updated_at,study_subject) VALUES(?,?,?,?,?,?)",
+                    (chat, u, "Load", time.time(), time.time(), "physics"),
                 )
                 jobs.append(
                     AgentEngine(s).enqueue(

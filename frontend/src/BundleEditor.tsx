@@ -1,4 +1,10 @@
 import React, { useEffect, useState } from "react";
+import {
+  IdentityChoices,
+  emptyCatalogue,
+  StudyCatalogue,
+  canonical,
+} from "./StudyChoices";
 export default function BundleEditor({
   version,
   api,
@@ -12,6 +18,12 @@ export default function BundleEditor({
   refresh: () => Promise<void>;
   onClone: (v: any) => void;
 }) {
+  const [catalogue, setCatalogue] = useState<StudyCatalogue>(emptyCatalogue);
+  useEffect(() => {
+    api("/api/study/catalogue")
+      .then(setCatalogue)
+      .catch(() => {});
+  }, []);
   const [file, setFile] = useState<File | null>(null),
     [combined, setCombined] = useState(false),
     [first, setFirst] = useState(1),
@@ -64,6 +76,13 @@ export default function BundleEditor({
   const path = "/api/owner/versions/" + version.id;
   const clean = (m: any) => ({
     ...m,
+    track: canonical(catalogue.tracks, m.track),
+    subject: canonical(
+      catalogue.tracks.find(
+        (x) => x.id === canonical(catalogue.tracks, m.track),
+      )?.subjects || [],
+      m.subject,
+    ),
     year: m.year || null,
     session: m.session || null,
     exam_type: m.exam_type || null,
@@ -99,11 +118,46 @@ export default function BundleEditor({
             });
           }}
         >
+          <label>
+            نوع محتوى المسودة
+            <select
+              disabled={!editable}
+              value={
+                draft.content_type ||
+                (
+                  {
+                    book: "textbook",
+                    reference: "textbook",
+                    exam: "school_tests",
+                    exercise_collection: "exercises",
+                  } as any
+                )[draft.kind]
+              }
+              onChange={(e) => {
+                const t = catalogue.content_types.find(
+                  (x) => x.id === e.target.value,
+                )!;
+                setDraft({ ...draft, content_type: t.id, kind: t.kind });
+              }}
+            >
+              {catalogue.content_types.map((x) => (
+                <option key={x.id} value={x.id}>
+                  {x.label}
+                </option>
+              ))}
+            </select>
+          </label>
           <div className="form-columns">
+            <IdentityChoices
+              catalogue={catalogue}
+              value={draft}
+              onChange={setDraft}
+              disabled={!editable}
+              labels={["شعبة المسودة", "مادة المسودة"]}
+            />
             {[
               ["title", "عنوان المسودة"],
-              ["subject", "مادة المسودة"],
-              ["track", "تخصص المسودة"],
+
               ["year", "سنة المسودة"],
               ["session", "دورة المسودة"],
               ["exam_type", "نوع امتحان المسودة"],
@@ -295,8 +349,6 @@ export default function BundleEditor({
               )}
               <div className="form-columns">
                 {[
-                  ["subject", "مادة الحل"],
-                  ["track", "تخصص الحل"],
                   ["year", "سنة الحل"],
                   ["session", "دورة الحل"],
                   ["exam_type", "نوع امتحان الحل"],

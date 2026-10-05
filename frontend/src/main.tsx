@@ -29,6 +29,11 @@ import {
   PersonalUsage,
 } from "./LearningPanels";
 import { Recovery, SecurityPanel, ServiceTokens } from "./SecurityPanels";
+import {
+  IdentityChoices,
+  emptyCatalogue,
+  StudyCatalogue,
+} from "./StudyChoices";
 import BundleEditor from "./BundleEditor";
 import { RunActivity, type WorkActivity } from "./RunActivity";
 import {
@@ -36,7 +41,12 @@ import {
   ScientificDiagram,
   ScientificResult,
 } from "./ScienceBlocks";
-type User = { id: string; name: string; role: string };
+type User = {
+  id: string;
+  name: string;
+  role: string;
+  study_track: string | null;
+};
 type Source = {
   node_id: string;
   document_id: string;
@@ -71,7 +81,7 @@ type Message = {
   unanswered_activity?: WorkActivity;
   previous_activities?: WorkActivity[];
 };
-type Chat = { id: string; title: string };
+type Chat = { id: string; title: string; study_subject: string | null };
 let csrf = "";
 async function api(path: string, method = "GET", body?: unknown) {
   const headers: Record<string, string> = { "X-CSRF-Token": csrf };
@@ -208,6 +218,19 @@ function App() {
     [notice, setNotice] = useState(""),
     [view, setView] = useState("chat"),
     [menu, setMenu] = useState(false);
+  const [studyCatalog, setStudyCatalog] =
+    useState<StudyCatalogue>(emptyCatalogue);
+  const [onboardingTrack, setOnboardingTrack] = useState("");
+  const [subject, setSubject] = useState("");
+  const allowedSubjects =
+    studyCatalog.tracks.find((x) => x.id === user?.study_track)?.subjects || [];
+  const needsSubject = user?.role === "student" && !subject;
+  useEffect(() => {
+    if (user)
+      api("/api/study/catalogue")
+        .then(setStudyCatalog)
+        .catch((e) => setNotice(e.message));
+  }, [user?.id]);
   const [chats, setChats] = useState<Chat[]>([]),
     [chatId, setChatId] = useState(""),
     [messages, setMessages] = useState<Message[]>([]),
@@ -257,6 +280,7 @@ function App() {
     [meta, setMeta] = useState({
       title: "",
       kind: "book",
+      content_type: "textbook",
       subject: "",
       track: "",
       year: "",
@@ -265,6 +289,15 @@ function App() {
       institution: "",
       source: "",
     });
+  const [solutionLayout, setSolutionLayout] = useState("none");
+  const [solutionFile, setSolutionFile] = useState<File | null>(null);
+  const [packageMatching, setPackageMatching] = useState(false);
+  const [packageRanges, setPackageRanges] = useState({
+    primary_first: 1,
+    primary_last: 1,
+    solution_first: 2,
+    solution_last: 2,
+  });
   useEffect(() => {
     setAck(false);
     setReviewPage(null);
@@ -334,6 +367,8 @@ function App() {
     if (load !== chatLoad.current) return;
     setActiveActivity(null);
     setChatId(id);
+    setSubject(c.study_subject || "");
+    setSource(null);
     location.hash = "chat=" + id;
     setMessages(c.messages);
     setEditing("");
@@ -418,6 +453,7 @@ function App() {
         }
         csrf = d.csrf;
         setUser(d.user);
+        if (d.user.role === "student" && !d.user.study_track) return;
         const list = await api("/api/conversations");
         setChats(list.items);
         const id = location.hash.startsWith("#chat=")
@@ -430,11 +466,11 @@ function App() {
     return () => stream.current?.close();
   }, []);
   useEffect(() => {
-    if (user) {
+    if (user && (user.role !== "student" || user.study_track)) {
       const t = setTimeout(() => refreshChats().catch(() => {}), 250);
       return () => clearTimeout(t);
     }
-  }, [query, user?.id]);
+  }, [query, user?.id, user?.study_track]);
   function jumpToLatest() {
     pinned.current = true;
     setShowLatest(false);
@@ -555,7 +591,7 @@ function App() {
       }
       csrf = d.csrf;
       setUser(d.user);
-      await refreshChats();
+      if (d.user.role !== "student" || d.user.study_track) await refreshChats();
     } catch (e) {
       setError((e as Error).message);
     }
@@ -578,7 +614,14 @@ function App() {
     setSource(null);
     pinned.current = true;
     setShowLatest(false);
-    const c = await api("/api/conversations", "POST", {});
+    if (needsSubject) {
+      location.hash = "";
+      setNotice("اختر مادة المحادثة من الزر العلوي");
+      return "";
+    }
+    const c = await api("/api/conversations", "POST", {
+      subject: subject || null,
+    });
     setChatId(c.id);
     location.hash = "chat=" + c.id;
     await refreshChats();
@@ -587,8 +630,11 @@ function App() {
   // Uploading from the empty composer creates a conversation without clearing its draft.
   const ensureAttachmentChat = () =>
     action(async () => {
+      if (needsSubject) throw new Error("اختر مادة المحادثة أولًا");
       if (chatId) return chatId;
-      const c = await api("/api/conversations", "POST", {});
+      const c = await api("/api/conversations", "POST", {
+        subject: subject || null,
+      });
       setChatId(c.id);
       location.hash = "chat=" + c.id;
       await refreshChats();
@@ -596,6 +642,10 @@ function App() {
     });
   async function send(e?: React.FormEvent) {
     e?.preventDefault();
+    if (needsSubject) {
+      setNotice("اختر مادة المحادثة أولًا");
+      return;
+    }
     if (!text.trim() || run || busy) return;
     pinned.current = true;
     setBusy(true);
@@ -604,6 +654,7 @@ function App() {
       if (!id) {
         const c = await api("/api/conversations", "POST", {
           title: text.slice(0, 65),
+          subject: subject || null,
         });
         id = c.id;
         setChatId(id);
@@ -625,6 +676,24 @@ function App() {
     } finally {
       setBusy(false);
     }
+  }
+  async function chooseSubject(value: string) {
+    if (!value) return;
+    if (!chatId) {
+      setSubject(value);
+      return;
+    }
+    await action(async () => {
+      const c = await api(`/api/conversations/${chatId}/subject`, "PUT", {
+        value,
+      });
+      await openChat(c.id);
+      await refreshChats();
+      if (c.created_new)
+        setNotice(
+          "فُتحت محادثة جديدة للمادة المختارة؛ المحادثة السابقة محفوظة.",
+        );
+    });
   }
   async function navigate(next: string) {
     setView(next);
@@ -750,6 +819,29 @@ function App() {
       const f = new FormData();
       f.append("metadata", JSON.stringify(meta));
       f.append("file", uploadFile);
+      if (meta.content_type !== "textbook" && solutionLayout !== "none") {
+        f.append(
+          "package",
+          JSON.stringify({
+            layout: solutionLayout,
+            matching_confirmed: packageMatching,
+            ...(solutionLayout === "combined"
+              ? {
+                  primary_range: {
+                    first_page: packageRanges.primary_first,
+                    last_page: packageRanges.primary_last,
+                  },
+                  solution_range: {
+                    first_page: packageRanges.solution_first,
+                    last_page: packageRanges.solution_last,
+                  },
+                }
+              : {}),
+          }),
+        );
+        if (solutionLayout === "separate" && solutionFile)
+          f.append("solution_file", solutionFile);
+      }
       const r = await api("/api/owner/documents/upload", "POST", f);
       setVersion(await api("/api/owner/versions/" + r.version_id));
       setOwnerDocs((await api("/api/owner/documents")).items);
@@ -934,6 +1026,62 @@ function App() {
             onClick={() => setRecovery("request")}
           >
             نسيت كلمة المرور أو تأكيد البريد؟
+          </button>
+        </form>
+      </main>
+    );
+  if (user.role === "student" && !user.study_track)
+    return (
+      <main className="auth-page">
+        <form
+          className="panel onboarding"
+          onSubmit={(e) => {
+            e.preventDefault();
+            action(async () => {
+              const d = await api("/api/auth/study-track", "PUT", {
+                value: onboardingTrack,
+              });
+              setUser(d.user);
+              setSubject("");
+              await refreshChats();
+            });
+          }}
+        >
+          <h1>اختر شعبتك الدراسية</h1>
+          <p>
+            هذا الاختيار إلزامي ويُحفظ مرة واحدة؛ لن تتمكن من تغييره لاحقًا.
+            تأكد من شعبتك قبل التأكيد.
+          </p>
+          <label>
+            الشعبة الدراسية
+            <select
+              required
+              aria-label="الشعبة الدراسية"
+              value={onboardingTrack}
+              onChange={(e) => setOnboardingTrack(e.target.value)}
+            >
+              <option value="">اختر الشعبة</option>
+              {studyCatalog.tracks.map((x) => (
+                <option key={x.id} value={x.id}>
+                  {x.label}
+                </option>
+              ))}
+            </select>
+          </label>
+          <button className="primary" disabled={busy || !onboardingTrack}>
+            تأكيد الشعبة نهائيًا
+          </button>
+          {notice && <p role="alert">{notice}</p>}
+          <button
+            type="button"
+            onClick={() =>
+              action(async () => {
+                await api("/api/auth/logout", "POST", {});
+                setUser(null);
+              })
+            }
+          >
+            تسجيل الخروج
           </button>
         </form>
       </main>
@@ -1215,6 +1363,24 @@ function App() {
             </button>
           </div>
           <div className="topbar-actions">
+            {view === "chat" && user.role === "student" && (
+              <label className="subject-picker">
+                المادة
+                <select
+                  aria-label="مادة المحادثة"
+                  value={subject}
+                  disabled={busy}
+                  onChange={(e) => chooseSubject(e.target.value)}
+                >
+                  <option value="">اختر المادة</option>
+                  {allowedSubjects.map((x) => (
+                    <option key={x.id} value={x.id}>
+                      {x.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            )}
             <span
               className="chat-title"
               title={chats.find((c) => c.id === chatId)?.title}
@@ -1517,7 +1683,7 @@ function App() {
                         className="send-button"
                         aria-label="إرسال ↑"
                         title="إرسال"
-                        disabled={busy || !text.trim()}
+                        disabled={busy || !text.trim() || needsSubject}
                       >
                         <Icon name="arrow" size={21} />
                       </button>
@@ -2024,19 +2190,6 @@ function App() {
                         setMeta({
                           ...meta,
                           title: e.target.files[0].name.replace(/\.pdf$/i, ""),
-                          kind: /فرض|اختبار|بكالوريا|exam|bac\b/i.test(
-                            e.target.files[0].name,
-                          )
-                            ? "exam"
-                            : /تمارين|exercices|exercises/i.test(
-                                  e.target.files[0].name,
-                                )
-                              ? "exercise_collection"
-                              : /ملخص|قوانين|summary|formula/i.test(
-                                    e.target.files[0].name,
-                                  )
-                                ? "reference"
-                                : "book",
                         });
                     }}
                   />
@@ -2052,41 +2205,121 @@ function App() {
                   />
                 </label>
                 <label>
-                  نوع المستند
+                  نوع المحتوى
                   <select
-                    value={meta.kind}
-                    onChange={(e) => setMeta({ ...meta, kind: e.target.value })}
+                    aria-label="نوع المحتوى"
+                    value={meta.content_type}
+                    onChange={(e) => {
+                      const type = studyCatalog.content_types.find(
+                        (x) => x.id === e.target.value,
+                      )!;
+                      setMeta({
+                        ...meta,
+                        content_type: type.id,
+                        kind: type.kind,
+                      });
+                      setSolutionLayout("none");
+                      setSolutionFile(null);
+                      setPackageMatching(false);
+                    }}
                   >
-                    <option value="book">كتاب مدرسي أو خارجي</option>
-                    <option value="exam">امتحان — الحل اختياري ومطابق</option>
-                    <option value="exercise_collection">
-                      سلسلة تمارين كاملة
-                    </option>
-                    <option value="reference">مرجع أو ملخص</option>
+                    {studyCatalog.content_types.map((x) => (
+                      <option key={x.id} value={x.id}>
+                        {x.label}
+                      </option>
+                    ))}
                   </select>
                 </label>
                 <div className="form-columns">
-                  <label>
-                    المادة
-                    <input
-                      required
-                      value={meta.subject}
-                      onChange={(e) =>
-                        setMeta({ ...meta, subject: e.target.value })
-                      }
-                    />
-                  </label>
-                  <label>
-                    التخصص
-                    <input
-                      required
-                      value={meta.track}
-                      onChange={(e) =>
-                        setMeta({ ...meta, track: e.target.value })
-                      }
-                    />
-                  </label>
+                  <IdentityChoices
+                    catalogue={studyCatalog}
+                    value={meta}
+                    onChange={setMeta}
+                  />
                 </div>
+                {meta.content_type !== "textbook" && (
+                  <fieldset>
+                    <legend>الموضوع والحل في عملية رفع واحدة</legend>
+                    <label>
+                      تنسيق الملفات
+                      <select
+                        aria-label="تنسيق الملفات"
+                        value={solutionLayout}
+                        onChange={(e) => {
+                          setSolutionLayout(e.target.value);
+                          setPackageMatching(false);
+                        }}
+                      >
+                        <option value="none">الموضوع فقط، دون حل</option>
+                        <option value="combined">
+                          الموضوع والحل في PDF واحد
+                        </option>
+                        <option value="separate">
+                          الموضوع والحل في ملفين منفصلين
+                        </option>
+                      </select>
+                    </label>
+                    {solutionLayout === "separate" && (
+                      <label>
+                        ملف الحل PDF
+                        <input
+                          type="file"
+                          required
+                          accept=".pdf,application/pdf"
+                          onChange={(e) =>
+                            setSolutionFile(e.target.files?.[0] || null)
+                          }
+                        />
+                      </label>
+                    )}
+                    {solutionLayout === "combined" && (
+                      <div className="form-columns">
+                        {[
+                          ["primary_first", "أول صفحة للموضوع"],
+                          ["primary_last", "آخر صفحة للموضوع"],
+                          ["solution_first", "أول صفحة للحل"],
+                          ["solution_last", "آخر صفحة للحل"],
+                        ].map(([k, l]) => (
+                          <label key={k}>
+                            {l}
+                            <input
+                              type="number"
+                              min="1"
+                              required
+                              value={(packageRanges as any)[k]}
+                              onChange={(e) =>
+                                setPackageRanges({
+                                  ...packageRanges,
+                                  [k]: Number(e.target.value),
+                                })
+                              }
+                            />
+                          </label>
+                        ))}
+                      </div>
+                    )}
+                    {solutionLayout !== "none" && (
+                      <>
+                        <label>
+                          <input
+                            type="checkbox"
+                            required
+                            checked={packageMatching}
+                            onChange={(e) =>
+                              setPackageMatching(e.target.checked)
+                            }
+                          />
+                          أؤكد أن الحل المرفق يخص هذا الموضوع ونفس الشعبة
+                          والمادة.
+                        </label>
+                        <p className="muted">
+                          سيُربطان في نسخة واحدة. يلزم فحص الحل وتوثيق مطابقته
+                          قبل النشر؛ لا يُصنّف رسميًا تلقائيًا.
+                        </p>
+                      </>
+                    )}
+                  </fieldset>
+                )}
                 {["exam", "exercise_collection"].includes(meta.kind) && (
                   <div className="form-columns">
                     {[
@@ -2108,7 +2341,7 @@ function App() {
                   </div>
                 )}
                 <p className="muted">
-                  نوع المستند اقتراح قابل للتغيير؛ راجعه قبل المعالجة.
+                  الشعبة والمادة ونوع المحتوى خيارات محددة؛ راجعها قبل المعالجة.
                 </p>
                 <label>
                   المصدر / المرجع

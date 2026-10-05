@@ -3,6 +3,7 @@
 from typing import Literal
 from pydantic import Field, model_validator
 from bac.agent.models import Strict
+from bac.core.study import validate_pair, CONTENT_TYPES
 
 
 class DocumentMetadata(Strict):
@@ -15,6 +16,9 @@ class DocumentMetadata(Strict):
     session: str | None = Field(default=None, max_length=100)
     exam_type: str | None = Field(default=None, max_length=100)
     institution: str | None = Field(default=None, max_length=200)
+    content_type: (
+        Literal["textbook", "school_tests", "exercises", "bac_exams"] | None
+    ) = None
 
     @model_validator(mode="after")
     def normalize(self):
@@ -22,6 +26,16 @@ class DocumentMetadata(Strict):
         self.track = self.track.strip()
         if not self.subject or not self.track:
             raise ValueError("Subject and track are required")
+        self.track, self.subject = validate_pair(self.track, self.subject)
+        if self.content_type:
+            self.kind = CONTENT_TYPES[self.content_type][1]
+        else:
+            self.content_type = {
+                "book": "textbook",
+                "reference": "textbook",
+                "exam": "school_tests",
+                "exercise_collection": "exercises",
+            }[self.kind]
         self.year = self.year.strip() or None if self.year else None
         self.session = self.session.strip() or None if self.session else None
         return self
@@ -42,6 +56,7 @@ class SolutionMetadata(Strict):
             setattr(self, name, getattr(self, name).strip())
             if not getattr(self, name):
                 raise ValueError("Solution identity and source cannot be blank")
+        self.track, self.subject = validate_pair(self.track, self.subject)
         return self
 
 
@@ -54,6 +69,13 @@ class PageRange(Strict):
         if self.last_page < self.first_page:
             raise ValueError("Invalid page range")
         return self
+
+
+class UploadPackage(Strict):
+    layout: Literal["none", "combined", "separate"] = "none"
+    primary_range: PageRange | None = None
+    solution_range: PageRange | None = None
+    matching_confirmed: bool = False
 
 
 class SolutionVerification(Strict):
