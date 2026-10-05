@@ -1,3 +1,7 @@
+import { Input } from "./components/ui/input";
+import { NativeSelect } from "./components/ui/native-select";
+import { Button } from "./components/ui/button";
+import { Card } from "./components/ui/card";
 import React, { useEffect, useState } from "react";
 type API = (p: string, m?: string, b?: unknown) => Promise<any>;
 export function Recovery({
@@ -72,7 +76,7 @@ export function Recovery({
           <>
             <label>
               البريد الإلكتروني
-              <input
+              <Input
                 name="email"
                 type="email"
                 dir="ltr"
@@ -82,10 +86,10 @@ export function Recovery({
             </label>
             <label>
               نوع الطلب
-              <select name="purpose">
+              <NativeSelect name="purpose">
                 <option value="reset">استعادة كلمة المرور</option>
                 <option value="verify">إعادة إرسال تأكيد البريد</option>
-              </select>
+              </NativeSelect>
             </label>
             {policy && !policy.mail_configured && (
               <p role="status">
@@ -98,7 +102,7 @@ export function Recovery({
           purpose !== "verify" && (
             <label>
               كلمة المرور الجديدة
-              <input
+              <Input
                 name="password"
                 type="password"
                 minLength={12}
@@ -110,16 +114,17 @@ export function Recovery({
           )
         )}
         {notice && <p role="status">{notice}</p>}
-        <button
+        <Button
+          variant="outline"
           className="primary"
           disabled={busy || (!token && policy && !policy.mail_configured)}
         >
           {" "}
           {token ? "تأكيد التحديث" : "إرسال الرابط"}{" "}
-        </button>
-        <button type="button" onClick={back}>
+        </Button>
+        <Button variant="outline" type="button" onClick={back}>
           العودة للدخول
-        </button>
+        </Button>
       </form>
     </main>
   );
@@ -148,7 +153,7 @@ export function SecurityPanel({
     location.reload();
   };
   return (
-    <section className="page-content">
+    <section tabIndex={0} className="page-content">
       <h1>أمان الحساب</h1>
       <p>
         تغيير كلمة المرور أو إلغاء الجلسات يوقف التشغيلات الجارية ويلغي رموز
@@ -171,7 +176,7 @@ export function SecurityPanel({
         <h2>تغيير كلمة المرور</h2>
         <label>
           كلمة المرور الحالية
-          <input
+          <Input
             name="current"
             type="password"
             autoComplete="current-password"
@@ -181,7 +186,7 @@ export function SecurityPanel({
         </label>
         <label>
           كلمة المرور الجديدة
-          <input
+          <Input
             name="new"
             type="password"
             minLength={12}
@@ -190,11 +195,11 @@ export function SecurityPanel({
             required
           />
         </label>
-        <button className="primary" disabled={busy}>
+        <Button variant="outline" className="primary" disabled={busy}>
           تغيير وإلغاء الجلسات
-        </button>
+        </Button>
       </form>
-      <div className="panel">
+      <Card className="panel">
         <h2>إنهاء جميع الجلسات</h2>
         <label>
           <input
@@ -204,7 +209,8 @@ export function SecurityPanel({
           />
           أوافق على تسجيل الخروج من جميع الأجهزة وإلغاء رموز الخدمة
         </label>
-        <button
+        <Button
+          variant="outline"
           disabled={busy || !confirmed}
           onClick={() =>
             action(async () => {
@@ -214,8 +220,8 @@ export function SecurityPanel({
           }
         >
           إلغاء جميع الجلسات
-        </button>
-      </div>
+        </Button>
+      </Card>
     </section>
   );
 }
@@ -250,7 +256,7 @@ export function ServiceTokens({
     }
   }
   return (
-    <section className="page-content">
+    <section tabIndex={0} className="page-content">
       <h1>وصول الوكلاء للمكتبة</h1>
       <p>
         قراءة فقط للكتب المنشورة المحددة؛ لا وصول للمحادثات أو الملفات الخاصة أو
@@ -274,11 +280,11 @@ export function ServiceTokens({
       >
         <label>
           اسم الوكيل
-          <input name="label" required maxLength={100} />
+          <Input name="label" required maxLength={100} />
         </label>
         <label>
           صلاحية بالأيام
-          <input
+          <Input
             name="days"
             type="number"
             defaultValue={30}
@@ -309,14 +315,18 @@ export function ServiceTokens({
             <p>انشر كتابًا أولًا؛ لا يمكن إصدار رمز شامل ضمنيًا.</p>
           )}
         </fieldset>
-        <button className="primary" disabled={busy || !selected.length}>
+        <Button
+          variant="outline"
+          className="primary"
+          disabled={busy || !selected.length}
+        >
           إنشاء رمز قراءة
-        </button>
+        </Button>
       </form>
       {secret && (
-        <div className="panel">
+        <Card className="panel">
           <h2>انسخه الآن — لا يُعرض مرة أخرى</h2>
-          <input
+          <Input
             aria-label="رمز الخدمة الجديد"
             dir="ltr"
             readOnly
@@ -324,7 +334,8 @@ export function ServiceTokens({
             autoComplete="off"
           />
           <p>احفظه في خزنة أسرار وكيلك، لا في source code أو URL.</p>
-          <button
+          <Button
+            variant="outline"
             onClick={() => {
               navigator.clipboard
                 .writeText(secret)
@@ -333,9 +344,11 @@ export function ServiceTokens({
             }}
           >
             نسخ الرمز
-          </button>
-          <button onClick={() => setSecret("")}>إخفاء الرمز</button>
-        </div>
+          </Button>
+          <Button variant="outline" onClick={() => setSecret("")}>
+            إخفاء الرمز
+          </Button>
+        </Card>
       )}
       <h2>الرموز الصادرة</h2>
       {items.map((t) => (
@@ -350,7 +363,8 @@ export function ServiceTokens({
             · {t.documents.length} كتاب ·{" "}
             {new Date(t.expires_at * 1000).toLocaleDateString("ar")}
           </p>
-          <button
+          <Button
+            variant="outline"
             disabled={busy || !!t.revoked_at}
             onClick={() =>
               action(async () => {
@@ -360,11 +374,11 @@ export function ServiceTokens({
             }
           >
             إلغاء الرمز
-          </button>
+          </Button>
         </article>
       ))}
       <h2>الاستدعاء</h2>
-      <pre dir="ltr">
+      <pre tabIndex={0} dir="ltr">
         {
           "Authorization: Bearer <SERVICE_TOKEN>\nGET /api/agent/books\nGET /api/agent/books/{book_id}/toc\nGET /api/agent/search?q=...\nGET /api/agent/get_lesson/{lesson_id}\nGET /api/agent/nodes/{lesson_id}/parts\nGET /api/agent/parts/{part_id}\nGET /api/agent/assets/{asset_id}"
         }

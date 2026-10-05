@@ -452,7 +452,7 @@ export function ScientificDiagram({ result }: { result: ScientificResult }) {
       </p>
       <details>
         <summary>إحداثيات المخطط وحدود الفحص</summary>
-        <pre dir="ltr">
+        <pre tabIndex={0} dir="ltr">
           {JSON.stringify(
             { inputs: result.inputs, scope: result.output.scope },
             null,

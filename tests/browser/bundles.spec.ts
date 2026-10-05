@@ -1,3 +1,4 @@
+import { chooseSubject } from "./helpers";
 import { test, expect } from "@playwright/test";
 import path from "node:path";
 import { execFileSync } from "node:child_process";
@@ -129,7 +130,7 @@ test("whole exam + explicit matched solution ranges → publish → private bund
     .getByLabel("الشعبة الدراسية")
     .selectOption("experimental_sciences");
   await student.getByRole("button", { name: "تأكيد الشعبة نهائيًا" }).click();
-  await student.getByLabel("مادة المحادثة").selectOption("physics");
+  await chooseSubject(student, "physics");
   await expect(student.locator(".workspace")).toBeVisible();
   await expect(
     student.getByRole("button", { name: "المكتبة", exact: true }),
@@ -222,7 +223,7 @@ test("exercise collection stays whole and missing solution is explicit", async (
     .getByLabel("الشعبة الدراسية")
     .selectOption("experimental_sciences");
   await student.getByRole("button", { name: "تأكيد الشعبة نهائيًا" }).click();
-  await student.getByLabel("مادة المحادثة").selectOption("physics");
+  await chooseSubject(student, "physics");
   await expect(student.locator(".workspace")).toBeVisible();
   await expect(
     student.getByRole("button", { name: "المكتبة", exact: true }),

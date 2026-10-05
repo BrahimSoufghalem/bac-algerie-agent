@@ -1,3 +1,7 @@
+import { Button } from "./components/ui/button";
+import { NativeSelect } from "./components/ui/native-select";
+import { Input } from "./components/ui/input";
+import { Textarea } from "./components/ui/textarea";
 import React, { useEffect, useState } from "react";
 import {
   IdentityChoices,
@@ -87,7 +91,8 @@ export default function BundleEditor({
     <div className="bundle-editor">
       <div className="section-heading">
         <h3>هوية المصدر وملفاته</h3>
-        <button
+        <Button
+          variant="outline"
           disabled={editable}
           onClick={() =>
             action(async () => {
@@ -97,7 +102,7 @@ export default function BundleEditor({
           }
         >
           إنشاء نسخة جديدة
-        </button>
+        </Button>
       </div>
       <p className="muted">
         الكتاب يحتفظ بفهرسه الحقيقي. الامتحان وسلسلة التمارين حزمة كاملة؛ لا
@@ -116,7 +121,7 @@ export default function BundleEditor({
         >
           <label>
             نوع محتوى المسودة
-            <select
+            <NativeSelect
               disabled={!editable}
               value={
                 draft.content_type ||
@@ -141,7 +146,7 @@ export default function BundleEditor({
                   {x.label}
                 </option>
               ))}
-            </select>
+            </NativeSelect>
           </label>
           <div className="form-columns">
             <IdentityChoices
@@ -161,7 +166,7 @@ export default function BundleEditor({
             ].map(([key, label]) => (
               <label key={key}>
                 {label}
-                <input
+                <Input
                   value={draft[key] || ""}
                   required={["title", "subject", "track"].includes(key)}
                   disabled={!editable}
@@ -172,7 +177,9 @@ export default function BundleEditor({
               </label>
             ))}
           </div>
-          <button disabled={!editable}>حفظ هوية المسودة</button>
+          <Button variant="outline" disabled={!editable}>
+            حفظ هوية المسودة
+          </Button>
         </form>
       </details>
       <div className="source-files">
@@ -222,7 +229,7 @@ export default function BundleEditor({
           >
             <label>
               ملف النطاق
-              <select
+              <NativeSelect
                 value={range.file_id}
                 disabled={!editable}
                 onChange={(e) => {
@@ -241,12 +248,12 @@ export default function BundleEditor({
                     {f.role === "primary" ? "الموضوع" : "الحل"} · {f.filename}
                   </option>
                 ))}
-              </select>
+              </NativeSelect>
             </label>
             <div className="form-columns">
               <label>
                 أول صفحة في النطاق
-                <input
+                <Input
                   type="number"
                   min="1"
                   value={range.first_page}
@@ -258,7 +265,7 @@ export default function BundleEditor({
               </label>
               <label>
                 آخر صفحة في النطاق
-                <input
+                <Input
                   type="number"
                   min="1"
                   value={range.last_page}
@@ -269,7 +276,9 @@ export default function BundleEditor({
                 />
               </label>
             </div>
-            <button disabled={!editable}>حفظ نطاق الصفحات</button>
+            <Button variant="outline" disabled={!editable}>
+              حفظ نطاق الصفحات
+            </Button>
           </form>
         </details>
       )}
@@ -314,7 +323,7 @@ export default function BundleEditor({
                 <div className="form-columns">
                   <label>
                     أول صفحة للحل
-                    <input
+                    <Input
                       type="number"
                       min="1"
                       value={first}
@@ -323,7 +332,7 @@ export default function BundleEditor({
                   </label>
                   <label>
                     آخر صفحة للحل
-                    <input
+                    <Input
                       type="number"
                       min="1"
                       value={last}
@@ -351,7 +360,7 @@ export default function BundleEditor({
                 ].map(([key, label]) => (
                   <label key={key}>
                     {label}
-                    <input
+                    <Input
                       value={(metadata as any)[key]}
                       required={["subject", "track"].includes(key)}
                       disabled={!editable}
@@ -364,7 +373,7 @@ export default function BundleEditor({
               </div>
               <label>
                 مصدر الحل / دليل نسبته
-                <input
+                <Input
                   required
                   disabled={!editable}
                   value={metadata.source}
@@ -375,7 +384,7 @@ export default function BundleEditor({
               </label>
               <label>
                 وصف مصدر الحل
-                <select
+                <NativeSelect
                   value={metadata.designation}
                   disabled={!editable}
                   onChange={(e) =>
@@ -386,11 +395,14 @@ export default function BundleEditor({
                   <option value="official_source">
                     من مصدر رسمي — ادعاء المالك يتطلب دليلًا
                   </option>
-                </select>
+                </NativeSelect>
               </label>
-              <button disabled={!editable || (!combined && !file)}>
+              <Button
+                variant="outline"
+                disabled={!editable || (!combined && !file)}
+              >
                 إرفاق الحل للمراجعة
-              </button>
+              </Button>
             </form>
           ) : (
             <>
@@ -439,7 +451,7 @@ export default function BundleEditor({
                   </label>
                   <label>
                     دليل المطابقة
-                    <textarea
+                    <Textarea
                       required
                       minLength={20}
                       value={evidence}
@@ -447,7 +459,8 @@ export default function BundleEditor({
                       onChange={(e) => setEvidence(e.target.value)}
                     />
                   </label>
-                  <button
+                  <Button
+                    variant="outline"
                     disabled={
                       !editable ||
                       !matching ||
@@ -456,10 +469,11 @@ export default function BundleEditor({
                     }
                   >
                     تأكيد مطابقة الحل
-                  </button>
+                  </Button>
                 </form>
               )}
-              <button
+              <Button
+                variant="outline"
                 disabled={!editable}
                 onClick={() =>
                   action(async () => {
@@ -469,7 +483,7 @@ export default function BundleEditor({
                 }
               >
                 إزالة الحل من المسودة
-              </button>
+              </Button>
             </>
           )}
         </>

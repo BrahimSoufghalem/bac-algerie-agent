@@ -1,3 +1,9 @@
+import { UsageSummary } from "./UsageUI";
+import { Button } from "./components/ui/button";
+import { Input } from "./components/ui/input";
+import { NativeSelect } from "./components/ui/native-select";
+import { Textarea } from "./components/ui/textarea";
+import { Card } from "./components/ui/card";
 import React, { useEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import Markdown from "react-markdown";
@@ -9,8 +15,20 @@ import "katex/dist/katex.min.css";
 import "@fontsource/noto-sans-arabic/400.css";
 import "@fontsource/noto-sans-arabic/600.css";
 import "@fontsource/noto-sans-arabic/700.css";
+import "./design/tokens.css";
 import "./style.css";
 import "./conversationRefinements.css";
+import "./design/masar.css";
+import {
+  DesignProvider,
+  Welcome,
+  SubjectPicker,
+  Starters,
+  WorkspaceHeading,
+  ContentWorkflow,
+  CountBadge,
+} from "./BrandUI";
+import { TooltipProvider } from "./components/ui/tooltip";
 import {
   Icon,
   Mark,
@@ -117,7 +135,12 @@ function Md({ text }: { text: string }) {
         td: ({ children }) => <td dir="auto">{children}</td>,
         th: ({ children }) => <th dir="auto">{children}</th>,
         table: ({ children }) => (
-          <div className="table-scroll">
+          <div
+            tabIndex={0}
+            role="region"
+            aria-label="جدول قابل للتمرير"
+            className="table-scroll"
+          >
             <table>{children}</table>
           </div>
         ),
@@ -138,7 +161,13 @@ function Content({ blocks }: { blocks: Block[] }) {
             <Md text={"$$\n" + b.latex + "\n$$"} />
           </div>
         ) : b.type === "image" ? null : b.type === "table" ? (
-          <div className="table-scroll" key={i}>
+          <div
+            tabIndex={0}
+            role="region"
+            aria-label="جدول قابل للتمرير"
+            className="table-scroll"
+            key={i}
+          >
             <table>
               <thead>
                 <tr>
@@ -170,7 +199,7 @@ function Content({ blocks }: { blocks: Block[] }) {
             <ScientificChart key={i} result={b.result} />
           )
         ) : b.type === "code" ? (
-          <pre dir="ltr" key={i}>
+          <pre tabIndex={0} dir="ltr" key={i}>
             <code>{b.text}</code>
           </pre>
         ) : null,
@@ -192,6 +221,7 @@ function App() {
   const composerInput = useRef<HTMLTextAreaElement>(null);
   const pinned = useRef(true);
   const accountRef = useRef<HTMLDivElement>(null);
+  const dialogReturnFocus = useRef<HTMLElement | null>(null);
   const [recovery, setRecovery] = useState(() => {
     if (location.hash.startsWith("#auth=")) {
       const link = location.hash.slice(6);
@@ -876,7 +906,8 @@ function App() {
     icon: IconName,
     accessible = label,
   ) => (
-    <button
+    <Button
+      variant="outline"
       key={next}
       title={label}
       aria-label={accessible}
@@ -886,7 +917,7 @@ function App() {
     >
       <Icon name={icon} />
       <span>{label}</span>
-    </button>
+    </Button>
   );
   const retryAnswer = () =>
     action(async () => {
@@ -943,7 +974,13 @@ function App() {
         back={() => setRecovery("")}
       />
     );
-  if (loading) return <main className="loading">جارٍ فتح مسار…</main>;
+  if (loading)
+    return (
+      <main className="loading">
+        <Mark />
+        <p>جارٍ فتح مسار…</p>
+      </main>
+    );
   if (!user)
     return (
       <main className="auth-page">
@@ -962,8 +999,33 @@ function App() {
             مساحة تعلّم تجمع شرحًا تدريجيًا، ومصادر معتمدة، واستدعاء مباشر
             للدروس.
           </p>
-          <div className="auth-note">
-            <Icon name="book" /> من المصدر إلى الفهم، خطوة بخطوة.
+          <div className="auth-pill">
+            <Icon name="practice" size={18} /> مساحة تعلّم للبكالوريا الجزائرية
+          </div>
+          <div className="auth-features">
+            {[
+              [
+                "book",
+                "تعلّم من المصدر",
+                "دروس ومراجع منشورة، قريبة من سؤالك.",
+              ],
+              [
+                "practice",
+                "ابنِ الحل خطوة بخطوة",
+                "فهم الفكرة، ثم التدريب على تطبيقها.",
+              ],
+              ["shield", "مساحتك تبقى لك", "محادثاتك وملاحظاتك في مكان واحد."],
+            ].map(([icon, title, detail]) => (
+              <div key={title}>
+                <span className="auth-feature-icon">
+                  <Icon name={icon as IconName} />
+                </span>
+                <div>
+                  <strong>{title}</strong>
+                  <p>{detail}</p>
+                </div>
+              </div>
+            ))}
           </div>
         </div>
         <form className="auth-form" onSubmit={authenticate}>
@@ -976,12 +1038,12 @@ function App() {
           {authMode === "register" && (
             <label>
               الاسم
-              <input name="name" required autoComplete="name" />
+              <Input name="name" required autoComplete="name" />
             </label>
           )}
           <label>
             البريد الإلكتروني
-            <input
+            <Input
               name="email"
               type="email"
               dir="ltr"
@@ -991,7 +1053,7 @@ function App() {
           </label>
           <label>
             كلمة المرور
-            <input
+            <Input
               name="password"
               type="password"
               minLength={authMode === "register" ? 12 : undefined}
@@ -1006,10 +1068,11 @@ function App() {
               {error}
             </p>
           )}
-          <button className="primary" type="submit">
+          <Button variant="outline" className="primary" type="submit">
             {authMode === "login" ? "دخول" : "إنشاء حساب"}
-          </button>
-          <button
+          </Button>
+          <Button
+            variant="outline"
             type="button"
             className="text-button"
             onClick={() => {
@@ -1020,14 +1083,15 @@ function App() {
             {authMode === "login"
               ? "ليس لديك حساب؟ أنشئ حساب طالب"
               : "لديك حساب؟ سجّل الدخول"}
-          </button>
-          <button
+          </Button>
+          <Button
+            variant="outline"
             type="button"
             className="text-button"
             onClick={() => setRecovery("request")}
           >
             نسيت كلمة المرور أو تأكيد البريد؟
-          </button>
+          </Button>
         </form>
       </main>
     );
@@ -1048,6 +1112,11 @@ function App() {
             });
           }}
         >
+          <div className="onboarding-brand">
+            <Mark small />
+            <strong>مسار</strong>
+            <CountBadge>الخطوة الأولى</CountBadge>
+          </div>
           <h1>اختر شعبتك الدراسية</h1>
           <p>
             هذا الاختيار إلزامي ويُحفظ مرة واحدة؛ لن تتمكن من تغييره لاحقًا.
@@ -1055,7 +1124,7 @@ function App() {
           </p>
           <label>
             الشعبة الدراسية
-            <select
+            <NativeSelect
               required
               aria-label="الشعبة الدراسية"
               value={onboardingTrack}
@@ -1067,13 +1136,18 @@ function App() {
                   {x.label}
                 </option>
               ))}
-            </select>
+            </NativeSelect>
           </label>
-          <button className="primary" disabled={busy || !onboardingTrack}>
+          <Button
+            variant="outline"
+            className="primary"
+            disabled={busy || !onboardingTrack}
+          >
             تأكيد الشعبة نهائيًا
-          </button>
+          </Button>
           {notice && <p role="alert">{notice}</p>}
-          <button
+          <Button
+            variant="outline"
             type="button"
             onClick={() =>
               action(async () => {
@@ -1083,7 +1157,7 @@ function App() {
             }
           >
             تسجيل الخروج
-          </button>
+          </Button>
         </form>
       </main>
     );
@@ -1114,15 +1188,20 @@ function App() {
         inert={Boolean(source || chatDialog)}
       >
         <div className="sidebar-top">
-          <button
+          <Button
+            variant="outline"
             className="brand"
             aria-label="مسار · المحادثة"
             onClick={() => navigate("chat")}
           >
             <Mark small />
-            <strong>مسار</strong>
-          </button>
-          <button
+            <div className="sidebar-brand-copy">
+              <strong>مسار</strong>
+              <small>خطوة أقرب إلى الفهم</small>
+            </div>
+          </Button>
+          <Button
+            variant="outline"
             className="icon-button sidebar-toggle"
             aria-label={
               collapsed ? "توسيع الشريط الجانبي" : "طي الشريط الجانبي"
@@ -1134,17 +1213,19 @@ function App() {
             }}
           >
             <Icon name="panel" />
-          </button>
-          <button
+          </Button>
+          <Button
+            variant="outline"
             className="icon-button drawer-close"
             aria-label="إغلاق القائمة"
             onClick={() => setMenu(false)}
           >
             <Icon name="close" />
-          </button>
+          </Button>
         </div>
         <nav aria-label="مساحة التعلّم" className="primary-nav">
-          <button
+          <Button
+            variant="outline"
             className="new-chat"
             aria-label="＋ محادثة جديدة"
             title="محادثة جديدة"
@@ -1154,20 +1235,43 @@ function App() {
             <Icon name="write" />
             <span>محادثة جديدة</span>
             <kbd>جديد</kbd>
-          </button>
+          </Button>
           {user.role !== "student" &&
             navItem("materials", "مساحة إعداد الأستاذ", "practice")}
         </nav>
+        {user.role === "owner" && (
+          <div className="workspace-navigation">
+            <p className="nav-caption">مساحة الإدارة</p>
+            <nav aria-label="إدارة المنصة">
+              {navItem(
+                "owner-library",
+                "إدارة المحتوى",
+                "book",
+                "▥ إدارة المحتوى",
+              )}
+              {navItem(
+                "models",
+                "إعداد النماذج",
+                "settings",
+                "⚙ إعداد النماذج",
+              )}
+              {navItem("usage", "الاستخدام", "chart", "◷ الاستخدام")}
+              {navItem("accounts", "الحسابات والحدود", "users")}
+            </nav>
+          </div>
+        )}
         <label className="chat-search">
           <Icon name="search" size={17} />
-          <input
+          <Input
             placeholder="ابحث في محادثاتك"
             aria-label="البحث في المحادثات"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
           />
         </label>
-        <div className="history-caption">محادثاتك</div>
+        <div className="history-caption">
+          محادثاتك <CountBadge>{chats.length}</CountBadge>
+        </div>
         <div className="chat-history">
           {!chats.length && (
             <p className="history-empty">
@@ -1181,7 +1285,8 @@ function App() {
               key={c.id}
               className={"history-item " + (c.id === chatId ? "selected" : "")}
             >
-              <button
+              <Button
+                variant="outline"
                 aria-current={
                   c.id === chatId && view === "chat" ? "page" : undefined
                 }
@@ -1189,14 +1294,19 @@ function App() {
                 title={c.title}
               >
                 {c.title}
-              </button>
+              </Button>
               <details>
                 <summary aria-label="خيارات المحادثة">
                   <Icon name="more" size={18} />
                 </summary>
                 <div className="history-actions">
-                  <button
+                  <Button
+                    variant="outline"
                     onClick={(e) => {
+                      dialogReturnFocus.current =
+                        e.currentTarget
+                          .closest("details")
+                          ?.querySelector<HTMLElement>("summary") || null;
                       e.currentTarget
                         .closest("details")
                         ?.removeAttribute("open");
@@ -1205,10 +1315,15 @@ function App() {
                     }}
                   >
                     <Icon name="write" size={16} /> إعادة تسمية
-                  </button>
-                  <button
+                  </Button>
+                  <Button
+                    variant="outline"
                     className="destructive-text"
                     onClick={(e) => {
+                      dialogReturnFocus.current =
+                        e.currentTarget
+                          .closest("details")
+                          ?.querySelector<HTMLElement>("summary") || null;
                       e.currentTarget
                         .closest("details")
                         ?.removeAttribute("open");
@@ -1216,14 +1331,15 @@ function App() {
                     }}
                   >
                     <Icon name="trash" size={16} /> حذف
-                  </button>
+                  </Button>
                 </div>
               </details>
             </div>
           ))}
         </div>
         <div className="profile" ref={accountRef}>
-          <button
+          <Button
+            variant="outline"
             className="profile-button"
             aria-label="إعدادات الحساب"
             aria-expanded={accountOpen}
@@ -1247,7 +1363,7 @@ function App() {
             <span className="profile-action">
               <Icon name="settings" size={18} />
             </span>
-          </button>
+          </Button>
           {
             <div
               id="account-panel"
@@ -1268,25 +1384,6 @@ function App() {
                 {navItem("notes", "ملاحظات مسار التعليمية", "note")}
                 {navItem("security", "أمان الحساب", "shield")}
                 {navItem("personal-usage", "استخدامي وحدودي", "chart")}
-                {user.role === "owner" && (
-                  <>
-                    <div className="account-heading">إدارة المالك</div>
-                    {navItem(
-                      "owner-library",
-                      "إدارة المحتوى",
-                      "book",
-                      "▥ إدارة المحتوى",
-                    )}
-                    {navItem(
-                      "models",
-                      "إعداد النماذج",
-                      "settings",
-                      "⚙ إعداد النماذج",
-                    )}
-                    {navItem("usage", "الاستخدام", "chart", "◷ الاستخدام")}
-                    {navItem("accounts", "الحسابات والحدود", "users")}
-                  </>
-                )}
               </nav>
               <div
                 className="appearance-controls"
@@ -1300,7 +1397,8 @@ function App() {
                     ["system", "تلقائي", "monitor"],
                   ] as const
                 ).map(([value, label, icon]) => (
-                  <button
+                  <Button
+                    variant="outline"
                     key={value}
                     title={label}
                     aria-label={"مظهر " + label}
@@ -1309,10 +1407,11 @@ function App() {
                   >
                     <Icon name={icon} size={17} />
                     <span>{label}</span>
-                  </button>
+                  </Button>
                 ))}
               </div>
-              <button
+              <Button
+                variant="outline"
                 className="logout-button"
                 onClick={() =>
                   action(async () => {
@@ -1330,7 +1429,7 @@ function App() {
                 }
               >
                 <Icon name="logout" size={18} /> خروج
-              </button>
+              </Button>
             </div>
           }
         </div>
@@ -1343,7 +1442,8 @@ function App() {
       >
         <header className="topbar">
           <div className="topbar-start">
-            <button
+            <Button
+              variant="outline"
               className="icon-button menu-button"
               onClick={() => setMenu(!menu)}
               aria-label="فتح القائمة"
@@ -1351,36 +1451,31 @@ function App() {
               aria-expanded={menu}
             >
               <Icon name="menu" />
-            </button>
-            <button
+            </Button>
+            <Button
+              variant="outline"
               className="workspace-brand"
               aria-label="مسار · العودة للمحادثة"
               onClick={() => navigate("chat")}
             >
-              {view === "chat" ? "مسار" : titles[view]}
+              {view === "chat" ? (
+                <span className="workspace-wordmark">مسار</span>
+              ) : (
+                <WorkspaceHeading title={titles[view]} />
+              )}
               {view === "chat" && (
                 <span className="assistant-badge">مساعد التعلّم</span>
               )}
-            </button>
+            </Button>
           </div>
           <div className="topbar-actions">
             {view === "chat" && user.role === "student" && (
-              <label className="subject-picker">
-                المادة
-                <select
-                  aria-label="مادة المحادثة"
-                  value={subject}
-                  disabled={busy}
-                  onChange={(e) => chooseSubject(e.target.value)}
-                >
-                  <option value="">اختر المادة</option>
-                  {allowedSubjects.map((x) => (
-                    <option key={x.id} value={x.id}>
-                      {x.label}
-                    </option>
-                  ))}
-                </select>
-              </label>
+              <SubjectPicker
+                value={subject}
+                disabled={busy}
+                choices={allowedSubjects}
+                onChange={chooseSubject}
+              />
             )}
             <span
               className="chat-title"
@@ -1390,7 +1485,8 @@ function App() {
                 ? chats.find((c) => c.id === chatId)?.title || "محادثة جديدة"
                 : "مساحة خاصة"}
             </span>
-            <button
+            <Button
+              variant="outline"
               className="icon-button"
               title="محادثة جديدة"
               aria-label="بدء محادثة جديدة"
@@ -1398,19 +1494,20 @@ function App() {
               disabled={busy}
             >
               <Icon name="write" />
-            </button>
+            </Button>
           </div>
         </header>
         {notice && (
           <div className="notice" role="status">
             <span>{notice}</span>
-            <button
+            <Button
+              variant="outline"
               className="icon-button"
               onClick={() => setNotice("")}
               aria-label="إغلاق التنبيه"
             >
               <Icon name="close" size={18} />
-            </button>
+            </Button>
           </div>
         )}
         {view === "chat" && (
@@ -1430,20 +1527,7 @@ function App() {
             >
               <section className="conversation" aria-label="المحادثة">
                 {isEmpty ? (
-                  <div className="welcome">
-                    <Mark />
-                    <p className="welcome-greeting">
-                      أهلًا {user.name.split(" ")[0]}
-                    </p>
-                    <h1>
-                      {user.role === "teacher"
-                        ? "ما الذي نحضّره اليوم؟"
-                        : "ما الذي تريد أن تفهمه اليوم؟"}
-                    </h1>
-                    <p className="welcome-caption">
-                      فكرة، درس، أو مسألة. لنأخذها خطوة بخطوة.
-                    </p>
-                  </div>
+                  <Welcome name={user.name} teacher={user.role === "teacher"} />
                 ) : (
                   messages.map((m, index) => (
                     <React.Fragment key={m.id}>
@@ -1472,7 +1556,8 @@ function App() {
                         <div className="message-actions">
                           {m.role === "user" ? (
                             !run && (
-                              <button
+                              <Button
+                                variant="outline"
                                 className="icon-button"
                                 aria-label="تعديل"
                                 title="تعديل الرسالة"
@@ -1483,7 +1568,7 @@ function App() {
                                 }}
                               >
                                 <Icon name="write" size={17} />
-                              </button>
+                              </Button>
                             )
                           ) : (
                             <>
@@ -1506,7 +1591,8 @@ function App() {
                                 notify={setNotice}
                               />
                               {!run && index === messages.length - 1 && (
-                                <button
+                                <Button
+                                  variant="outline"
                                   className="icon-button"
                                   aria-label="إعادة محاولة الرسالة الأخيرة"
                                   title="إعادة محاولة الرسالة الأخيرة"
@@ -1514,7 +1600,7 @@ function App() {
                                   disabled={busy}
                                 >
                                   <Icon name="retry" size={17} />
-                                </button>
+                                </Button>
                               )}
                             </>
                           )}
@@ -1554,14 +1640,15 @@ function App() {
                               ["unavailable", "cancelled"].includes(
                                 m.unanswered_activity.status,
                               ) && (
-                                <button
+                                <Button
+                                  variant="outline"
                                   type="button"
                                   className="retry-work"
                                   onClick={retryAnswer}
                                   disabled={busy}
                                 >
                                   <Icon name="retry" size={15} /> إعادة المحاولة
-                                </button>
+                                </Button>
                               )}
                           </article>
                         )}
@@ -1606,18 +1693,20 @@ function App() {
             </div>
             <div className="composer-wrap">
               {showLatest && !isEmpty && (
-                <button
+                <Button
+                  variant="outline"
                   className="jump-latest"
                   aria-label="العودة إلى أحدث رسالة"
                   onClick={jumpToLatest}
                 >
                   <Icon name="down" size={18} />
-                </button>
+                </Button>
               )}
               {editing && (
                 <div className="editing">
                   <span>تعديل الرسالة · سيُنشأ مسار جديد للردود التالية.</span>
-                  <button
+                  <Button
+                    variant="outline"
                     className="icon-button"
                     aria-label="إلغاء التعديل"
                     onClick={() => {
@@ -1626,11 +1715,11 @@ function App() {
                     }}
                   >
                     <Icon name="close" size={17} />
-                  </button>
+                  </Button>
                 </div>
               )}
               <form className="composer" onSubmit={send}>
-                <textarea
+                <Textarea
                   id="chat-input"
                   ref={composerInput}
                   aria-label="رسالتك"
@@ -1666,7 +1755,8 @@ function App() {
                   <div className="send-controls">
                     <span className="key-hint">Shift + Enter لسطر جديد</span>
                     {run ? (
-                      <button
+                      <Button
+                        variant="outline"
                         className="send-button"
                         type="button"
                         aria-label="■ إيقاف"
@@ -1678,16 +1768,17 @@ function App() {
                         }
                       >
                         <Icon name="stop" size={18} />
-                      </button>
+                      </Button>
                     ) : (
-                      <button
+                      <Button
+                        variant="outline"
                         className="send-button"
                         aria-label="إرسال ↑"
                         title="إرسال"
                         disabled={busy || !text.trim() || needsSubject}
                       >
                         <Icon name="arrow" size={21} />
-                      </button>
+                      </Button>
                     )}
                   </div>
                 </div>
@@ -1697,25 +1788,18 @@ function App() {
               </p>
             </div>
             {isEmpty && (
-              <div className="starter-bar">
-                {starters.map((s) => (
-                  <button
-                    key={s.label}
-                    onClick={() => {
-                      setText(s.prompt);
-                      composerInput.current?.focus();
-                    }}
-                  >
-                    <Icon name={s.icon} size={17} />
-                    {s.label}
-                  </button>
-                ))}
-              </div>
+              <Starters
+                items={starters}
+                choose={(prompt) => {
+                  setText(prompt);
+                  composerInput.current?.focus();
+                }}
+              />
             )}
           </div>
         )}
         {view === "models" && (
-          <section className="page-content narrow">
+          <section tabIndex={0} className="page-content narrow">
             <h1>نماذج التدريس واختيار المراجع</h1>
             <p className="muted">
               إعداد التدريس مستقل عن اختيار المراجع واستخراج الكتب. اختر مزوّدًا
@@ -1724,7 +1808,7 @@ function App() {
               والمفاتيح محفوظة مشفرًا ولا تُعرض.
             </p>
             <form
-              className="panel"
+              className="panel model-settings"
               onSubmit={(e) => {
                 e.preventDefault();
                 action(async () => {
@@ -1745,9 +1829,13 @@ function App() {
                 });
               }}
             >
+              <div className="section-heading">
+                <h2>إعداد اتصال النموذج</h2>
+                <CountBadge>إعدادات مشفّرة</CountBadge>
+              </div>
               <label>
                 الاستخدام
-                <select
+                <NativeSelect
                   value={slot}
                   onChange={(e) => {
                     const next = e.target.value;
@@ -1790,11 +1878,11 @@ function App() {
                   <option value="selector">
                     راوتر المراجع — LLM بالفهرس الكامل
                   </option>
-                </select>
+                </NativeSelect>
               </label>
               <label>
                 المزوّد
-                <select
+                <NativeSelect
                   value={model.provider || "custom"}
                   onChange={(e) => {
                     const p = providerPresets.find(
@@ -1825,7 +1913,7 @@ function App() {
                       {p.name}
                     </option>
                   ))}
-                </select>
+                </NativeSelect>
               </label>
               <p className="muted">
                 البروتوكول:{" "}
@@ -1858,7 +1946,7 @@ function App() {
                   )}
                   <label>
                     معرّف كتاب منشور — اختياري
-                    <input
+                    <Input
                       dir="ltr"
                       value={model.selector_document_id || ""}
                       onChange={(e) =>
@@ -1878,7 +1966,7 @@ function App() {
                   </p>
                   <label>
                     سقف المراجع المختارة لكل طلب
-                    <input
+                    <Input
                       type="number"
                       min={1}
                       max={8}
@@ -1903,7 +1991,7 @@ function App() {
               )}
               <label>
                 Base URL
-                <input
+                <Input
                   type="url"
                   dir="ltr"
                   required
@@ -1917,7 +2005,7 @@ function App() {
               {(!model.provider || model.provider === "custom") && (
                 <label>
                   بروتوكول المزوّد المخصص
-                  <select
+                  <NativeSelect
                     value={model.protocol || "openai"}
                     onChange={(e) => {
                       setModel({ ...model, protocol: e.target.value });
@@ -1933,12 +2021,12 @@ function App() {
                     {slot !== "selector" && (
                       <option value="anthropic">Anthropic Messages</option>
                     )}
-                  </select>
+                  </NativeSelect>
                 </label>
               )}
               <label>
                 Model
-                <input
+                <Input
                   dir="ltr"
                   required
                   value={model.model}
@@ -1957,7 +2045,7 @@ function App() {
               </datalist>
               <label>
                 API Key
-                <input
+                <Input
                   type="password"
                   autoComplete="off"
                   dir="ltr"
@@ -1975,7 +2063,7 @@ function App() {
               <div className="form-columns">
                 <label>
                   Temperature
-                  <input
+                  <Input
                     type="number"
                     min="0"
                     max="2"
@@ -1991,7 +2079,7 @@ function App() {
                 </label>
                 <label>
                   حد رموز الإخراج
-                  <input
+                  <Input
                     type="number"
                     min="500"
                     max="32000"
@@ -2007,7 +2095,7 @@ function App() {
                   <summary>السياق وجولات الأدوات</summary>
                   <label>
                     ميزانية السياق بالحروف — حسب قدرة النموذج
-                    <input
+                    <Input
                       type="number"
                       min="10000"
                       max="4000000"
@@ -2026,7 +2114,7 @@ function App() {
                   </label>
                   <label>
                     جولات النموذج عند تفعيل المنسّق
-                    <input
+                    <Input
                       type="number"
                       min="2"
                       max="8"
@@ -2069,7 +2157,7 @@ function App() {
                         "سعر الإدخال المخزّن Cache",
                       ][i]
                     }
-                    <input
+                    <Input
                       type="number"
                       min="0"
                       step="any"
@@ -2087,7 +2175,8 @@ function App() {
                   </label>
                 ))}
               </fieldset>
-              <button
+              <Button
+                variant="outline"
                 type="button"
                 disabled={busy}
                 onClick={() => {
@@ -2115,11 +2204,11 @@ function App() {
                 }}
               >
                 اختبار الاتصال المحفوظ
-              </button>
+              </Button>
               {slot === "extraction" && (
                 <label>
                   Structured output
-                  <select
+                  <NativeSelect
                     value={model.output_mode}
                     onChange={(e) =>
                       setModel({ ...model, output_mode: e.target.value })
@@ -2128,12 +2217,12 @@ function App() {
                     <option value="json_object">JSON object</option>
                     <option value="json_schema">JSON schema</option>
                     <option value="none">Prompt only</option>
-                  </select>
+                  </NativeSelect>
                 </label>
               )}
-              <button className="primary" disabled={busy}>
+              <Button variant="outline" className="primary" disabled={busy}>
                 حفظ الإعداد
-              </button>
+              </Button>
             </form>
           </section>
         )}
@@ -2170,15 +2259,19 @@ function App() {
           <ServiceTokens api={api} notify={setNotice} />
         )}
         {view === "owner-library" && user.role === "owner" && (
-          <section className="page-content">
+          <section tabIndex={0} className="page-content">
             <h1>من المصدر إلى نسخة معتمدة</h1>
             <p className="muted">
               رفع ← معاينة ← معالجة ← مراجعة ← نشر. لا تُستبدل النسخة المنشورة
               بمسودة جديدة بصمت.
             </p>
+            <ContentWorkflow />
             <div className="owner-layout">
               <form className="panel" onSubmit={upload}>
-                <h2>إضافة مصدر</h2>
+                <div className="section-heading">
+                  <h2>إضافة مصدر</h2>
+                  <CountBadge>PDF</CountBadge>
+                </div>
                 <label className="file-drop">
                   اختر ملف PDF
                   <input
@@ -2197,7 +2290,7 @@ function App() {
                 </label>
                 <label>
                   العنوان
-                  <input
+                  <Input
                     required
                     value={meta.title}
                     onChange={(e) =>
@@ -2207,7 +2300,7 @@ function App() {
                 </label>
                 <label>
                   نوع المحتوى
-                  <select
+                  <NativeSelect
                     aria-label="نوع المحتوى"
                     value={meta.content_type}
                     onChange={(e) => {
@@ -2229,7 +2322,7 @@ function App() {
                         {x.label}
                       </option>
                     ))}
-                  </select>
+                  </NativeSelect>
                 </label>
                 <div className="form-columns">
                   <IdentityChoices
@@ -2243,7 +2336,7 @@ function App() {
                     <legend>الموضوع والحل في عملية رفع واحدة</legend>
                     <label>
                       تنسيق الملفات
-                      <select
+                      <NativeSelect
                         aria-label="تنسيق الملفات"
                         value={solutionLayout}
                         onChange={(e) => {
@@ -2258,7 +2351,7 @@ function App() {
                         <option value="separate">
                           الموضوع والحل في ملفين منفصلين
                         </option>
-                      </select>
+                      </NativeSelect>
                     </label>
                     {solutionLayout === "separate" && (
                       <label>
@@ -2283,7 +2376,7 @@ function App() {
                         ].map(([k, l]) => (
                           <label key={k}>
                             {l}
-                            <input
+                            <Input
                               type="number"
                               min="1"
                               required
@@ -2331,7 +2424,7 @@ function App() {
                     ].map(([k, label]) => (
                       <label key={k}>
                         {label}
-                        <input
+                        <Input
                           value={(meta as any)[k]}
                           onChange={(e) =>
                             setMeta({ ...meta, [k]: e.target.value })
@@ -2346,24 +2439,28 @@ function App() {
                 </p>
                 <label>
                   المصدر / المرجع
-                  <input
+                  <Input
                     value={meta.source}
                     onChange={(e) =>
                       setMeta({ ...meta, source: e.target.value })
                     }
                   />
                 </label>
-                <button
+                <Button
+                  variant="outline"
                   className="primary"
                   disabled={
                     busy || !uploadFile || !meta.tracks.length || !meta.subject
                   }
                 >
                   رفع للمراجعة — ليس للنشر
-                </button>
+                </Button>
               </form>
               <div>
-                <h2>المستندات</h2>
+                <div className="section-heading">
+                  <h2>مكتبة المحتوى</h2>
+                  <CountBadge>{ownerDocs.length} مستند</CountBadge>
+                </div>
                 {!ownerDocs.length && (
                   <p className="muted">لم تُرفع مستندات بعد.</p>
                 )}
@@ -2386,7 +2483,8 @@ function App() {
                         {d.published_version ? "نسخة منشورة" : "مسودة فقط"}
                       </p>
                       {d.versions.map((v: any) => (
-                        <button
+                        <Button
+                          variant="outline"
                           key={v.id}
                           className="version-button"
                           onClick={() =>
@@ -2399,10 +2497,11 @@ function App() {
                           }
                         >
                           نسخة {v.sequence} · {v.status}
-                        </button>
+                        </Button>
                       ))}
                     </div>
-                    <button
+                    <Button
+                      variant="outline"
                       onClick={() =>
                         action(async () => {
                           await api(
@@ -2418,13 +2517,13 @@ function App() {
                       }
                     >
                       {d.status === "ARCHIVED" ? "استعادة" : "أرشفة"}
-                    </button>
+                    </Button>
                   </div>
                 ))}
               </div>
             </div>
             {version && (
-              <div className="panel version-panel">
+              <Card className="panel version-panel">
                 <div className="section-heading">
                   <h2>مراجعة النسخة {version.sequence}</h2>
                   <span className="status">
@@ -2439,7 +2538,8 @@ function App() {
                   onClone={setVersion}
                 />
                 <div className="actions">
-                  <button
+                  <Button
+                    variant="outline"
                     disabled={
                       busy ||
                       ["REVIEWED", "PUBLISHED"].includes(version.status) ||
@@ -2461,8 +2561,9 @@ function App() {
                     }
                   >
                     بدء المعالجة
-                  </button>
-                  <button
+                  </Button>
+                  <Button
+                    variant="outline"
                     disabled={
                       busy ||
                       ["REVIEWED", "PUBLISHED"].includes(version.status) ||
@@ -2484,8 +2585,9 @@ function App() {
                     }
                   >
                     إعادة الفاشلة
-                  </button>
-                  <button
+                  </Button>
+                  <Button
+                    variant="outline"
                     disabled={
                       busy ||
                       ["REVIEWED", "PUBLISHED"].includes(version.status) ||
@@ -2511,7 +2613,7 @@ function App() {
                     }
                   >
                     إعادة المشكوك فيها
-                  </button>
+                  </Button>
                 </div>
                 {version.files?.map((f: any) => (
                   <div key={f.id}>
@@ -2521,7 +2623,8 @@ function App() {
                     </h3>
                     <div className="page-list">
                       {f.pages?.map((p: any) => (
-                        <button
+                        <Button
+                          variant="outline"
                           key={p.pdf_page}
                           disabled={busy}
                           aria-pressed={
@@ -2548,7 +2651,7 @@ function App() {
                         >
                           {f.role === "solution" ? "الحل · " : ""}ص {p.pdf_page}{" "}
                           · {p.status}
-                        </button>
+                        </Button>
                       ))}
                     </div>
                   </div>
@@ -2568,7 +2671,8 @@ function App() {
                               : "يمكن إعادة استخراج هذه الصفحة حتى لو نجحت سابقًا."}
                         </p>
                       </div>
-                      <button
+                      <Button
+                        variant="outline"
                         disabled={
                           busy ||
                           version.files?.some(
@@ -2582,7 +2686,7 @@ function App() {
                       >
                         <Icon name="retry" size={16} /> إعادة استخراج ص{" "}
                         {reviewPage.page}
-                      </button>
+                      </Button>
                       {reextractConfirm && (
                         <div
                           className="page-reextract-confirm"
@@ -2603,19 +2707,21 @@ function App() {
                             </p>
                           )}
                           <div className="actions">
-                            <button
+                            <Button
+                              variant="outline"
                               disabled={busy}
                               onClick={() => action(reextractSelectedPage)}
                             >
                               تأكيد إعادة استخراج ص {reviewPage.page}
-                            </button>
-                            <button
+                            </Button>
+                            <Button
+                              variant="outline"
                               type="button"
                               disabled={busy}
                               onClick={() => setReextractConfirm(false)}
                             >
                               إلغاء إعادة الاستخراج
-                            </button>
+                            </Button>
                           </div>
                         </div>
                       )}
@@ -2643,7 +2749,7 @@ function App() {
                             {reviewPage.quality.join(" · ")}
                           </p>
                         )}
-                        <pre>
+                        <pre tabIndex={0}>
                           {reviewPage.content ||
                             (["PENDING", "PROCESSING"].includes(
                               reviewPage.status,
@@ -2667,13 +2773,14 @@ function App() {
                 </label>
                 <label>
                   ملاحظات المراجعة
-                  <textarea
+                  <Textarea
                     value={reviewNotes}
                     onChange={(e) => setReviewNotes(e.target.value)}
                   />
                 </label>
                 <div className="actions">
-                  <button
+                  <Button
+                    variant="outline"
                     disabled={
                       busy ||
                       !ack ||
@@ -2699,8 +2806,9 @@ function App() {
                     }
                   >
                     اعتماد المراجعة
-                  </button>
-                  <button
+                  </Button>
+                  <Button
+                    variant="outline"
                     className="primary"
                     disabled={busy || version.status !== "REVIEWED"}
                     onClick={() =>
@@ -2721,14 +2829,14 @@ function App() {
                     }
                   >
                     تفعيل للوكيل
-                  </button>
+                  </Button>
                 </div>
-              </div>
+              </Card>
             )}
           </section>
         )}
         {view === "usage" && (
-          <section className="page-content">
+          <section tabIndex={0} className="page-content">
             <h1>استخدام معلَن، لا تقديرات وهمية</h1>
             <p className="muted">
               تُحفظ الأرقام التي يعيدها المزوّد فقط. التكلفة لا تتوفر دون أسعار
@@ -2736,30 +2844,39 @@ function App() {
             </p>
             {usage && (
               <>
+                <UsageSummary data={usage} />
                 <p>طلبات بلا بيانات استخدام: {usage.missing_usage_calls}</p>
                 <p>
                   المحاسبة آخر {usage.days} يومًا. بيانات Cache والأسعار
                   المفقودة ليست صفرًا؛ مجموعات جزئية تُعرض أدناه.
                 </p>
-                <pre className="material-solution" dir="ltr">
-                  {JSON.stringify(
-                    {
-                      file_cache: usage.file_cache,
-                      runs: usage.runs,
-                      reporting: usage.items.map((u: any) => ({
-                        model: u.model,
-                        feature: u.feature,
-                        errors: u.errors,
-                        missing_usage: u.missing_usage,
-                        missing_cache: u.missing_cache,
-                        missing_cost: u.missing_cost,
-                      })),
-                    },
-                    null,
-                    2,
-                  )}
-                </pre>
-                <div className="table-scroll">
+                <details className="usage-details">
+                  <summary>تفاصيل المحاسبة والبيانات الناقصة</summary>
+                  <pre tabIndex={0} className="material-solution" dir="ltr">
+                    {JSON.stringify(
+                      {
+                        file_cache: usage.file_cache,
+                        runs: usage.runs,
+                        reporting: usage.items.map((u: any) => ({
+                          model: u.model,
+                          feature: u.feature,
+                          errors: u.errors,
+                          missing_usage: u.missing_usage,
+                          missing_cache: u.missing_cache,
+                          missing_cost: u.missing_cost,
+                        })),
+                      },
+                      null,
+                      2,
+                    )}
+                  </pre>
+                </details>
+                <div
+                  tabIndex={0}
+                  role="region"
+                  aria-label="جدول قابل للتمرير"
+                  className="table-scroll"
+                >
                   <table>
                     <thead>
                       <tr>
@@ -2810,6 +2927,7 @@ function App() {
               : "حذف المحادثة"
           }
           close={() => setChatDialog(null)}
+          returnFocus={dialogReturnFocus.current}
         >
           <form
             onSubmit={(e) => {
@@ -2837,7 +2955,7 @@ function App() {
             {chatDialog.kind === "rename" ? (
               <label>
                 عنوان المحادثة
-                <input
+                <Input
                   value={renameTitle}
                   maxLength={150}
                   required
@@ -2851,7 +2969,8 @@ function App() {
               </p>
             )}
             <div className="actions">
-              <button
+              <Button
+                variant="outline"
                 className={
                   chatDialog.kind === "delete" ? "danger-button" : "primary"
                 }
@@ -2860,10 +2979,14 @@ function App() {
                 }
               >
                 {chatDialog.kind === "rename" ? "حفظ العنوان" : "حذف نهائيًا"}
-              </button>
-              <button type="button" onClick={() => setChatDialog(null)}>
+              </Button>
+              <Button
+                variant="outline"
+                type="button"
+                onClick={() => setChatDialog(null)}
+              >
                 إلغاء
-              </button>
+              </Button>
             </div>
             {notice && (
               <p role="alert" className="error">
@@ -2884,9 +3007,13 @@ function App() {
           >
             <div className="section-heading">
               <h2>{source.node?.title || source.document?.title}</h2>
-              <button onClick={() => setSource(null)} aria-label="إغلاق المصدر">
+              <Button
+                variant="outline"
+                onClick={() => setSource(null)}
+                aria-label="إغلاق المصدر"
+              >
                 ×
-              </button>
+              </Button>
             </div>
             {source.atomic_bundle && (
               <p className="info">
@@ -2906,14 +3033,15 @@ function App() {
                   أجزاء الدرس الطويل — دون قطع الجداول والمعادلات
                 </summary>
                 {source.parts.map((p: any) => (
-                  <button
+                  <Button
+                    variant="outline"
                     className="node-row"
                     key={p.id}
                     onClick={() => readPart(p.id)}
                   >
                     جزء {p.part_index + 1} · {p.metadata.title} · ص{" "}
                     {p.metadata.pages.join("، ")}
-                  </button>
+                  </Button>
                 ))}
               </details>
             )}
@@ -2941,7 +3069,8 @@ function App() {
               ))}
             <div>
               {source.children?.map((n: any) => (
-                <button
+                <Button
+                  variant="outline"
                   className="node-row"
                   key={n.id}
                   onClick={() => readSource(n.id)}
@@ -2950,7 +3079,7 @@ function App() {
                   <bdi dir="ltr">
                     {n.start_page}–{n.end_page}
                   </bdi>
-                </button>
+                </Button>
               ))}
             </div>
             {source.sources?.map((src: Source, i: number) => (
@@ -2979,4 +3108,10 @@ function App() {
     </div>
   );
 }
-createRoot(document.getElementById("root")!).render(<App />);
+createRoot(document.getElementById("root")!).render(
+  <DesignProvider>
+    <TooltipProvider delayDuration={400}>
+      <App />
+    </TooltipProvider>
+  </DesignProvider>,
+);

@@ -1,3 +1,4 @@
+import { chooseSubject } from "./helpers";
 import { test, expect, Page } from "@playwright/test";
 import { snapshot, assertNoOverflow, navigate } from "./helpers";
 async function signIn(
@@ -13,7 +14,7 @@ async function signIn(
     page.getByRole("button", { name: "إعدادات الحساب", exact: true }),
   ).toBeVisible();
   if (email === "learning@test.invalid" || email === "practice@test.invalid")
-    await page.getByLabel("مادة المحادثة").selectOption("mathematics");
+    await chooseSubject(page, "mathematics");
 }
 async function mobile(page: Page, name: string) {
   await assertNoOverflow(page);

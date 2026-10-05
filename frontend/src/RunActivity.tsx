@@ -1,3 +1,4 @@
+import { Button } from "./components/ui/button";
 import React, { useId } from "react";
 import { Icon, type IconName } from "./ChatUI";
 
@@ -44,7 +45,8 @@ export function RunActivity({
       data-run={activity.run_id}
       aria-label="ملخص مراحل العمل"
     >
-      <button
+      <Button
+        variant="outline"
         type="button"
         className="work-toggle"
         aria-expanded={open}
@@ -61,7 +63,7 @@ export function RunActivity({
             : `${activity.items.length} مراحل`}
         </span>
         <Icon name="chevron" size={16} />
-      </button>
+      </Button>
       <div id={id} className="work-reveal" aria-hidden={!open} inert={!open}>
         <div className="work-reveal-inner">
           <p className="work-caption">

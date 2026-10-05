@@ -586,3 +586,7 @@ if not s.db.one("SELECT 1 FROM users WHERE email=?", ("study-new@test.invalid",)
         "Test-learning-password-1",
         "اختيار الشعبة لأول مرة",
     )
+
+# Independent owner for design-only checks; retain production sign-in rate limits.
+if not s.db.one("SELECT 1 FROM users WHERE email=?", ("design-owner@test.invalid",)):
+    create_user(s.db, "design-owner@test.invalid", "Test-design-password-1", "مالك اختبار التصميم", "owner")

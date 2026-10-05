@@ -1,3 +1,4 @@
+import { chooseSubject } from "./helpers";
 import { test, expect } from "@playwright/test";
 import { mkdir } from "node:fs/promises";
 import { snapshot, assertNoOverflow } from "./helpers";
@@ -13,7 +14,7 @@ for (const mode of ["line", "bar", "scatter"])
       .fill(`science-${mode}@test.invalid`);
     await page.getByLabel("كلمة المرور").fill("Test-science-password-1");
     await page.getByRole("button", { name: "دخول", exact: true }).click();
-    await page.getByLabel("مادة المحادثة").selectOption("physics");
+    await chooseSubject(page, "physics");
     await page
       .getByRole("textbox", { name: "رسالتك" })
       .fill(

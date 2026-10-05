@@ -1,3 +1,4 @@
+import { chooseSubject } from "./helpers";
 import { test, expect } from "@playwright/test";
 import path from "node:path";
 import { execFileSync } from "node:child_process";
@@ -36,14 +37,14 @@ test("mandatory immutable first track and subject switch opens another conversat
       })
     ).status(),
   ).toBe(409);
-  await page.getByLabel("مادة المحادثة").selectOption("physics");
+  await chooseSubject(page, "physics");
   await page.getByLabel("رسالتك").fill("اشرح الحرارة");
   await page.getByRole("button", { name: "إرسال ↑", exact: true }).click();
   await expect(
     page.getByRole("heading", { name: "الحرارة وانتقال الطاقة" }),
   ).toBeVisible({ timeout: 30000 });
   const old = new URL(page.url()).hash.slice(6);
-  await page.getByLabel("مادة المحادثة").selectOption("mathematics");
+  await chooseSubject(page, "mathematics");
   await expect(page.getByRole("status")).toContainText("فُتحت محادثة جديدة");
   const next = new URL(page.url()).hash.slice(6);
   expect(next).not.toBe(old);
