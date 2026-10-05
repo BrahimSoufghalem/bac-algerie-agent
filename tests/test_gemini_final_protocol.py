@@ -63,14 +63,19 @@ class LastRound(AgentEngine):
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("google", [True, False])
-async def test_final_manifest_is_stable_only_for_google_with_force_and_execution_policy_preserved(
+@pytest.mark.parametrize("google", [True, False, "deepseek", "observed"])
+async def test_final_manifest_preserves_cache_or_protocol_without_authorizing_work(
     services, google
 ):
     node = await publish_reference(services)
     user, chat = chat_and_config(services)
-    if google:
+    if google is True:
         set_google(services)
+    elif google == "deepseek":
+        services.db.execute(
+            "UPDATE model_configs SET config=? WHERE id=(SELECT config_id FROM active_models WHERE slot='agent')",
+            (js({"base_url": "https://api.deepseek.com/v1", "model": "fixture"}),),
+        )
     requests = []
 
     def handler(request):
@@ -79,19 +84,47 @@ async def test_final_manifest_is_stable_only_for_google_with_force_and_execution
         names = {x["function"]["name"] for x in body["tools"]}
         assert "save_teaching_material" not in names  # original student role scope
         if len(requests) == 1:
-            return response("get_section", {"node_id": node})
+            reply_ = response("get_section", {"node_id": node})
+            if google == "observed":
+                return sse(
+                    {
+                        "choices": [
+                            {
+                                "delta": {
+                                    "tool_calls": [
+                                        {
+                                            "index": 0,
+                                            **call("get_section", {"node_id": node}),
+                                        }
+                                    ]
+                                },
+                                "finish_reason": "tool_calls",
+                            }
+                        ]
+                    },
+                    {
+                        "choices": [],
+                        "usage": {
+                            "prompt_tokens": 100,
+                            "completion_tokens": 20,
+                            "prompt_cache_hit_tokens": 80,
+                            "prompt_cache_miss_tokens": 20,
+                        },
+                    },
+                )
+            return reply_
         assert body["tool_choice"] == {
             "type": "function",
             "function": {"name": "render_answer"},
         }
         assert (
             "FINAL ROUND: only render_answer is allowed"
-            in body["messages"][1]["content"]
+            in body["messages"][-1]["content"]
         )
         assert any(
             m["role"] == "tool" and node in m["content"] for m in body["messages"]
         )
-        if google:
+        if google is True:
             assert body["tools"] == requests[0]["tools"]
             # Fake Gemini explicitly rejects the old missing-history declaration layout.
             history = [c for m in body["messages"] for c in m.get("tool_calls", [])]
@@ -107,8 +140,13 @@ async def test_final_manifest_is_stable_only_for_google_with_force_and_execution
             assert (
                 history[0]["extra_content"]["google"]["thought_signature"] == SIGNATURE
             )
+        elif google in {"deepseek", "observed"}:
+            assert body["tools"] == requests[0]["tools"]
         else:
+            # Unknown intermediary with no reported cache benefit: smaller cold manifest.
             assert names == {"render_answer"}
+        assert body["messages"][-1]["role"] == "user"
+        assert body["messages"][0] == requests[0]["messages"][0]
         return response("render_answer", reply(node))
 
     install(services, handler)

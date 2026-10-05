@@ -75,6 +75,13 @@ def canonical_message(message):
 
 
 class ChatProvider(ABC):
+    # Capability flags. Engine freezes declarations only for known automatic
+    # cache providers, reported hits, or mandatory protocol continuity. Unknown
+    # uncached providers may shrink final declarations to save cold input cost.
+    # Server-side allowlists and forced final calls still restrict execution.
+    stable_tool_manifest = True
+    stable_request_prefix = True
+
     @abstractmethod
     async def stream(self, messages, tools):
         yield {}

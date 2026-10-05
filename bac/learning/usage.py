@@ -5,6 +5,33 @@ from fastapi import HTTPException
 from bac.agent.provider import ModelError
 
 
+def reported_cache_tokens(usage):
+    """Provider measurements only; inconsistent/absent values stay unknown."""
+
+    def number(v):
+        return v if isinstance(v, int) and not isinstance(v, bool) and v >= 0 else None
+
+    details = usage.get("prompt_tokens_details")
+    nested = isinstance(details, dict) and "cached_tokens" in details
+    cached = (
+        number(details["cached_tokens"])
+        if nested
+        else number(usage.get("prompt_cache_hit_tokens"))
+    )
+    inp = number(usage.get("prompt_tokens"))
+    if cached is None or (inp is not None and cached > inp):
+        return None
+    if "prompt_cache_hit_tokens" in usage:
+        hit = number(usage["prompt_cache_hit_tokens"])
+        if hit != cached:
+            return None
+    if "prompt_cache_miss_tokens" in usage:
+        miss = number(usage["prompt_cache_miss_tokens"])
+        if miss is None or (inp is not None and cached + miss != inp):
+            return None
+    return cached
+
+
 def record(
     s,
     cfg,
@@ -23,10 +50,7 @@ def record(
 
     inp = number(usage.get("prompt_tokens"))
     out = number(usage.get("completion_tokens"))
-    details = usage.get("prompt_tokens_details") or {}
-    cached = number(details.get("cached_tokens")) if isinstance(details, dict) else None
-    if cached is not None and inp is not None and cached > inp:
-        cached = None
+    cached = reported_cache_tokens(usage)
     cost = None
     if (
         inp is not None

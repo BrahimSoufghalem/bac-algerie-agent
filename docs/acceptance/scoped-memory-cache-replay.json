@@ -1,0 +1,27 @@
+{
+  "baseline_commit": "b6bfa224c478dfe92a2a6bcfa3e9f4def00a80b1",
+  "baseline": {
+    "turns": 24,
+    "routing_requests": 24,
+    "verification_requests": 24,
+    "teaching_requests": 24,
+    "total_requests": 72,
+    "serialized_router_common_prefix_chars_turns_2_3": 63,
+    "serialized_teacher_common_prefix_chars_turns_2_3": 10362,
+    "cache_hit_tokens": null,
+    "money_saved": null,
+    "measurement": "scripted local transports; character proxies are NOT provider tokens/cache hits/real-LLM accuracy"
+  },
+  "current": {
+    "turns": 24,
+    "routing_requests": 24,
+    "verification_requests": 1,
+    "teaching_requests": 24,
+    "total_requests": 49,
+    "serialized_router_common_prefix_chars_turns_2_3": 519,
+    "serialized_teacher_common_prefix_chars_turns_2_3": 10246,
+    "cache_hit_tokens": null,
+    "money_saved": null,
+    "measurement": "scripted local transports; character proxies are NOT provider tokens/cache hits/real-LLM accuracy"
+  }
+}
