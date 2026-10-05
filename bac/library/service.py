@@ -3,6 +3,7 @@
 import hashlib, json, re, time
 from fastapi import HTTPException
 from bac.core.db import uid, js
+from bac.core.study import document_tracks
 from bac.library.contracts import (
     DocumentMetadata,
     SolutionMetadata,
@@ -120,7 +121,8 @@ class Library(Reader):
         ):
             raise HTTPException(422, "Primary and answer ranges must not overlap")
         answer_meta = {
-            k: meta.get(k) for k in ("subject", "track", "year", "session", "exam_type")
+            k: meta.get(k)
+            for k in ("subject", "track", "tracks", "year", "session", "exam_type")
         }
         answer_meta.update(
             source=meta["source"] or solution_filename or filename,
@@ -522,7 +524,11 @@ class Library(Reader):
             sol = next((f for f in v["files"] if f["role"] == "solution"), None)
             if not sol:
                 raise HTTPException(404, "No draft solution")
-            for k in ("subject", "track", "year", "session", "exam_type"):
+            if set(document_tracks(v["metadata"])) != set(
+                document_tracks(sol["metadata"])
+            ):
+                raise HTTPException(409, "Solution identity mismatch: target tracks")
+            for k in ("subject", "year", "session", "exam_type"):
                 if v["metadata"].get(k) and v["metadata"][k] != sol["metadata"].get(k):
                     raise HTTPException(409, "Solution identity mismatch: " + k)
             c.execute(

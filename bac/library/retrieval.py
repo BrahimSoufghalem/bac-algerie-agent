@@ -3,7 +3,7 @@
 import hashlib, json, re
 from fastapi import HTTPException
 from bac.core.db import js
-from bac.core.study import TRACKS, SUBJECTS, aliases, resolve
+from bac.core.study import TRACKS, SUBJECTS, aliases, resolve, track_sql
 from bac.library.parts import legacy_blocks, TARGET_CHARS
 
 
@@ -27,14 +27,17 @@ class Reader:
                 code := resolve(SUBJECTS if key == "subject" else TRACKS, value)
             ):
                 values = aliases(SUBJECTS if key == "subject" else TRACKS, code)
-                sql += (
-                    " AND lower(trim("
-                    + prefix
-                    + key
-                    + ")) IN ("
-                    + ",".join("?" for _ in values)
-                    + ")"
-                )
+                if key == "track":
+                    sql += " AND " + track_sql(prefix, values)
+                else:
+                    sql += (
+                        " AND lower(trim("
+                        + prefix
+                        + key
+                        + ")) IN ("
+                        + ",".join("?" for _ in values)
+                        + ")"
+                    )
                 args.extend(x.casefold() for x in values)
             elif key in ("subject", "track", "kind", "year"):
                 sql += " AND " + prefix + key + "=?"

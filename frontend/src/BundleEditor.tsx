@@ -3,7 +3,7 @@ import {
   IdentityChoices,
   emptyCatalogue,
   StudyCatalogue,
-  canonical,
+  sourceIdentity,
 } from "./StudyChoices";
 export default function BundleEditor({
   version,
@@ -34,6 +34,7 @@ export default function BundleEditor({
   const [metadata, setMetadata] = useState({
     subject: "",
     track: "",
+    tracks: [] as string[],
     year: "",
     session: "",
     exam_type: "",
@@ -55,6 +56,7 @@ export default function BundleEditor({
     setMetadata({
       subject: version.metadata.subject,
       track: version.metadata.track,
+      tracks: version.metadata.tracks || [version.metadata.track],
       year: version.metadata.year || "",
       session: version.metadata.session || "",
       exam_type: version.metadata.exam_type || "",
@@ -76,13 +78,7 @@ export default function BundleEditor({
   const path = "/api/owner/versions/" + version.id;
   const clean = (m: any) => ({
     ...m,
-    track: canonical(catalogue.tracks, m.track),
-    subject: canonical(
-      catalogue.tracks.find(
-        (x) => x.id === canonical(catalogue.tracks, m.track),
-      )?.subjects || [],
-      m.subject,
-    ),
+    ...sourceIdentity(catalogue, m),
     year: m.year || null,
     session: m.session || null,
     exam_type: m.exam_type || null,
@@ -153,7 +149,7 @@ export default function BundleEditor({
               value={draft}
               onChange={setDraft}
               disabled={!editable}
-              labels={["شعبة المسودة", "مادة المسودة"]}
+              labels={["شعب المسودة", "مادة المسودة"]}
             />
             {[
               ["title", "عنوان المسودة"],

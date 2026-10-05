@@ -36,8 +36,11 @@ with pymupdf.open() as d:
   const title = "إعادة صفحة واحدة — اختبار غير رسمي";
   await page.getByLabel("العنوان", { exact: true }).fill(title);
   await page
-    .getByLabel("الشعبة", { exact: true })
-    .selectOption("experimental_sciences");
+    .getByRole("checkbox", {
+      name: "الشعب المستهدفة: علوم تجريبية",
+      exact: true,
+    })
+    .check();
   await page.getByLabel("المادة", { exact: true }).selectOption("physics");
   await page.getByRole("button", { name: "رفع للمراجعة — ليس للنشر" }).click();
   await expect(
