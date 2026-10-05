@@ -1,0 +1,38 @@
+{
+  "modified": [
+    "bac/agent/full_index.py",
+    "bac/agent/engine.py",
+    "bac/agent/models.py",
+    "bac/agent/presets.py",
+    "bac/api/main.py",
+    "bac/learning/api.py",
+    "frontend/src/main.tsx",
+    "tests/test_full_index_router.py",
+    "tests/browser/providers.spec.ts",
+    "README.md",
+    "docs/CONTEXT_SELECTION.md"
+  ],
+  "removed": [
+    "bac/agent/selection.py",
+    "bac/agent/google_selector.py",
+    "config/selector.yaml",
+    "config/gemma_router.yaml",
+    "tests/test_context_selector.py",
+    "tests/test_google_selector.py",
+    "tests/test_multi_label_selection.py",
+    "docs/GEMMA_ROUTER.md"
+  ],
+  "sha256": {
+    "bac/agent/full_index.py": "6d67c270b03c1a70770e1eb3782c055aec7105fb9470e1d47a2bb79845a0e18a",
+    "bac/agent/engine.py": "bbdb4c167fc02c72cf3dc8392ae2a5a31095029a474dd6b9f5e568051f166b94",
+    "bac/agent/models.py": "c86ba05859935a939f3dbe8cf900dfe2a8a6f378c950e7b1358558eb90400dec",
+    "bac/agent/presets.py": "15849fb496c44a31022474ca872b6d9fd9bd53dced49d27c5abfe18468750229",
+    "bac/api/main.py": "28365e97a6ee9215807b34d05133d0ae89bfc71547083fed13e53b3b68dd9289",
+    "bac/learning/api.py": "e8f094bcdafd44f21d26d45054de95a51fd43903b9a26b023ef8c81afed6b212",
+    "frontend/src/main.tsx": "879b5f84cefe0fc8de7bd0c65837cc644e02083274a6a4add911a3ea0c6a5091",
+    "tests/test_full_index_router.py": "40f69d6bfcca97216e2c7c37fc6c220fc8bff6b6fa1aafa82cd48df3ee515ab9",
+    "tests/browser/providers.spec.ts": "ffd1b2e91ef66804464c42051030987db651ad453d1f46966427c913dfb13ccd",
+    "README.md": "bf678247cc4e879fae77270aee481d6ea0aa4988cb5c65e091e16f16aa56ce6c",
+    "docs/CONTEXT_SELECTION.md": "31389393b2eb825dcc42d94b6e09314d6243d215a766b0c4777138aef0aa5cac"
+  }
+}

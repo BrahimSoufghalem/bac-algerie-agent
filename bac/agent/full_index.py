@@ -1,15 +1,40 @@
-"""Opt-in complete-index coordinator with bounded post-read source verification."""
+"""LLM complete-index router with bounded post-read source verification."""
 import asyncio
 import json
 import re
 import time
 
 import httpx
+from pydantic import Field
+from typing import Literal
 
-from bac.agent.google_selector import BASE
+from bac.agent.models import Strict
 from bac.agent.provider import ModelError, OpenAIChat
 from bac.core.db import js
 from bac.learning.usage import check_budget, record
+
+BASE = "https://generativelanguage.googleapis.com/v1beta"
+
+
+class EssentialContext(Strict):
+    importance: Literal["essential"]
+    query: str = Field(min_length=3, max_length=300)
+    reason: str = Field(min_length=8, max_length=300)
+
+
+def has_source_body(content):
+    """Reject heading/comment-only fragments; not a semantic accuracy judge."""
+    if not isinstance(content, str):
+        return False
+    text = re.sub(r"<!--.*?-->", "", content, flags=re.S)
+    return any(
+        line.strip() and not re.match(r"^\s*#{1,6}\s", line)
+        for line in text.splitlines()
+    )
+
+
+def supported_router(cfg):
+    return cfg.get("protocol", "openai") in {"openai", "google"}
 
 
 ROUTE_SYSTEM = """You route a student's request to a complete physics-book index; you are not a tutor.
@@ -169,7 +194,7 @@ def _google(value):
             for k, v in value.items() if k != "additionalProperties"}
 
 
-async def evaluate(cfg, key, system, data, function, *, transport=None, allow_private=False, audit=None):
+async def call_router_llm(cfg, key, system, data, function, *, transport=None, allow_private=False, audit=None):
     text = json.dumps(data, ensure_ascii=False, separators=(",", ":"))
     if audit:
         audit("request", {"system": system, "user": text, "function": function})
@@ -234,6 +259,8 @@ class FullIndexCoordinator:
     def __init__(self, s, row, audit=None):
         self.s, self.row, self.audit = s, row, audit
         self.cfg = json.loads(row["config"])
+        if not supported_router(self.cfg):
+            raise ModelError("ROUTER_RECONFIGURATION_REQUIRED")
         self.maximum = self.cfg.get("selector_max_sources", 3)
 
     def catalog(self):
@@ -243,7 +270,7 @@ class FullIndexCoordinator:
         check_budget(self.s, run["user_id"])
         payload, status, started = {}, "error", time.monotonic()
         try:
-            args, usage = await evaluate(
+            args, usage = await call_router_llm(
                 self.cfg, self.s.vault.decrypt(self.row["encrypted_key"]), system, data, function,
                 transport=self.s.selector_transport, allow_private=self.s.settings.allow_private_model_urls,
                 audit=self.audit)
@@ -259,7 +286,6 @@ class FullIndexCoordinator:
                    feature="source_selection" if function["name"] == "route_sections" else "source_verification",status=status)
 
     async def prepare(self, run, tools, question, context=""):
-        from bac.agent.selection import has_source_body
         index, mapping = await asyncio.to_thread(self.catalog)
         if not mapping:
             return None

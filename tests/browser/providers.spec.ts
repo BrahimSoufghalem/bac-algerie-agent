@@ -36,7 +36,7 @@ test("owner: independent provider presets clear secrets and never auto-generate"
     .getByRole("combobox", { name: "الاستخدام", exact: true })
     .selectOption("selector");
   await expect(page.getByLabel("Model", { exact: true })).toHaveValue(
-    "gemma-4-31b-it",
+    "gemini-3.5-flash-lite",
   );
   await expect(page.getByLabel("Base URL", { exact: true })).toHaveValue(
     "https://generativelanguage.googleapis.com/v1beta",
@@ -47,6 +47,19 @@ test("owner: independent provider presets clear secrets and never auto-generate"
   await expect(
     page.getByText("Google GenerateContent الأصلي", { exact: false }),
   ).toBeVisible();
+  await expect(
+    page.getByLabel("مسار اختيار المراجع", { exact: true }),
+  ).toHaveCount(0);
+  await expect(
+    page.getByText("المسار الوحيد: الفهرس الكامل", { exact: false }),
+  ).toBeVisible();
+  const offeredRouterProviders = page.getByRole("combobox", {
+    name: "المزوّد",
+    exact: true,
+  });
+  await expect(
+    offeredRouterProviders.locator('option[value="anthropic"]'),
+  ).toHaveCount(0);
   await page
     .getByRole("combobox", { name: "المزوّد", exact: true })
     .selectOption("openai");
@@ -58,7 +71,12 @@ test("owner: independent provider presets clear secrets and never auto-generate"
     .selectOption("custom");
   await page
     .getByRole("combobox", { name: "بروتوكول المزوّد المخصص", exact: true })
-    .selectOption("anthropic");
+    .selectOption("google");
+  await expect(
+    page
+      .getByRole("combobox", { name: "بروتوكول المزوّد المخصص", exact: true })
+      .locator('option[value="evaluation"],option[value="anthropic"]'),
+  ).toHaveCount(0);
   await expect(page.getByLabel("Base URL", { exact: true })).toBeEditable();
   expect(sent).toEqual([]);
   await page

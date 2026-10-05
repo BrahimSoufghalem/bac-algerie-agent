@@ -8,6 +8,7 @@ from bac.core.auth import create_user, owner, verify_password, owned_chat
 from bac.agent.models import Strict
 from bac.agent.compat import model_identity
 from bac.agent.presets import auth_headers
+from bac.agent.full_index import supported_router
 from bac.learning.service import Learning
 from bac.learning.private import PrivateFiles
 from bac.learning.contracts import Preferences, Overrides, NoteDecision, AccountLimits
@@ -291,6 +292,8 @@ def router(s, current):
         if not row:
             raise HTTPException(404, "Save model configuration first")
         cfg = json.loads(row["config"])
+        if slot == "selector" and not supported_router(cfg):
+            raise HTTPException(409, "Reconfigure the retired reference router with an LLM provider")
         base = cfg["base_url"].rstrip("/")
         try:
             if s.connection_transport is None:

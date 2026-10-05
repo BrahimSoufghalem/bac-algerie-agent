@@ -6,7 +6,7 @@ from fastapi import HTTPException
 from bac.core.db import uid, js
 from bac.agent.provider import OpenAIChat, ModelError
 from bac.agent.anthropic import AnthropicChat
-from bac.agent.selection import ContextSelector, EssentialContext
+from bac.agent.full_index import FullIndexCoordinator, EssentialContext, supported_router
 from bac.agent.compat import google_openai
 from bac.agent.provider_errors import safe_provider_diagnostic
 from bac.agent.tools import Tools
@@ -65,6 +65,12 @@ class AgentEngine:
             ).fetchone()[0]
             if used >= limit:
                 raise HTTPException(429, "Daily run allowance reached")
+            selector = c.execute(
+                "SELECT c.id,c.config FROM active_selector a JOIN context_selectors c ON c.id=a.config_id WHERE a.singleton=1"
+            ).fetchone()
+            if (selector and json.loads(selector["config"]).get("selector_enabled")
+                    and not supported_router(json.loads(selector["config"]))):
+                raise HTTPException(409, "Reconfigure the retired reference router with an LLM provider")
             if edit_id:
                 original = c.execute(
                     "SELECT * FROM messages WHERE id=? AND conversation_id=? AND role='user' AND active=1",
@@ -101,9 +107,6 @@ class AgentEngine:
                 "INSERT INTO agent_runs(id,conversation_id,user_id,message_id,config_id,created_at) VALUES(?,?,?,?,?,?)",
                 (run, chat, user["id"], msg, cfg["config_id"], now),
             )
-            selector = c.execute(
-                "SELECT c.id,c.config FROM active_selector a JOIN context_selectors c ON c.id=a.config_id WHERE a.singleton=1"
-            ).fetchone()
             if selector and json.loads(selector["config"]).get("selector_enabled"):
                 c.execute(
                     "UPDATE agent_runs SET selector_config_id=? WHERE id=?",
@@ -313,7 +316,7 @@ class AgentEngine:
             if selector_row
             else self.context(run, tools, user)
         )
-        selector = ContextSelector(self.s, selector_row) if selector_row else None
+        selector = FullIndexCoordinator(self.s, selector_row) if selector_row else None
         context_repairs = 0
         if selector:
             self.emit(run, "tool_start", {"name": "select_context"})
