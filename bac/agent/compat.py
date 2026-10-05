@@ -22,3 +22,17 @@ def model_identity(base, model):
     # Google lists models/NAME but its OpenAI completion examples use NAME.
     # Do not strip real namespaces from OpenRouter or other providers.
     return model.removeprefix("models/") if google_openai(base) else model
+
+
+def automatic_prefix_cache(base):
+    """Known direct automatic-cache endpoints; no assumptions about intermediaries."""
+    url = urlsplit(base)
+    return (
+        url.scheme == "https"
+        and url.hostname in {"api.deepseek.com", "api.openai.com"}
+        and url.port in (None, 443)
+        and not url.username
+        and not url.password
+        and not url.query
+        and not url.fragment
+    )

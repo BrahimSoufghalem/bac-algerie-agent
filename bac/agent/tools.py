@@ -69,6 +69,9 @@ class Tools:
         self.private_assets = {}
         self.question = ""
         self.study_context = ""
+        self.router_history = []
+        self.history_messages = []
+        self.current_message = None
         self.delivered_sources = set()
 
     def definitions(self):

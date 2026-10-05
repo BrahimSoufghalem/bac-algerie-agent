@@ -12,11 +12,12 @@ from bac.agent.full_index import (
     supported_router,
 )
 from bac.core.study import StudyScope
-from bac.agent.compat import google_openai
+from bac.agent.compat import google_openai, automatic_prefix_cache
+from bac.agent.memory import history_text, recent_dialogue, fit_history, message_chars
 from bac.agent.provider_errors import safe_provider_diagnostic
 from bac.agent.tools import Tools
 from bac.learning.service import Learning
-from bac.learning.usage import record, check_budget
+from bac.learning.usage import record, check_budget, reported_cache_tokens
 from bac.agent.feedback import tool_feedback
 from bac.ops.diagnostics import safe_diagnostic
 from bac.agent.grounding import social_question
@@ -239,7 +240,7 @@ class AgentEngine:
             - len(context)
         )
         loaded = self.db.rows(
-            "SELECT * FROM loaded_context WHERE conversation_id=? ORDER BY loaded_at DESC LIMIT 2",
+            "SELECT * FROM loaded_context WHERE conversation_id=? ORDER BY loaded_at DESC,node_id LIMIT 2",
             (run["conversation_id"],),
         )
         for row in loaded if restore_sources else []:
@@ -251,6 +252,9 @@ class AgentEngine:
             except (HTTPException, ValueError):
                 continue
             text = js(payload)
+            # Never silently upgrade stale remembered evidence to a different publication.
+            if payload.get("node", {}).get("version_id") != row["version_id"]:
+                continue
             if "error" not in payload and len(text) < remaining // 2:
                 tools.remember(payload, scope, row.get("scope_id") or row["node_id"])
                 self.emit(run, "source_reloaded", {"scope": scope})
@@ -263,35 +267,31 @@ class AgentEngine:
                 )
                 remaining -= len(text)
         history = self.db.rows(
-            "SELECT role,content,blocks FROM messages WHERE conversation_id=? AND active=1 ORDER BY created_at DESC LIMIT 12",
+            "SELECT id,role,content,blocks FROM messages WHERE conversation_id=? AND active=1 ORDER BY created_at DESC,rowid DESC LIMIT 12",
             (run["conversation_id"],),
         )
+        current = next((h for h in history if h["id"] == run.get("message_id")), None)
+        current = current or next((h for h in history if h["role"] == "user"), None)
+        tools.question = current["content"] if current else ""
         questions = [h["content"] for h in history if h["role"] == "user"]
-        tools.question = questions[0] if questions else ""
-        tools.study_context = "\n".join(questions[:3])
+        tools.study_context = "\n".join(reversed(questions[:3]))
+        tools.router_history = recent_dialogue(
+            history, current["id"] if current else None
+        )
         chosen = []
         for h in history:
-            content = h["content"]
-            if h["role"] == "assistant":
-                # Prior structured equations/tables are part of the real answer, not just text.
-                # Do not offer old graph/result IDs as newly-computed outputs.
-                blocks = json.loads(h.get("blocks") or "[]")
-                extras = []
-                for block in blocks:
-                    if block["type"] == "equation":
-                        extras.append("Equation: " + block["latex"])
-                    elif block["type"] == "table":
-                        extras.append(
-                            "Table: "
-                            + js({"headers": block["headers"], "rows": block["rows"]})
-                        )
-                if extras:
-                    content += "\n\n" + "\n".join(extras)
+            content = history_text(h)
             if len(content) > remaining:
+                if current and h["id"] == current["id"]:
+                    raise ModelError("CONTEXT_BUDGET_EXCEEDED")
                 break
-            chosen.append({"role": h["role"], "content": content})
-            remaining -= len(content)
-        messages.extend(reversed(chosen))
+            message = {"role": h["role"], "content": content}
+            chosen.append(message)
+            if current and h["id"] == current["id"]:
+                tools.current_message = message
+            remaining -= len(js(message))
+        tools.history_messages = list(reversed(chosen))
+        messages.extend(tools.history_messages)
         return messages
 
     def usage(self, run, cfg, usage, duration, feature="teaching", status="ok"):
@@ -343,7 +343,7 @@ class AgentEngine:
         if selector:
             self.emit(run, "tool_start", {"name": "select_context"})
             payload = await selector.prepare(
-                run, tools, tools.question, tools.study_context
+                run, tools, tools.question, tools.router_history
             )
             success = bool(payload and "error" not in payload)
             self.emit(run, "tool_end", {"name": "select_context", "success": success})
@@ -370,6 +370,8 @@ class AgentEngine:
                     },
                 )
                 tools.delivered_sources.update(tools.sources)
+                if getattr(tools, "selector_reused_ids", set()):
+                    self.emit(run, "source_reloaded", {"scope": "full"})
             messages.insert(
                 1,
                 {
@@ -377,8 +379,7 @@ class AgentEngine:
                     "content": "Source selection and full reading are handled by a separate server coordinator. Do not browse or search the library. Use delivered evidence, or ask a concise clarification. Request essential_context only for a precise essential missing concept or unreadable required reference, never for optional expansion. Metadata is not read evidence. Finish promptly using the structured answer contract.",
                 },
             )
-        if sum(len(js(m)) for m in messages) > context_limit:
-            raise ModelError("CONTEXT_BUDGET_EXCEEDED")
+        fit_history(messages, tools, context_limit)
         signatures = Counter()
         tool_count = 0
         search_count = empty_searches = 0
@@ -410,7 +411,10 @@ class AgentEngine:
                     },
                 }
             )
-        stable_manifest = google_openai(cfg["base_url"])
+        stable_manifest = google_openai(cfg["base_url"]) or (
+            getattr(provider, "stable_tool_manifest", False)
+            and automatic_prefix_cache(cfg["base_url"])
+        )
         pending_delivered_sources = set()
         final_reserve = min(30, self.s.settings.max_run_seconds * 0.2)
         image_count = image_bytes = 0
@@ -418,11 +422,7 @@ class AgentEngine:
         step = 0
         while True:
             remaining = self.remaining_time(deadline)
-            context_size = sum(
-                len(js(m))
-                for m in messages
-                if isinstance(m.get("content"), (str, type(None)))
-            )
+            context_size = sum(message_chars(m) for m in messages)
             final_round = (
                 remaining <= final_reserve
                 or context_size >= context_limit * 0.9
@@ -436,7 +436,7 @@ class AgentEngine:
             ]
             available_names = {t["function"]["name"] for t in available}
             budget = (
-                f"Server remaining time: {max(0, int(remaining))} seconds. "
+                "Server execution state (not a student request): "
                 + (
                     "This coordinated run has a small final-answer reserve and a configured tool-round ceiling. "
                     if selector
@@ -469,12 +469,27 @@ class AgentEngine:
                         "label": "صياغة الإجابة بالمعلومات المتاحة",
                     },
                 )
-            # Transient server policy, not a tool-result/user instruction.
-            request_messages = [
-                messages[0],
-                {"role": "system", "content": budget},
-                *messages[1:],
-            ]
+            # Working rounds need no duplicate timer policy: base instructions
+            # already cover economy, and limits are enforced by the server. Keep
+            # the entire earlier request append-only for provider prefix reuse.
+            # Only a final signal is appended, never hoisted into system policy.
+            if getattr(provider, "stable_request_prefix", False):
+                request_messages = list(messages)
+                if final_round:
+                    request_messages.append(
+                        {
+                            "role": "user",
+                            "content": "Server execution state (not a student request): FINAL ROUND: only render_answer is allowed. Use existing evidence; do no more tool work. State limitations honestly, never claim unperformed checks or actions.",
+                        }
+                    )
+            else:
+                # Custom adapters retain their established message topology.
+                request_messages = [
+                    messages[0],
+                    {"role": "system", "content": budget},
+                    *messages[1:],
+                ]
+            fit_history(request_messages, tools, context_limit)
             self.emit(
                 run,
                 "model_start",
@@ -503,8 +518,9 @@ class AgentEngine:
                     if final_round
                     else provider.stream
                 )
-                # Keep Gemini history and its function declaration manifest consistent.
-                # Keep role-scoped declarations stable; execution policy is still restricted.
+                # Preserve mandatory Google continuity and demonstrated/known
+                # cache prefixes. Otherwise keep the smaller cold final manifest.
+                # Declarations never authorize additional tool execution.
                 wire_tools = definitions if stable_manifest else available
                 async for item in stream(request_messages, wire_tools):
                     if item["type"] == "delta":
@@ -523,6 +539,11 @@ class AgentEngine:
                     feature,
                     call_status,
                 )
+            if (
+                getattr(provider, "stable_tool_manifest", False)
+                and (reported_cache_tokens(usage) or 0) > 0
+            ):
+                stable_manifest = True
             if not message:
                 raise ModelError("EMPTY_MODEL_RESPONSE")
             # Source results from the preceding batch have now reached a real model response.
@@ -645,7 +666,15 @@ class AgentEngine:
                                 "Essential context addition already attempted; finish with available evidence or ask a clarification"
                             )
                         context_repairs += 1
-                        result = await selector.prepare(run, tools, request.query)
+                        result = await selector.prepare(
+                            run,
+                            tools,
+                            request.query,
+                            [
+                                *tools.router_history,
+                                {"role": "user", "content": tools.question},
+                            ],
+                        )
                         result = result or {
                             "error": "MATCHING_SOURCE_NOT_FOUND",
                             "instruction": "Ask a brief clarification; do not teach from memory",
