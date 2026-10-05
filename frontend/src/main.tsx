@@ -283,6 +283,7 @@ function App() {
       content_type: "textbook",
       subject: "",
       track: "",
+      tracks: [] as string[],
       year: "",
       session: "",
       exam_type: "",
@@ -2352,7 +2353,12 @@ function App() {
                     }
                   />
                 </label>
-                <button className="primary" disabled={busy || !uploadFile}>
+                <button
+                  className="primary"
+                  disabled={
+                    busy || !uploadFile || !meta.tracks.length || !meta.subject
+                  }
+                >
                   رفع للمراجعة — ليس للنشر
                 </button>
               </form>
@@ -2365,6 +2371,16 @@ function App() {
                   <div className="document-row" key={d.id}>
                     <div>
                       <h3>{d.title}</h3>
+                      <p className="muted">
+                        الشعب:{" "}
+                        {(d.tracks || [])
+                          .map(
+                            (id: string) =>
+                              studyCatalog.tracks.find((x) => x.id === id)
+                                ?.label || id,
+                          )
+                          .join("، ")}
+                      </p>
                       <p className="muted">
                         {d.status} ·{" "}
                         {d.published_version ? "نسخة منشورة" : "مسودة فقط"}

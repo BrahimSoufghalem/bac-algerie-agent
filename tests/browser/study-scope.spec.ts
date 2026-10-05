@@ -81,8 +81,11 @@ test("owner fixed choices and combined/separate uploads are linked in one reques
   ]);
   await page.getByLabel("اختر ملف PDF", { exact: true }).setInputFiles(file);
   await page
-    .getByLabel("الشعبة", { exact: true })
-    .selectOption("experimental_sciences");
+    .getByRole("checkbox", {
+      name: "الشعب المستهدفة: علوم تجريبية",
+      exact: true,
+    })
+    .check();
   await page.getByLabel("المادة", { exact: true }).selectOption("physics");
   await page
     .getByLabel("نوع المحتوى", { exact: true })

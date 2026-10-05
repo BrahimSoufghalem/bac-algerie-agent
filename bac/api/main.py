@@ -17,7 +17,13 @@ from bac.core.auth import (
     owner,
     owned_chat,
 )
-from bac.core.study import catalogue, select_track, validate_pair, SUBJECTS
+from bac.core.study import (
+    catalogue,
+    select_track,
+    validate_pair,
+    SUBJECTS,
+    document_tracks,
+)
 from bac.core.db import uid, js
 from bac.core.presentation import public_message, public_event
 from bac.core.activity import Activity, PUBLIC_EVENTS, run_activity, attach_activity
@@ -691,6 +697,7 @@ def create_app(services=None):
             "items": [
                 {
                     **d,
+                    "tracks": document_tracks(d),
                     "versions": s.db.rows(
                         "SELECT id,sequence,status FROM versions WHERE document_id=? ORDER BY sequence DESC",
                         (d["id"],),

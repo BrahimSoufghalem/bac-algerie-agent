@@ -3,14 +3,15 @@
 from typing import Literal
 from pydantic import Field, model_validator
 from bac.agent.models import Strict
-from bac.core.study import validate_pair, CONTENT_TYPES
+from bac.core.study import normalize_source_tracks, CONTENT_TYPES
 
 
 class DocumentMetadata(Strict):
     title: str = Field(default="", max_length=200)
     kind: Literal["book", "exam", "exercise_collection", "reference"]
     subject: str = Field(min_length=1, max_length=100)
-    track: str = Field(min_length=1, max_length=100)
+    track: str = Field(default="", max_length=100)
+    tracks: list[str] | None = Field(default=None, min_length=1, max_length=6)
     year: str | None = Field(default=None, max_length=20)
     source: str = Field(default="", max_length=2048)
     session: str | None = Field(default=None, max_length=100)
@@ -24,9 +25,10 @@ class DocumentMetadata(Strict):
     def normalize(self):
         self.subject = self.subject.strip()
         self.track = self.track.strip()
-        if not self.subject or not self.track:
-            raise ValueError("Subject and track are required")
-        self.track, self.subject = validate_pair(self.track, self.subject)
+        self.tracks, self.subject = normalize_source_tracks(
+            self.tracks, self.track, self.subject
+        )
+        self.track = self.tracks[0]
         if self.content_type:
             self.kind = CONTENT_TYPES[self.content_type][1]
         else:
@@ -43,7 +45,8 @@ class DocumentMetadata(Strict):
 
 class SolutionMetadata(Strict):
     subject: str = Field(min_length=1, max_length=100)
-    track: str = Field(min_length=1, max_length=100)
+    track: str = Field(default="", max_length=100)
+    tracks: list[str] | None = Field(default=None, min_length=1, max_length=6)
     year: str | None = Field(default=None, max_length=20)
     session: str | None = Field(default=None, max_length=100)
     exam_type: str | None = Field(default=None, max_length=100)
@@ -52,11 +55,14 @@ class SolutionMetadata(Strict):
 
     @model_validator(mode="after")
     def nonblank(self):
-        for name in ("subject", "track", "source"):
+        for name in ("subject", "source"):
             setattr(self, name, getattr(self, name).strip())
             if not getattr(self, name):
                 raise ValueError("Solution identity and source cannot be blank")
-        self.track, self.subject = validate_pair(self.track, self.subject)
+        self.tracks, self.subject = normalize_source_tracks(
+            self.tracks, self.track, self.subject
+        )
+        self.track = self.tracks[0]
         return self
 
 

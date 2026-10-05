@@ -26,8 +26,11 @@ test("whole exam + explicit matched solution ranges → publish → private bund
     .getByLabel("العنوان", { exact: true })
     .fill("امتحان الحرارة — اختبار غير رسمي");
   await page
-    .getByLabel("الشعبة", { exact: true })
-    .selectOption("experimental_sciences");
+    .getByRole("checkbox", {
+      name: "الشعب المستهدفة: علوم تجريبية",
+      exact: true,
+    })
+    .check();
   await page.getByLabel("المادة", { exact: true }).selectOption("physics");
   await page.getByLabel("السنة", { exact: true }).fill("2025");
   await page.getByLabel("الدورة", { exact: true }).fill("June");
@@ -170,8 +173,11 @@ test("exercise collection stays whole and missing solution is explicit", async (
     .getByLabel("العنوان", { exact: true })
     .fill("سلسلة الحرارة — اختبار كامل");
   await page
-    .getByLabel("الشعبة", { exact: true })
-    .selectOption("experimental_sciences");
+    .getByRole("checkbox", {
+      name: "الشعب المستهدفة: علوم تجريبية",
+      exact: true,
+    })
+    .check();
   await page.getByLabel("المادة", { exact: true }).selectOption("physics");
   await page.getByRole("button", { name: "رفع للمراجعة — ليس للنشر" }).click();
   await page.getByRole("button", { name: "بدء المعالجة", exact: true }).click();

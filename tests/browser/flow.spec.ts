@@ -43,8 +43,11 @@ test("owner upload → extract → review → publish → student tool retrieval
     .getByLabel("العنوان", { exact: true })
     .fill("مبادئ الحرارة — مصدر اختبار");
   await page
-    .getByLabel("الشعبة", { exact: true })
-    .selectOption("experimental_sciences");
+    .getByRole("checkbox", {
+      name: "الشعب المستهدفة: علوم تجريبية",
+      exact: true,
+    })
+    .check();
   await page.getByLabel("المادة", { exact: true }).selectOption("physics");
   await page
     .getByLabel("المصدر / المرجع")

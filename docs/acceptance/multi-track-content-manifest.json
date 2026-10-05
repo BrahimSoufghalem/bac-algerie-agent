@@ -1,0 +1,48 @@
+{
+  "base_commit": "555c8683d5cb78f6616c9123a34b7613cf687c40",
+  "files": [
+    "bac/core/study.py",
+    "bac/api/main.py",
+    "bac/library/contracts.py",
+    "bac/library/service.py",
+    "bac/library/retrieval.py",
+    "frontend/src/main.tsx",
+    "frontend/src/BundleEditor.tsx",
+    "frontend/src/StudyChoices.tsx",
+    "frontend/src/style.css",
+    "tests/browser/study-scope.spec.ts",
+    "tests/browser/flow.spec.ts",
+    "tests/browser/bundles.spec.ts",
+    "tests/browser/page-reextract.spec.ts",
+    "docs/STUDY_SCOPE.md",
+    "README.md",
+    "tests/test_multi_track_content.py",
+    "tests/browser/multi-track-content.spec.ts",
+    "docs/acceptance/multi-track-content.md"
+  ],
+  "sha256": {
+    "bac/core/study.py": "c69c743248ffe4cf6bac3867f63e00ee47edf545484331e4b0cf51e726b6ae49",
+    "bac/api/main.py": "f33a5b3107edadcbd679d88d3f4d5b45af5fdd21f0fead338dde72234fcbb7b8",
+    "bac/library/contracts.py": "5978401a14bec584ea8b9445ee2402d8f9d8b6408e66c49eb3f4fba642151b7f",
+    "bac/library/service.py": "df787dd68cde377e3aec89873ccfbae9960ed8063e5f6d974aaf6680f63ba25a",
+    "bac/library/retrieval.py": "d93e7b4cebe168670543c91d6e0dcb6d034e042b9c6bf73787deb7cfdb9dcce0",
+    "frontend/src/main.tsx": "ccbe0853c74d1a88b5c0a55fe1ccc342c4050dc0430a67262b61370bc801b257",
+    "frontend/src/BundleEditor.tsx": "64b6ba56513a4baaa4dd8c3fc824bc06d431723aa3b8b33c820e4a8225f7de8f",
+    "frontend/src/StudyChoices.tsx": "296ac5158565d4efd0b5288e87d5950a8e9ad5b0808ff51e65cdb30c9fff9dde",
+    "frontend/src/style.css": "2d71c459fd66b14799907ab1e9a004ac1779d18dada0adbc91e19853e317a3a5",
+    "tests/browser/study-scope.spec.ts": "b8592bf68c8bdbb4d2ad488ce25cee15d2a7670e1af9a940a7531e2964ec52c4",
+    "tests/browser/flow.spec.ts": "025860d3993c1d5792fb421a435ac5d8edc2fe70a625cade50dcf4bfa1e2296d",
+    "tests/browser/bundles.spec.ts": "ee1d4213509fcf823494dd6f221ef191a786ae407c0f6edb7d77d642cc42a944",
+    "tests/browser/page-reextract.spec.ts": "81726afe96da788d26b42632e392bbb838340333747923a85d3d8afd31a66983",
+    "docs/STUDY_SCOPE.md": "52fe2f2bcc8826b4333ed1011899d0ea8ac30083d3fd1964a78e427c43354b17",
+    "README.md": "df611649c54b99799ea8889a7f1edd6a9b718815a5f1f822d974db2a0fdb8df2",
+    "tests/test_multi_track_content.py": "0cc9b8dcd2928b6a1721945660ad94beaa0f712e84f3ac3ca18b868acb6003da",
+    "tests/browser/multi-track-content.spec.ts": "34566c635b9c639c0b58242503ae47763db628f41dab2c420518fb84ac534b7e",
+    "docs/acceptance/multi-track-content.md": "c7a1af0d1f088e43e5f11c91b41418457e092bbfd0d0371427c94b58cbb1c8b7"
+  },
+  "verification": {
+    "pytest_passed": 283,
+    "browser_passed": 25,
+    "paid_model_calls": 0
+  }
+}

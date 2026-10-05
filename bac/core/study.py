@@ -107,6 +107,46 @@ def validate_pair(track, subject):
     return t, q
 
 
+def normalize_source_tracks(tracks, legacy_track, subject):
+    values = tracks if tracks is not None else [legacy_track]
+    if not values:
+        raise ValueError("Select at least one predefined target track")
+    resolved = list(dict.fromkeys(validate_pair(t, subject)[0] for t in values))
+    return resolved, validate_pair(resolved[0], subject)[1]
+
+
+def document_tracks(doc):
+    meta = doc.get("metadata", {})
+    if isinstance(meta, str):
+        meta = json.loads(meta)
+    values = (
+        meta.get("tracks") or doc.get("tracks") or [doc.get("track", meta.get("track"))]
+    )
+    return list(dict.fromkeys(t for v in values if (t := resolve(TRACKS, v))))
+
+
+def track_sql(prefix, values):
+    # Old publications remain single-track without rewriting their frozen snapshots.
+    members = (
+        "CASE WHEN json_type("
+        + prefix
+        + "metadata,'$.tracks')='array' AND json_array_length("
+        + prefix
+        + "metadata,'$.tracks')>0 THEN json_extract("
+        + prefix
+        + "metadata,'$.tracks') ELSE json_array("
+        + prefix
+        + "track) END"
+    )
+    return (
+        "EXISTS(SELECT 1 FROM json_each("
+        + members
+        + ") AS source_track WHERE lower(trim(source_track.value)) IN ("
+        + ",".join("?" for _ in values)
+        + "))"
+    )
+
+
 def catalogue():
     return {
         "tracks": [
@@ -166,30 +206,29 @@ class StudyScope:
     def sql(self, query, params, prefix="d."):
         if self.track is None:
             return query, params
-        for field, values in [
-            ("track", aliases(TRACKS, self.track)),
-            ("subject", aliases(SUBJECTS, self.subject)),
-        ]:
-            query += (
-                " AND lower(trim("
-                + prefix
-                + field
-                + ")) IN ("
-                + ",".join("?" for _ in values)
-                + ")"
-            )
-            params.extend(x.casefold() for x in values)
+        tracks = aliases(TRACKS, self.track)
+        query += " AND " + track_sql(prefix, tracks)
+        params.extend(x.casefold() for x in tracks)
+        values = aliases(SUBJECTS, self.subject)
+        query += (
+            " AND lower(trim("
+            + prefix
+            + "subject)) IN ("
+            + ",".join("?" for _ in values)
+            + ")"
+        )
+        params.extend(x.casefold() for x in values)
         return query, params
 
     def check(self, document_id):
         if self.track is None:
             return
         d = self.db.one(
-            "SELECT track,subject FROM documents WHERE id=?", (document_id,)
+            "SELECT track,subject,metadata FROM documents WHERE id=?", (document_id,)
         )
         if (
             not d
-            or resolve(TRACKS, d["track"]) != self.track
+            or self.track not in document_tracks(d)
             or resolve(SUBJECTS, d["subject"]) != self.subject
         ):
             raise HTTPException(404, "Published source not found in this conversation")
