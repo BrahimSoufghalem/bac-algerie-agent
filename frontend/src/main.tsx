@@ -296,8 +296,9 @@ function App() {
       selector_enabled: false,
       main_max_rounds: 4,
       max_context_chars: null,
-      temperature: 0.2,
-      max_tokens: 4000,
+      temperature: 0.1,
+      focused_mode: true,
+      max_tokens: 6000,
       timeout: 90,
       output_mode: "json_object",
       input_price_per_million: null as number | null,
@@ -1854,7 +1855,10 @@ function App() {
                       );
                       setModel(
                         saved || {
-                          max_tokens: preset.max_tokens || 4000,
+                          max_tokens:
+                            preset.max_tokens ||
+                            (next === "extraction" ? 4000 : 6000),
+                          focused_mode: true,
                           timeout: 90,
                           max_context_chars: null,
                           main_max_rounds: 4,
@@ -1896,6 +1900,7 @@ function App() {
                       base_url: p.base_url,
                       model: p.model,
                       temperature: p.temperature,
+                      focused_mode: p.focused_mode ?? true,
                       max_tokens: p.max_tokens ?? model.max_tokens,
                       input_price_per_million: null,
                       output_price_per_million: null,
@@ -2060,14 +2065,57 @@ function App() {
                   onChange={(e) => setKey(e.target.value)}
                 />
               </label>
+              {slot === "agent" && (
+                <label>
+                  <input
+                    type="checkbox"
+                    checked={model.focused_mode !== false}
+                    onChange={(e) =>
+                      setModel({ ...model, focused_mode: e.target.checked })
+                    }
+                  />
+                  نمط الإجابة المنضبطة
+                  <span className="muted">
+                    يخفض العشوائية إلى 0.1 أو أقل، وليس زيادةً للتفكير أو ضمانًا
+                    للصحة. عطّله إن كان نموذجك يتطلب Temperature خاصًا.
+                  </span>
+                </label>
+              )}
+              {slot !== "extraction" && (
+                <>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() =>
+                      setModel({
+                        ...model,
+                        max_tokens: Math.max(model.max_tokens || 0, 6000),
+                        temperature: slot === "selector" ? 0 : 0.1,
+                        focused_mode: true,
+                      })
+                    }
+                  >
+                    ضبط موصى به: إخراج 6000 وإجابة منضبطة
+                  </Button>
+                  <p className="muted">
+                    6000 حدّ أعلى متاح للتوليد، لا عدد رموز يُستهلك تلقائيًا.
+                    {slot === "selector"
+                      ? " الراوتر يستخدم عشوائية 0، ووصف الهدف محدود بـ400 حرف."
+                      : model.focused_mode !== false
+                        ? ` Temperature الفعلي: ${Math.min(model.temperature ?? 0.1, 0.1)}.`
+                        : " يُستخدم Temperature الذي تختاره دون خفضه."}
+                  </p>
+                </>
+              )}
               <div className="form-columns">
                 <label>
-                  Temperature
+                  عشوائية الإجابة (Temperature)
                   <Input
                     type="number"
                     min="0"
                     max="2"
                     step="0.1"
+                    disabled={slot === "selector"}
                     value={model.temperature}
                     onChange={(e) =>
                       setModel({
@@ -2081,7 +2129,7 @@ function App() {
                   حد رموز الإخراج
                   <Input
                     type="number"
-                    min="500"
+                    min={slot === "extraction" ? "500" : "6000"}
                     max="32000"
                     value={model.max_tokens}
                     onChange={(e) =>

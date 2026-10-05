@@ -123,6 +123,7 @@ class ModelConfig(Strict):
     base_url: str = Field(min_length=1, max_length=2048)
     model: str = Field(min_length=1, max_length=200)
     temperature: float = Field(default=0.2, ge=0, le=2)
+    focused_mode: bool = True
     max_tokens: int = Field(default=4000, ge=500, le=32000)
     timeout: int = Field(default=90, ge=5, le=180)
     input_price_per_million: float | None = Field(default=None, ge=0)

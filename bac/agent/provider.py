@@ -2,7 +2,7 @@ from abc import ABC, abstractmethod
 import json
 import httpx
 from bac.vendor.bookforge.vision.provider import validate_base_url
-from bac.agent.compat import google_answer_tools, google_openai, model_identity
+from bac.agent.compat import answer_tools, google_answer_tools, google_openai, model_identity
 from bac.agent.provider_errors import (
     ERROR_BODY_LIMIT,
     provider_diagnostic,
@@ -121,7 +121,11 @@ class OpenAIChat(ChatProvider):
         body = {
             "model": model_identity(cfg["base_url"], cfg["model"]),
             "messages": messages,
-            "tools": google_answer_tools(tools) if google_openai(cfg["base_url"]) else tools,
+            "tools": (
+                google_answer_tools(tools)
+                if google_openai(cfg["base_url"])
+                else answer_tools(tools)
+            ),
             "temperature": cfg.get("temperature", 0.2),
             "max_tokens": cfg.get("max_tokens", 4000),
             "stream": True,

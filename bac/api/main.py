@@ -33,7 +33,7 @@ from bac.learning.api import router as learning_router
 from bac.learning.usage import report
 from bac.agent.engine import AgentEngine
 from bac.agent.models import ModelConfig
-from bac.agent.presets import presets, validate_preset
+from bac.agent.presets import generation_config, presets, validate_preset
 from bac.agent.full_index import supported_router
 from bac.library.service import Library
 from bac.library.contracts import (
@@ -608,6 +608,7 @@ def create_app(services=None):
                     model=preset["model"],
                     selector_enabled=False,
                 )
+            cfg = generation_config(cfg, slot, effective=False)
             return cfg | {
                 "slot": slot,
                 "id": row["id"],
@@ -669,18 +670,21 @@ def create_app(services=None):
         if not p.api_key and not existing:
             raise HTTPException(422, "API key is required for the first configuration")
         secret = s.vault.encrypt(p.api_key) if p.api_key else existing["encrypted_key"]
+        normalized = ModelConfig.model_validate(
+            generation_config(p.config.model_dump(), slot, effective=False)
+        )
         id = uid("cfg")
         with s.db.tx() as c:
             if slot == "selector":
                 c.execute(
                     "INSERT INTO context_selectors VALUES(?,?,?,?)",
-                    (id, p.config.model_dump_json(), secret, time.time()),
+                    (id, normalized.model_dump_json(), secret, time.time()),
                 )
                 c.execute("INSERT OR REPLACE INTO active_selector VALUES(1,?)", (id,))
             else:
                 c.execute(
                     "INSERT INTO model_configs VALUES(?,?,?,?,?)",
-                    (id, slot, p.config.model_dump_json(), secret, time.time()),
+                    (id, slot, normalized.model_dump_json(), secret, time.time()),
                 )
                 c.execute(
                     "INSERT OR REPLACE INTO active_models VALUES(?,?)", (slot, id)

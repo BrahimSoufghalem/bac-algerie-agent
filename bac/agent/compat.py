@@ -1,6 +1,7 @@
 """Narrow provider compatibility, not arbitrary URL/model guessing."""
 
 from urllib.parse import urlsplit
+import copy
 
 
 def google_openai(base):
@@ -38,15 +39,44 @@ def automatic_prefix_cache(base):
     )
 
 
+def answer_tools(tools):
+    """Remove server-owned answer fields from every provider's generation schema.
+
+    Do not discard fields from actual responses: strict server validation still
+    rejects a model that supplies result data or unauthorized result/source IDs.
+    """
+    result = copy.deepcopy(tools)
+
+    def clean(schema):
+        if isinstance(schema, list):
+            for item in schema:
+                clean(item)
+        elif isinstance(schema, dict):
+            props = schema.get("properties", {})
+            kind = props.get("type", {}).get("const")
+            if kind in {"graph", "verification"} and "result_id" in props:
+                props.pop("result", None)
+                if "required" in schema:
+                    schema["required"] = [
+                        field for field in schema["required"] if field != "result"
+                    ]
+            for value in schema.values():
+                clean(value)
+
+    for tool in result:
+        fn = tool.get("function", {})
+        if fn.get("name") == "render_answer":
+            clean(fn.get("parameters", {}))
+    return result
+
+
 def google_answer_tools(tools):
     """Google's forced-function mode rejects the answer's discriminated union.
 
     Expose the same fields as a plain wire object. PresentedAnswer remains the
     strict server-owned validator; no source, graph or field guard is relaxed.
     """
-    import copy
-
-    result = copy.deepcopy(tools)
+    result = answer_tools(tools)
     string = {"type": "string"}
     strings = {"type": "array", "items": string}
     for tool in result:
