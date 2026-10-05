@@ -1565,6 +1565,7 @@ function App() {
                   delete config.id;
                   delete config.slot;
                   delete config.key_saved;
+                  delete config.router_requires_reconfiguration;
                   await api("/api/owner/models/" + slot, "PUT", {
                     config,
                     api_key: key,
@@ -1620,7 +1621,7 @@ function App() {
                   <option value="agent">وكيل التدريس</option>
                   <option value="extraction">استخراج الكتب</option>
                   <option value="selector">
-                    راوتر اختيار المراجع — Gemma / LAYA
+                    راوتر المراجع — LLM بالفهرس الكامل
                   </option>
                 </select>
               </label>
@@ -1663,11 +1664,9 @@ function App() {
                 البروتوكول:{" "}
                 {model.protocol === "anthropic"
                   ? "Anthropic Messages الأصلي"
-                  : model.protocol === "evaluation"
-                    ? "Typed Evaluation — ليس Chat Completions"
-                    : model.protocol === "google"
-                      ? "Google GenerateContent الأصلي"
-                      : "OpenAI-compatible Chat"}
+                  : model.protocol === "google"
+                    ? "Google GenerateContent الأصلي"
+                    : "OpenAI-compatible Chat"}
               </p>
               {slot === "selector" && (
                 <>
@@ -1684,44 +1683,32 @@ function App() {
                     />{" "}
                     تفعيل اختيار المراجع المنسّق للتشغيلات الجديدة
                   </label>
-                  <label>
-                    مسار اختيار المراجع
-                    <select
-                      value={model.selector_strategy || "candidates"}
-                      onChange={(e) =>
-                        setModel({ ...model, selector_strategy: e.target.value })
-                      }
-                    >
-                      <option value="candidates">البحث ثم اختيار المرشحين</option>
-                      <option value="full_index">
-                        الفهرس الكامل ثم فحص المراجع المقروءة
-                      </option>
-                    </select>
-                  </label>
-                  {model.selector_strategy === "full_index" && (
-                    <>
-                      <label>
-                        معرّف كتاب منشور — اختياري
-                        <input
-                          dir="ltr"
-                          value={model.selector_document_id || ""}
-                          onChange={(e) =>
-                            setModel({
-                              ...model,
-                              selector_document_id: e.target.value.trim() || null,
-                            })
-                          }
-                        />
-                      </label>
-                      <p className="muted">
-                        تركه فارغًا يعرض فهارس جميع المواد المنشورة. هذا المسار
-                        يحتاج Google الأصلي أو OpenAI-compatible، ويجري قرارًا
-                        بالفهرس ثم فحصًا للنصوص المقروءة. يزيد عدد الاستدعاءات؛
-                        لا يغيّر الراوتر الحالي حتى تحفظ الإعدادات. عند الغموض
-                        يسأل الطالب دون توليد شرح.
-                      </p>
-                    </>
+                  {model.router_requires_reconfiguration && (
+                    <p className="notice">
+                      إعداد الراوتر السابق لم يعد مدعومًا. اختر مزوّد LLM وأدخل
+                      مفتاحه واحفظ؛ لن نعيد توجيه المفتاح القديم تلقائيًا.
+                    </p>
                   )}
+                  <label>
+                    معرّف كتاب منشور — اختياري
+                    <input
+                      dir="ltr"
+                      value={model.selector_document_id || ""}
+                      onChange={(e) =>
+                        setModel({
+                          ...model,
+                          selector_document_id: e.target.value.trim() || null,
+                        })
+                      }
+                    />
+                  </label>
+                  <p className="muted">
+                    تركه فارغًا يعرض فهارس جميع المواد المنشورة. هذا المسار
+                    يحتاج Google الأصلي أو OpenAI-compatible، ويجري قرارًا
+                    بالفهرس ثم فحصًا للنصوص المقروءة. يزيد عدد الاستدعاءات؛ حفظ
+                    الإعدادات لا يرسل طلب توليد. عند الغموض يسأل الطالب دون
+                    توليد شرح.
+                  </p>
                   <label>
                     سقف المراجع المختارة لكل طلب
                     <input
@@ -1737,32 +1724,14 @@ function App() {
                       }
                     />
                   </label>
-                  {model.selector_strategy === "full_index" ? (
-                    <p className="muted">
-                      تجريبي: حتى ثلاثة مراجع افتراضيًا، بسقف من 1 إلى 8. يختار
-                      أقل مجموعة كافية لكل هدف، مع السماح بأجزاء مكملة مثل نص
-                      التمرين وحله. يقرأ النصوص الفعلية ويفحصها قبل تسليمها؛
-                      الفحص لا يضمن غياب الأخطاء. الفهرس الكبير يخضع لحصة
-                      الرموز لدى المزوّد، ولا يوجد رجوع تلقائي لنموذج آخر.
-                    </p>
-                  ) : (
-                    <>
-                      <p className="muted">
-                        حتى ثلاثة مراجع افتراضيًا، بسقف قابل للضبط من 1 إلى 8.
-                        قرار واحد يقيم كل المرشحين بصورة مستقلة ويستطيع اختيار
-                        عدة مراجع معًا، أو لا شيء. لا تتنافس المراجع الصحيحة على
-                        خانة واحدة؛ تُقرأ المراجع كاملة بعد انتهاء القرار.
-                      </p>
-                      <p className="muted">
-                        تجريبي: يحتاج اختبار دقة على مراجعك والدارجة. لا يرى إلا
-                        بيانات المراجع المرشحة، ولا يقرأ الدروس أو يعرضها للطالب.
-                        المسار الافتراضي الجديد هو Gemma 4 31B عبر AI Studio.
-                        يعيد قرارات true/false صريحة، لا احتمالات ثقة مصطنعة.
-                        يمكن اختيار LAYA أو OpenAI أو Anthropic يدويًا؛ لا رجوع
-                        تلقائي إلى نموذج آخر عند الفشل.
-                      </p>
-                    </>
-                  )}
+                  <p className="muted">
+                    المسار الوحيد: الفهرس الكامل ثم قراءة النصوص وفحصها. تجريبي:
+                    حتى ثلاثة مراجع افتراضيًا، بسقف من 1 إلى 8. يختار أقل مجموعة
+                    كافية لكل هدف، مع السماح بأجزاء مكملة مثل نص التمرين وحله.
+                    يقرأ النصوص الفعلية ويفحصها قبل تسليمها؛ الفحص لا يضمن غياب
+                    الأخطاء. الفهرس الكبير يخضع لحصة الرموز لدى المزوّد، ولا
+                    يوجد رجوع تلقائي لنموذج آخر.
+                  </p>
                 </>
               )}
               <label>
@@ -1789,17 +1758,14 @@ function App() {
                     }}
                   >
                     {slot === "selector" && (
-                      <option value="evaluation">
-                        Typed Evaluation / LAYA
-                      </option>
-                    )}
-                    {slot === "selector" && (
                       <option value="google">
-                        Google GenerateContent / Gemma router
+                        Google GenerateContent / LLM
                       </option>
                     )}
                     <option value="openai">OpenAI-compatible</option>
-                    <option value="anthropic">Anthropic Messages</option>
+                    {slot !== "selector" && (
+                      <option value="anthropic">Anthropic Messages</option>
+                    )}
                   </select>
                 </label>
               )}
@@ -1817,12 +1783,7 @@ function App() {
               </label>
               <datalist id="provider-model-list">
                 {catalog
-                  .filter(
-                    (m) =>
-                      slot !== "selector" ||
-                      model.protocol !== "evaluation" ||
-                      m.type === "evaluation",
-                  )
+                  .filter((m) => slot !== "selector" || m.type !== "evaluation")
                   .map((m) => (
                     <option key={m.id} value={m.id} />
                   ))}
@@ -1835,9 +1796,11 @@ function App() {
                   dir="ltr"
                   value={key}
                   placeholder={
-                    models.some((m) => m.slot === slot)
-                      ? "مفتاح محفوظ — اترك الحقل فارغًا للاحتفاظ به"
-                      : "أدخل المفتاح؛ لا يُضمّن في المتصفح أو Git"
+                    model.router_requires_reconfiguration
+                      ? "أدخل مفتاح المزوّد الجديد؛ المفتاح القديم لن يُستخدم"
+                      : models.some((m) => m.slot === slot)
+                        ? "مفتاح محفوظ — اترك الحقل فارغًا للاحتفاظ به"
+                        : "أدخل المفتاح؛ لا يُضمّن في المتصفح أو Git"
                   }
                   onChange={(e) => setKey(e.target.value)}
                 />

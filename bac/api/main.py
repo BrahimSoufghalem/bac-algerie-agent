@@ -27,6 +27,7 @@ from bac.learning.usage import report
 from bac.agent.engine import AgentEngine
 from bac.agent.models import ModelConfig
 from bac.agent.presets import presets, validate_preset
+from bac.agent.full_index import supported_router
 from bac.library.service import Library
 from bac.library.contracts import (
     DocumentMetadata,
@@ -495,27 +496,31 @@ def create_app(services=None):
         selector = s.db.one(
             "SELECT c.* FROM active_selector a JOIN context_selectors c ON c.id=a.config_id WHERE a.singleton=1"
         )
+        def public_config(row, slot):
+            original = json.loads(row["config"])
+            cfg = {k:v for k,v in original.items() if k in ModelConfig.model_fields}
+            needs_setup = slot == "selector" and not supported_router(original)
+            if needs_setup:
+                # Present an unconfigured LLM form, never relabel/reuse a retired
+                # provider's secret as a working key for another endpoint.
+                preset = next(p for p in presets("selector") if p["id"] == "google")
+                cfg.update(provider=preset["id"], protocol=preset["protocol"],
+                           base_url=preset["base_url"], model=preset["model"],
+                           selector_enabled=False)
+            return cfg | {"slot":slot,"id":row["id"],
+                          "key_saved":bool(row["encrypted_key"]) and not needs_setup,
+                          "router_requires_reconfiguration":needs_setup}
         return {
             "items": (
                 [
-                    {
-                        **json.loads(r["config"]),
-                        "slot": r["slot"],
-                        "id": r["id"],
-                        "key_saved": bool(r["encrypted_key"]),
-                    }
+                    public_config(r,r["slot"])
                     for r in s.db.rows(
                         "SELECT m.* FROM active_models a JOIN model_configs m ON m.id=a.config_id"
                     )
                 ]
                 + (
                     [
-                        {
-                            **json.loads(selector["config"]),
-                            "slot": "selector",
-                            "id": selector["id"],
-                            "key_saved": bool(selector["encrypted_key"]),
-                        }
+                        public_config(selector,"selector")
                     ]
                     if selector
                     else []
@@ -528,8 +533,7 @@ def create_app(services=None):
         owner(user)
         if slot not in ("agent", "extraction", "selector"):
             raise HTTPException(422, "Invalid model slot")
-        if (slot == "selector" and p.config.selector_strategy == "full_index"
-                and p.config.selector_document_id):
+        if slot == "selector" and p.config.selector_document_id:
             document = s.db.one(
                 "SELECT id FROM documents WHERE id=? AND status='ACTIVE' AND published_version IS NOT NULL",
                 (p.config.selector_document_id,),

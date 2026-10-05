@@ -26,7 +26,7 @@ PRESETS = [
         "protocol": "anthropic",
         "model": "claude-sonnet-4-5",
         "temperature": 0.2,
-        "slots": ["agent", "extraction", "selector"],
+        "slots": ["agent", "extraction"],
     },
     {
         "id": "vercel",
@@ -64,14 +64,14 @@ def presets(slot):
         if slot not in entry["slots"]:
             continue
         p = {**entry}
-        if slot == "selector" and p["id"] in {"vercel", "custom"}:
-            p.update(protocol="evaluation", model="convaiinnovations/laya")
+        if slot == "selector":
+            p.update(temperature=0,max_tokens=1000)
         if slot == "selector" and p["id"] == "google":
             p.update(
-                name="Google AI Studio / Gemma 4 router",
+                name="Google AI Studio / Gemini LLM router",
                 base_url="https://generativelanguage.googleapis.com/v1beta",
                 protocol="google",
-                model="gemma-4-31b-it",
+                model="gemini-3.5-flash-lite",
                 temperature=0,
                 max_tokens=1000,
             )
@@ -80,8 +80,8 @@ def presets(slot):
 
 
 def validate_preset(config, slot):
-    if config.protocol == "evaluation" and slot != "selector":
-        raise ValueError("Evaluation is only supported in the context-selector slot")
+    if slot == "selector" and config.protocol not in {"openai", "google"}:
+        raise ValueError("Reference routing requires an OpenAI-compatible or native Google LLM")
     if config.protocol == "google":
         if slot != "selector":
             raise ValueError(

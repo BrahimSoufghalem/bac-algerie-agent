@@ -10,7 +10,7 @@ from bac.agent.full_index import (
 )
 from bac.agent.models import ModelConfig
 from bac.agent.provider import ModelError
-from bac.agent.selection import ContextSelector
+from bac.agent.presets import presets, validate_preset
 from bac.agent.tools import Tools
 from bac.core.db import js, uid
 from tests.grounding_fixture import publish_reference
@@ -18,11 +18,10 @@ from tests.test_agent import chat_and_config
 
 CFG = {"provider":"google","protocol":"google",
        "base_url":"https://generativelanguage.googleapis.com/v1beta","model":"gemini-3.5-flash-lite",
-       "selector_enabled":True,"selector_strategy":"full_index","temperature":0,"max_tokens":1000}
+       "selector_enabled":True,"temperature":0,"max_tokens":1000}
 
 
-@pytest.mark.parametrize("strategy,expected",[("full_index",422),("candidates",200)])
-def test_document_scope_validation_is_opt_in(services,monkeypatch,strategy,expected):
+def test_document_scope_must_be_active_and_published(services,monkeypatch):
     from fastapi.testclient import TestClient
     from bac.api.main import create_app
     from bac.core.auth import create_user
@@ -33,13 +32,12 @@ def test_document_scope_validation_is_opt_in(services,monkeypatch,strategy,expec
     client=TestClient(create_app(services))
     login=client.post("/api/auth/login",json={
         "email":"owner-index@example.com","password":"Strong-password-123"})
-    cfg=CFG | {"selector_strategy":strategy,"selector_document_id":"missing-document"}
+    cfg=CFG | {"selector_document_id":"missing-document"}
     reply=client.put("/api/owner/models/selector",json={"config":cfg,"api_key":"PRIVATE-TEST-KEY"},
                      headers={"X-CSRF-Token":login.json()["csrf"]})
-    assert reply.status_code==expected
+    assert reply.status_code==422
     assert "PRIVATE-TEST-KEY" not in reply.text
-    if expected==422:
-        assert not services.db.rows("SELECT * FROM active_selector")
+    assert not services.db.rows("SELECT * FROM active_selector")
 
 
 def response(name, args):
@@ -118,11 +116,23 @@ def test_private_comments_assets_removed_without_losing_math():
     assert "$x=v t$" in clean and "Actual prose" in clean
 
 
-def test_configuration_defaults_preserve_old_route():
-    assert ModelConfig(base_url="https://example.org/v1",model="x").selector_strategy=="candidates"
+def test_only_llm_configuration_remains():
+    fields=ModelConfig.model_fields
+    assert not {"selector_strategy","selector_min_confidence","selector_min_margin"} & fields.keys()
     with pytest.raises(ValidationError):
         ModelConfig(base_url="https://example.org/v1",model="x",
-                    protocol="evaluation",selector_strategy="full_index")
+                    protocol="evaluation")
+    for key,value in [("selector_strategy","candidates"),("selector_min_confidence",0.55),
+                      ("selector_min_margin",0.1)]:
+        with pytest.raises(ValidationError):
+            ModelConfig(base_url="https://example.org/v1",model="x",**{key:value})
+    for preset in presets("selector"):
+        assert preset["protocol"] in {"openai","google"}
+        assert "laya" not in preset["model"].lower()
+    assert any(p["protocol"]=="anthropic" for p in presets("agent"))
+    with pytest.raises(ValueError):
+        validate_preset(ModelConfig(provider="custom",base_url="https://example.org",
+                                    model="x",protocol="anthropic"),"selector")
 
 
 @pytest.mark.asyncio
@@ -147,7 +157,7 @@ async def test_first_route_then_actual_read_then_verification_then_remember(serv
     services.selector_transport=httpx.MockTransport(handler)
     rid=AgentEngine(services).enqueue(chat,user,"اشرح القذف")
     run=services.db.one("SELECT * FROM agent_runs WHERE id=?",(rid,))
-    result=await ContextSelector(services,row).prepare(run,Tools(services,user,chat,rid),"اشرح القذف")
+    result=await FullIndexCoordinator(services,row).prepare(run,Tools(services,user,chat,rid),"اشرح القذف")
     assert result["node"]["id"]==node
     assert calls==["route_sections","verify_sections"]
     assert len(services.db.rows("SELECT * FROM loaded_context"))==1
@@ -177,3 +187,77 @@ async def test_clarification_finishes_without_teacher_call(services,with_alterna
     assert answer["content"]==question and json.loads(answer["sources"])==[]
     assert not services.db.rows("SELECT * FROM loaded_context")
     assert len(services.db.rows("SELECT * FROM model_usage"))==1
+
+
+def test_retired_stored_router_never_enqueues_or_decrypts_key(services):
+    from fastapi import HTTPException
+    user,chat=chat_and_config(services)
+    row=selector(services)
+    legacy=CFG | {"protocol":"evaluation","selector_strategy":"candidates"}
+    services.db.execute("UPDATE context_selectors SET config=? WHERE id=?",(js(legacy),row["id"]))
+    row=services.db.one("SELECT * FROM context_selectors WHERE id=?",(row["id"],))
+    with pytest.raises(ModelError,match="ROUTER_RECONFIGURATION_REQUIRED"):
+        FullIndexCoordinator(services,row)
+    with pytest.raises(HTTPException) as err:
+        AgentEngine(services).enqueue(chat,user,"اشرح القذف")
+    assert err.value.status_code==409
+    assert not services.db.rows("SELECT * FROM agent_runs")
+    assert not services.db.rows("SELECT * FROM messages")
+    assert not services.db.rows("SELECT * FROM model_usage")
+
+
+def owner_client(services):
+    from fastapi.testclient import TestClient
+    from bac.api.main import create_app
+    from bac.core.auth import create_user
+    create_user(services.db,"router-owner@example.com","Strong-password-123","Owner",role="owner")
+    client=TestClient(create_app(services))
+    login=client.post("/api/auth/login",json={
+        "email":"router-owner@example.com","password":"Strong-password-123"})
+    return client,{"X-CSRF-Token":login.json()["csrf"]}
+
+
+def test_retired_router_requires_explicit_new_setup_without_network(services,monkeypatch):
+    async def valid_url(*args):return None
+    monkeypatch.setattr("bac.api.main.validate_base_url",valid_url)
+    row=selector(services)
+    legacy=CFG | {"provider":"custom","protocol":"evaluation",
+                  "base_url":"https://old-provider.invalid/v1","model":"retired-model",
+                  "selector_strategy":"candidates","selector_min_confidence":0.55,
+                  "selector_min_margin":0.1}
+    services.db.execute("UPDATE context_selectors SET config=? WHERE id=?",(js(legacy),row["id"]))
+    client,headers=owner_client(services)
+    def never(req):
+        raise AssertionError("Retired router must not make network requests")
+    services.connection_transport=httpx.MockTransport(never)
+    saved=client.get("/api/owner/models").json()["items"][0]
+    assert saved["router_requires_reconfiguration"] and not saved["key_saved"]
+    assert saved["protocol"]=="google" and saved["selector_enabled"] is False
+    assert not {"selector_strategy","selector_min_confidence","selector_min_margin"} & saved.keys()
+    assert "PRIVATE-KEY" not in js(saved) and "retired-model" not in js(saved)
+    assert client.post("/api/owner/models/selector/test",
+                       json={"confirm":True},headers=headers).status_code==409
+    cfg={k:v for k,v in saved.items() if k in ModelConfig.model_fields}
+    assert client.put("/api/owner/models/selector",json={
+        "config":cfg},headers=headers).status_code==422
+    actual=services.db.one("SELECT * FROM context_selectors WHERE id=?",(row["id"],))
+    assert json.loads(actual["config"])==legacy and actual["encrypted_key"]==row["encrypted_key"]
+
+
+def test_compatible_stored_llm_keeps_key_and_drops_obsolete_public_fields(services,monkeypatch):
+    async def valid_url(*args):return None
+    monkeypatch.setattr("bac.api.main.validate_base_url",valid_url)
+    row=selector(services)
+    original=CFG | {"selector_strategy":"candidates","selector_min_confidence":0.55,
+                    "selector_min_margin":0.1}
+    services.db.execute("UPDATE context_selectors SET config=? WHERE id=?",(js(original),row["id"]))
+    client,headers=owner_client(services)
+    saved=client.get("/api/owner/models").json()["items"][0]
+    assert saved["key_saved"] and not saved["router_requires_reconfiguration"]
+    cfg={k:v for k,v in saved.items() if k in ModelConfig.model_fields}
+    response=client.put("/api/owner/models/selector",json={"config":cfg},headers=headers)
+    assert response.status_code==200
+    new=services.db.one("SELECT * FROM context_selectors WHERE id=?",(response.json()["id"],))
+    assert new["encrypted_key"]==row["encrypted_key"]
+    assert not {"selector_strategy","selector_min_confidence","selector_min_margin"} & json.loads(new["config"]).keys()
+    assert json.loads(services.db.one("SELECT config FROM context_selectors WHERE id=?",(row["id"],))["config"])==original
