@@ -36,3 +36,50 @@ def automatic_prefix_cache(base):
         and not url.query
         and not url.fragment
     )
+
+
+def google_answer_tools(tools):
+    """Google's forced-function mode rejects the answer's discriminated union.
+
+    Expose the same fields as a plain wire object. PresentedAnswer remains the
+    strict server-owned validator; no source, graph or field guard is relaxed.
+    """
+    import copy
+
+    result = copy.deepcopy(tools)
+    string = {"type": "string"}
+    strings = {"type": "array", "items": string}
+    for tool in result:
+        fn = tool.get("function", {})
+        if fn.get("name") != "render_answer":
+            continue
+        block = {
+            "type": "object",
+            "properties": {
+                "type": {"type": "string", "enum": ["text", "equation", "table", "code", "graph"]},
+                "text": string,
+                "latex": string,
+                "headers": strings,
+                "rows": {"type": "array", "items": strings},
+                "language": string,
+                "result_id": string,
+                "result_ids": strings,
+            },
+            "required": ["type"],
+        }
+        fn["parameters"] = {
+            "type": "object",
+            "properties": {
+                "blocks": {"type": "array", "items": block},
+                "source_ids": strings,
+                "warnings": strings,
+                "response_kind": {"type": "string", "enum": ["teaching", "calculation", "conversation", "clarification", "refusal"]},
+            },
+            "required": ["blocks"],
+        }
+        fn["description"] += (
+            " Block fields: text requires text; equation requires latex; table requires headers and rows; "
+            "code requires text and optional language; graph requires a real returned result_id. "
+            "Use only fields belonging to the selected block type. Source IDs must be actual relevant reads."
+        )
+    return result

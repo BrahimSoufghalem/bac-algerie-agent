@@ -378,3 +378,76 @@ def test_diagnostic_distinguishes_old_failed_run_from_new_saved_provider_config(
         and report["newer_run_exists"] is True
     )
     assert "PRIVATE" not in js(report) and cfg not in js(report)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("explicit_null", [False, True])
+async def test_google_parallel_stream_calls_without_indices_keep_distinct_ids(explicit_null):
+    def handler(request):
+        chunk = {"choices": [{"delta": {"tool_calls": [
+                call("calculate", {"expression": "8*2"}, "calc-x"),
+                {"id": "calc-z", "type": "function", "function": {
+                    "name": "calculate", "arguments": '{"expression":"10*2-5*2**2"}'}},
+                {"id": "plot-v", "type": "function", "function": {
+                    "name": "plot_function", "arguments": '{"expression":"10-10*t"}'}}
+            ]}, "finish_reason": "tool_calls"}]}
+        if explicit_null:
+            for tool in chunk["choices"][0]["delta"]["tool_calls"]:
+                tool["index"] = None
+        return sse(chunk, {"choices": [], "usage": {"prompt_tokens": 10, "completion_tokens": 8}})
+    items = [x async for x in OpenAIChat(
+        {"base_url": BASE, "model": MODEL}, "fixture-key",
+        transport=httpx.MockTransport(handler)).stream([], [])]
+    calls = items[-1]["message"]["tool_calls"]
+    assert [x["id"] for x in calls] == ["calc-x", "calc-z", "plot-v"]
+    assert [x["function"]["name"] for x in calls] == ["calculate", "calculate", "plot_function"]
+    assert [json.loads(x["function"]["arguments"]) for x in calls] == [
+        {"expression": "8*2"}, {"expression": "10*2-5*2**2"}, {"expression": "10-10*t"}]
+    assert calls[0]["extra_content"] == {"google": {"thought_signature": SIGNATURE}}
+    assert "extra_content" not in calls[1]
+    assert "PRIVATE REASONING" not in js(items)
+
+
+@pytest.mark.asyncio
+async def test_google_unindexed_ambiguous_fragment_fails_without_guessing():
+    def handler(request):
+        return sse(
+            {"choices": [{"delta": {"tool_calls": [
+                call("calculate", {}, "a"),
+                {"id": "b", "function": {"name": "calculate", "arguments": "{}"}}
+            ]}}]},
+            {"choices": [{"delta": {"tool_calls": [{"function": {"arguments": "x"}}]}}]},
+        )
+    with pytest.raises(ModelError, match="AMBIGUOUS_TOOL_CALL_DELTA"):
+        _ = [x async for x in OpenAIChat(
+            {"base_url": BASE, "model": MODEL}, "fixture-key",
+            transport=httpx.MockTransport(handler)).stream([], [])]
+
+
+def test_google_plain_answer_wire_schema_does_not_mutate_or_relax_server_validation():
+    from bac.agent.compat import google_answer_tools
+    from bac.agent.models import PresentedAnswer
+    from pydantic import ValidationError
+    original = [{"type": "function", "function": {
+        "name": "render_answer", "description": "Render", "parameters": PresentedAnswer.model_json_schema()}}]
+    frozen = js(original)
+    wire = google_answer_tools(original)
+    assert js(original) == frozen
+    assert "$defs" not in js(wire) and "discriminator" not in js(wire)
+    assert "result" not in wire[0]["function"]["parameters"]["properties"]["blocks"]["items"]["properties"]
+    with pytest.raises(ValidationError):
+        PresentedAnswer.model_validate({"blocks": [{"type": "text", "latex": "v=gt"}]})
+    with pytest.raises(ValidationError):
+        PresentedAnswer.model_validate({"blocks": [{"type": "graph", "result_id": "x", "result": {}}]})
+
+
+@pytest.mark.asyncio
+async def test_google_working_round_keeps_auto_with_plain_answer_schema():
+    from bac.agent.models import PresentedAnswer
+    def handler(request):
+        body = json.loads(request.content)
+        assert "tool_choice" not in body
+        assert "$defs" not in js(body["tools"])
+        return response("render_answer", {"blocks": [{"type": "text", "text": "Hello"}]})
+    tools = [{"type": "function", "function": {"name": "render_answer", "description": "Render", "parameters": PresentedAnswer.model_json_schema()}}]
+    _ = [x async for x in OpenAIChat({"base_url": BASE, "model": MODEL}, "fixture-key", transport=httpx.MockTransport(handler)).stream([], tools)]
