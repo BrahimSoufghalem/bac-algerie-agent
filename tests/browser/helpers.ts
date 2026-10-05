@@ -42,6 +42,7 @@ export async function snapshot(page: Page, name: string) {
   await page.screenshot({
     path: path.join(qa, name + ".png"),
     mask: [page.locator('input[type="password"]')],
+    maskColor: "#edf3ee",
   });
   let offline = html;
   for (const link of [...html.matchAll(/<link[^>]*rel="stylesheet"[^>]*>/g)]) {
@@ -107,4 +108,21 @@ export async function navigate(page: Page, name: string) {
       .getByRole("button", { name: "إعدادات الحساب", exact: true })
       .click();
   await target.click();
+}
+
+export async function chooseSubject(page: Page, id: string) {
+  await expect(
+    page.getByRole("combobox", { name: "مادة المحادثة", exact: true }),
+  ).toBeVisible();
+  const catalogue = await (
+    await page.request.get("/api/study/catalogue")
+  ).json();
+  const item = catalogue.tracks
+    .flatMap((t: any) => t.subjects)
+    .find((s: any) => s.id === id);
+  if (!item) throw new Error("Unknown subject: " + id);
+  await page
+    .getByRole("combobox", { name: "مادة المحادثة", exact: true })
+    .click();
+  await page.getByRole("option", { name: item.label, exact: true }).click();
 }

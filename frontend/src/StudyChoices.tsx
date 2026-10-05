@@ -1,3 +1,4 @@
+import { NativeSelect } from "./components/ui/native-select";
 import React from "react";
 export type StudyCatalogue = {
   tracks: {
@@ -111,7 +112,7 @@ export function IdentityChoices({
       </fieldset>
       <label>
         {labels[1]}
-        <select
+        <NativeSelect
           aria-label={labels[1]}
           required
           disabled={disabled || !selected.length}
@@ -131,7 +132,7 @@ export function IdentityChoices({
               {x.label}
             </option>
           ))}
-        </select>
+        </NativeSelect>
         <span className="muted">
           تظهر المواد المتاحة لجميع الشعب المختارة فقط.
         </span>

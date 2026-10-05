@@ -1,3 +1,9 @@
+import { UsageSummary, UsageLimits, UsageDetails } from "./UsageUI";
+import { NativeSelect } from "./components/ui/native-select";
+import { Input } from "./components/ui/input";
+import { Button } from "./components/ui/button";
+import { Card } from "./components/ui/card";
+import { Textarea } from "./components/ui/textarea";
 import React, { useEffect, useState, useRef, useId } from "react";
 import { Icon } from "./ChatUI";
 type API = (path: string, method?: string, body?: unknown) => Promise<any>;
@@ -50,7 +56,7 @@ export function PreferencesPanel({ api, chat, notify, role }: Props) {
   }, []);
   if (!p) return <p>جارٍ تحميل الإعدادات…</p>;
   return (
-    <section className="page-content">
+    <section tabIndex={0} className="page-content preferences-page">
       <h1>تفضيلات التعلّم والخصوصية</h1>
       <p>
         التفضيلات سياق للشرح، لا تغيّر الصلاحيات. تغييرها يوقف التشغيل الجاري؛
@@ -84,16 +90,19 @@ export function PreferencesPanel({ api, chat, notify, role }: Props) {
       >
         <label>
           نطاق التفضيلات
-          <select value={scope} onChange={(e) => setScope(e.target.value)}>
+          <NativeSelect
+            value={scope}
+            onChange={(e) => setScope(e.target.value)}
+          >
             <option value="global">الحساب</option>
             {chat && <option value="chat">هذه المحادثة فقط</option>}
-          </select>
+          </NativeSelect>
         </label>
         {role !== "student" && (
           <>
             <label>
               الشعبة
-              <input
+              <Input
                 value={p.track}
                 maxLength={100}
                 onChange={(e) => setP({ ...p, track: e.target.value })}
@@ -101,7 +110,7 @@ export function PreferencesPanel({ api, chat, notify, role }: Props) {
             </label>
             <label>
               المواد (فاصلة بين المواد)
-              <input
+              <Input
                 value={subjectText}
                 onChange={(e) => setSubjectText(e.target.value)}
               />
@@ -116,42 +125,43 @@ export function PreferencesPanel({ api, chat, notify, role }: Props) {
         )}
         <label>
           لغة الشرح
-          <select
+          <NativeSelect
             value={p.language}
             onChange={(e) => setP({ ...p, language: e.target.value })}
           >
             <option value="ar">العربية</option>
             <option value="fr">Français</option>
             <option value="en">English</option>
-          </select>
+          </NativeSelect>
         </label>
         <label>
           تفصيل الشرح
-          <select
+          <NativeSelect
             value={p.detail}
             onChange={(e) => setP({ ...p, detail: e.target.value })}
           >
             <option value="brief">مختصر</option>
             <option value="balanced">متوازن</option>
             <option value="deep">تفصيلي</option>
-          </select>
+          </NativeSelect>
         </label>
         <label>
           طريقة الشرح
-          <select
+          <NativeSelect
             value={p.style}
             onChange={(e) => setP({ ...p, style: e.target.value })}
           >
             <option value="guided">تدريجي</option>
             <option value="direct">مباشر</option>
-          </select>
+          </NativeSelect>
         </label>
 
-        <button className="primary" disabled={busy}>
+        <Button variant="outline" className="primary" disabled={busy}>
           حفظ التفضيلات
-        </button>
+        </Button>
         {scope === "chat" && (
-          <button
+          <Button
+            variant="outline"
             type="button"
             onClick={() =>
               go(async () => {
@@ -161,12 +171,13 @@ export function PreferencesPanel({ api, chat, notify, role }: Props) {
             }
           >
             إزالة تجاوزات المحادثة
-          </button>
+          </Button>
         )}
       </form>
-      <div className="panel">
+      <Card className="panel">
         <h2>بياناتي الخاصة</h2>
-        <button
+        <Button
+          variant="outline"
           onClick={() =>
             go(async () =>
               download(
@@ -177,7 +188,7 @@ export function PreferencesPanel({ api, chat, notify, role }: Props) {
           }
         >
           تصدير بياناتي JSON
-        </button>
+        </Button>
         <p>
           لا يحتوي التصدير على مفاتيح المزوّد أو الجلسات. الملفات المؤقتة تُحمّل
           منفصلة قبل انتهاء صلاحيتها.
@@ -186,14 +197,15 @@ export function PreferencesPanel({ api, chat, notify, role }: Props) {
           <>
             <label>
               كلمة المرور لتأكيد حذف الحساب
-              <input
+              <Input
                 type="password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 autoComplete="current-password"
               />
             </label>
-            <button
+            <Button
+              variant="outline"
               disabled={busy || !password}
               onClick={() => {
                 if (
@@ -211,10 +223,10 @@ export function PreferencesPanel({ api, chat, notify, role }: Props) {
               }}
             >
               حذف حسابي وبياناتي
-            </button>
+            </Button>
           </>
         )}
-      </div>
+      </Card>
     </section>
   );
 }
@@ -231,7 +243,7 @@ export function NotesPanel({ api, notify }: Props) {
     mastered: "إتقان",
   };
   return (
-    <section className="page-content">
+    <section tabIndex={0} className="page-content">
       <h1>ملاحظات مسار التعليمية</h1>
       <p>
         يكتب مسار هذه الملاحظات ويحدّثها وفق تقدّمك في التعلّم. هي ملاحظات
@@ -333,7 +345,8 @@ export function PrivateUploads({
   };
   return (
     <div className="private-files" ref={container}>
-      <button
+      <Button
+        variant="outline"
         type="button"
         className="attachment-trigger"
         aria-label="إرفاق ملف خاص مؤقتًا · 24 ساعة"
@@ -344,7 +357,7 @@ export function PrivateUploads({
       >
         <Icon name="attach" />
         <span className="attachment-count">{rows.length || ""}</span>
-      </button>
+      </Button>
       <div
         id={id}
         className={"attachment-panel " + (open ? "is-open" : "")}
@@ -361,7 +374,8 @@ export function PrivateUploads({
             <strong>أضف سياقًا لسؤالك</strong>
             <small>ملفاتك هنا خاصة ومؤقتة</small>
           </div>
-          <button
+          <Button
+            variant="outline"
             type="button"
             className="icon-button"
             aria-label="إغلاق الإرفاق"
@@ -373,7 +387,7 @@ export function PrivateUploads({
             }}
           >
             <Icon name="close" size={17} />
-          </button>
+          </Button>
         </div>
         <input
           id={id + "-file"}
@@ -390,7 +404,8 @@ export function PrivateUploads({
             upload(file);
           }}
         />
-        <button
+        <Button
+          variant="outline"
           type="button"
           className={"attachment-dropzone " + (dragging ? "is-dragging" : "")}
           disabled={busy}
@@ -414,7 +429,7 @@ export function PrivateUploads({
           </strong>
           <span>PDF · صور · TXT</span>
           <small>حتى 10 MB للملف · 20 صفحة للـPDF</small>
-        </button>
+        </Button>
         {error && (
           <p className="attachment-error" role="alert">
             {error}
@@ -443,7 +458,8 @@ export function PrivateUploads({
               >
                 <Icon name="down" size={16} />
               </a>
-              <button
+              <Button
+                variant="outline"
                 type="button"
                 className="file-action"
                 aria-label={"حذف الملف " + file.name}
@@ -457,7 +473,7 @@ export function PrivateUploads({
                 }
               >
                 <Icon name="trash" size={16} />
-              </button>
+              </Button>
             </div>
           ))}
         </div>
@@ -500,7 +516,7 @@ export function MaterialsPanel({ api, role, notify, request, render }: Props) {
     reference_review: "مراجعة شرح أو مرجع",
   };
   return (
-    <section className="page-content">
+    <section tabIndex={0} className="page-content">
       <h1>مساحة إعداد الأستاذ</h1>
       <p>
         محرك واحد، وأدوات بحسب الدور. المخرجات مسودات خاصة مولّدة، ليست حلولًا
@@ -519,7 +535,7 @@ export function MaterialsPanel({ api, role, notify, request, render }: Props) {
       >
         <label>
           المهمة
-          <select value={kind} onChange={(e) => setKind(e.target.value)}>
+          <NativeSelect value={kind} onChange={(e) => setKind(e.target.value)}>
             {Object.entries(labels)
 
               .map(([k, v]) => (
@@ -527,11 +543,11 @@ export function MaterialsPanel({ api, role, notify, request, render }: Props) {
                   {String(v)}
                 </option>
               ))}
-          </select>
+          </NativeSelect>
         </label>
         <label>
           الموضوع أو إجابة الطالب التي لديك
-          <textarea
+          <Textarea
             value={topic}
             onChange={(e) => setTopic(e.target.value)}
             required
@@ -540,7 +556,7 @@ export function MaterialsPanel({ api, role, notify, request, render }: Props) {
         </label>
         <label>
           المستوى
-          <input
+          <Input
             value={level}
             maxLength={100}
             onChange={(e) => setLevel(e.target.value)}
@@ -548,45 +564,57 @@ export function MaterialsPanel({ api, role, notify, request, render }: Props) {
         </label>
         <label>
           الصعوبة
-          <select
+          <NativeSelect
             value={difficulty}
             onChange={(e) => setDifficulty(e.target.value)}
           >
             <option>بسيط</option>
             <option>متوسط</option>
             <option>متقدم</option>
-          </select>
+          </NativeSelect>
         </label>
         <p>
           عند الضغط يُرسل طلب إلى النموذج المحفوظ وقد يستهلك رصيدًا. لا يستطيع
           الأستاذ قراءة محادثات الطلاب أو ملاحظاتهم.
         </p>
-        <button className="primary" disabled={busy}>
+        <Button variant="outline" className="primary" disabled={busy}>
           بدء إعداد مسودة
-        </button>
+        </Button>
       </form>
-      <button onClick={() => go(refresh)}>تحديث المسودات</button>
+      <div className="actions">
+        <Button variant="outline" onClick={() => go(refresh)}>
+          تحديث المسودات
+        </Button>
+      </div>
       {rows.map((m) => (
         <article key={m.id} className="panel">
           <strong>
             {m.title} · {labels[m.kind]}
           </strong>
           <p>مولّد · خاص · غير رسمي</p>
-          <button onClick={() => setSelected(m)}>عرض المسودة</button>
-          <button onClick={() => download(m, "masar-material.json")}>
-            تصدير المسودة
-          </button>
-          <button
-            onClick={() =>
-              go(async () => {
-                await api("/api/materials/" + m.id, "DELETE");
-                if (selected?.id === m.id) setSelected(null);
-                await refresh();
-              })
-            }
-          >
-            حذف المسودة
-          </button>
+          <div className="actions">
+            <Button variant="outline" onClick={() => setSelected(m)}>
+              عرض المسودة
+            </Button>
+            <Button
+              variant="outline"
+              onClick={() => download(m, "masar-material.json")}
+            >
+              تصدير المسودة
+            </Button>
+            <Button
+              variant="outline"
+              onClick={() =>
+                go(async () => {
+                  await api("/api/materials/" + m.id, "DELETE");
+                  if (selected?.id === m.id) setSelected(null);
+                  await refresh();
+                })
+              }
+            >
+              حذف المسودة
+            </Button>
+          </div>
         </article>
       ))}
       {selected && (
@@ -599,7 +627,12 @@ export function MaterialsPanel({ api, role, notify, request, render }: Props) {
             </p>
           ))}
           {selected.payload.rubric?.length > 0 && (
-            <div className="table-scroll">
+            <div
+              tabIndex={0}
+              role="region"
+              aria-label="جدول قابل للتمرير"
+              className="table-scroll"
+            >
               <table>
                 <thead>
                   <tr>
@@ -625,7 +658,7 @@ export function MaterialsPanel({ api, role, notify, request, render }: Props) {
           {selected.payload.solution && (
             <details>
               <summary>الحل المنفصل — مولّد، راجعه</summary>
-              <pre className="material-solution" dir="auto">
+              <pre tabIndex={0} className="material-solution" dir="auto">
                 {selected.payload.solution}
               </pre>
             </details>
@@ -653,19 +686,20 @@ export function AccountsPanel({ api, notify }: Props) {
     go(() => refresh());
   }, []);
   return (
-    <section className="page-content">
+    <section tabIndex={0} className="page-content">
       <h1>الحسابات والحدود</h1>
-      <button
+      <Button
+        variant="outline"
         onClick={() =>
           go(async () => setAudit((await api("/api/owner/audit")).items))
         }
       >
         عرض سجل الإدارة
-      </button>
+      </Button>
       {audit.length > 0 && (
         <details open>
           <summary>أحداث إدارية بلا مفاتيح أو كلمات مرور</summary>
-          <pre className="material-solution" dir="ltr">
+          <pre tabIndex={0} className="material-solution" dir="ltr">
             {JSON.stringify(audit, null, 2)}
           </pre>
         </details>
@@ -691,15 +725,15 @@ export function AccountsPanel({ api, notify }: Props) {
         <h2>إضافة حساب أستاذ أو طالب</h2>
         <label>
           اسم الحساب
-          <input name="name" required maxLength={100} />
+          <Input name="name" required maxLength={100} />
         </label>
         <label>
           بريد الحساب
-          <input name="email" type="email" required />
+          <Input name="email" type="email" required />
         </label>
         <label>
           كلمة المرور الأولية
-          <input
+          <Input
             name="password"
             type="password"
             autoComplete="new-password"
@@ -709,14 +743,14 @@ export function AccountsPanel({ api, notify }: Props) {
         </label>
         <label>
           الدور الجديد
-          <select name="role">
+          <NativeSelect name="role">
             <option value="teacher">أستاذ</option>
             <option value="student">طالب</option>
-          </select>
+          </NativeSelect>
         </label>
-        <button className="primary" disabled={busy}>
+        <Button variant="outline" className="primary" disabled={busy}>
           إنشاء الحساب
-        </button>
+        </Button>
       </form>
       <form
         onSubmit={(e) => {
@@ -727,9 +761,9 @@ export function AccountsPanel({ api, notify }: Props) {
       >
         <label>
           البحث عن حساب
-          <input value={q} onChange={(e) => setQ(e.target.value)} />
+          <Input value={q} onChange={(e) => setQ(e.target.value)} />
         </label>
-        <button>بحث الحسابات</button>
+        <Button variant="outline">بحث الحسابات</Button>
       </form>
       {rows.map((u) => (
         <form
@@ -757,11 +791,11 @@ export function AccountsPanel({ api, notify }: Props) {
           <p dir="ltr">{u.email}</p>
           <label>
             دور الحساب
-            <select name="role" defaultValue={u.role}>
+            <NativeSelect name="role" defaultValue={u.role}>
               <option value="student">طالب</option>
               <option value="teacher">أستاذ</option>
               <option value="owner">مالك</option>
-            </select>
+            </NativeSelect>
           </label>
           <label className="check">
             <input name="active" type="checkbox" defaultChecked={!!u.active} />
@@ -776,7 +810,7 @@ export function AccountsPanel({ api, notify }: Props) {
           ].map(([k, l]) => (
             <label key={k}>
               {l}
-              <input
+              <Input
                 name={k}
                 type="number"
                 min={
@@ -787,10 +821,13 @@ export function AccountsPanel({ api, notify }: Props) {
               />
             </label>
           ))}
-          <button disabled={busy}>حفظ حدود {u.name}</button>
+          <Button variant="outline" disabled={busy}>
+            حفظ حدود {u.name}
+          </Button>
         </form>
       ))}
-      <button
+      <Button
+        variant="outline"
         disabled={!offset}
         onClick={() => {
           const n = Math.max(0, offset - 50);
@@ -799,8 +836,9 @@ export function AccountsPanel({ api, notify }: Props) {
         }}
       >
         السابقة
-      </button>
-      <button
+      </Button>
+      <Button
+        variant="outline"
         disabled={rows.length < 50}
         onClick={() => {
           setOffset(offset + 50);
@@ -808,7 +846,7 @@ export function AccountsPanel({ api, notify }: Props) {
         }}
       >
         التالية
-      </button>
+      </Button>
     </section>
   );
 }
@@ -820,7 +858,7 @@ export function PersonalUsage({ api, notify }: Props) {
       .catch((e) => notify(e.message));
   }, []);
   return (
-    <section className="page-content">
+    <section tabIndex={0} className="page-content">
       <h1>استخدامي وحدودي</h1>
       <p>
         المعلومات التي يبلّغ عنها المزوّد فقط. غير المتاح لا يعني صفرًا. قد
@@ -836,9 +874,9 @@ export function PersonalUsage({ api, notify }: Props) {
           بعض الاستخدامات بلا تكلفة متاحة؛ التنبيه ليس ضمانًا لفاتورة نهائية.
         </p>
       )}
-      <pre className="material-solution" dir="ltr">
-        {data ? JSON.stringify(data, null, 2) : "جارٍ التحميل…"}
-      </pre>
+      <UsageSummary data={data} />
+      <UsageLimits data={data} />
+      <UsageDetails data={data} />
     </section>
   );
 }

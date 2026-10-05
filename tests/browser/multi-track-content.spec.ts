@@ -57,14 +57,12 @@ test("owner selects several target tracks for one book and edits the same draft"
     "mathematics",
   ]);
   expect(version.files).toHaveLength(1);
-  const row = page
-    .locator(".document-row")
-    .filter({
-      has: page.getByRole("heading", {
-        name: "كتاب مشترك — اختبار محلي",
-        exact: true,
-      }),
-    });
+  const row = page.locator(".document-row").filter({
+    has: page.getByRole("heading", {
+      name: "كتاب مشترك — اختبار محلي",
+      exact: true,
+    }),
+  });
   await expect(row).toContainText("علوم تجريبية، رياضيات");
   await page.getByText("تعديل هوية المسودة", { exact: true }).click();
   await page
