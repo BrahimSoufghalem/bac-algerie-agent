@@ -5,6 +5,7 @@ import httpx
 from bac.agent.provider import ChatProvider, ModelError
 from bac.agent.provider_errors import provider_diagnostic
 from bac.agent.presets import auth_headers
+from bac.agent.compat import answer_tools
 from bac.vendor.bookforge.vision.provider import validate_base_url
 
 
@@ -105,7 +106,7 @@ class AnthropicChat(ChatProvider):
                     "description": t["function"].get("description", ""),
                     "input_schema": t["function"]["parameters"],
                 }
-                for t in tools
+                for t in answer_tools(tools)
             ]
         if final:
             body["tool_choice"] = {
