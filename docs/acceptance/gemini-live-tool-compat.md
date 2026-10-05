@@ -22,3 +22,7 @@ Base: `95ef1d8e9d34ef9cc26c95ab1754d9a994410899`. Model: `gemini-3.5-flash-lite`
 The live educational benchmark uses the previously extracted 321-page physics book in an isolated database, not the user's production Docker data. The book still has 28 unresolved detailed TOC matches from its earlier draft review. Educational accuracy and first-pass failures are reported separately from transport/unit acceptance; a successful HTTP response is not an educational accuracy score.
 
 Cache is a subset of input. Missing provider counters are unknown, not zero. Native Google total output includes candidate and thinking tokens as reported by UsageMetadata; internal thought text is never collected. Earlier diagnostic attempts are charged to a separate ledger, not erased from the test's accounting.
+
+## Completed educational benchmark
+
+See [the frozen 24-message real-book report](gemini-real-book-24-message-benchmark.md) and [per-message measured usage CSV](gemini-real-book-24-message-benchmark.csv). The benchmark distinguishes delivery (23/24), primary fulfillment (18/24), graphical delivery (4/8 individual graphics), incomplete retrieval and diagnostic overhead. It is not a production-quality certification.
