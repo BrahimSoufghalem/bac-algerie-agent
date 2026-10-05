@@ -2,7 +2,7 @@ from abc import ABC, abstractmethod
 import json
 import httpx
 from bac.vendor.bookforge.vision.provider import validate_base_url
-from bac.agent.compat import model_identity
+from bac.agent.compat import google_answer_tools, google_openai, model_identity
 from bac.agent.provider_errors import (
     ERROR_BODY_LIMIT,
     provider_diagnostic,
@@ -121,7 +121,7 @@ class OpenAIChat(ChatProvider):
         body = {
             "model": model_identity(cfg["base_url"], cfg["model"]),
             "messages": messages,
-            "tools": tools,
+            "tools": google_answer_tools(tools) if google_openai(cfg["base_url"]) else tools,
             "temperature": cfg.get("temperature", 0.2),
             "max_tokens": cfg.get("max_tokens", 4000),
             "stream": True,
@@ -129,9 +129,11 @@ class OpenAIChat(ChatProvider):
         }
         if tool_choice is not None:
             body["tool_choice"] = tool_choice
+
         topology = request_topology(body)
         content = ""
         calls = {}
+        call_ids = {}
         finish = "stop"
         usage = {}
         total = 0
@@ -208,7 +210,33 @@ class OpenAIChat(ChatProvider):
                                 content += delta["content"]
                                 yield {"type": "delta", "text": delta["content"]}
                             for tc in delta.get("tool_calls", []):
-                                index = tc.get("index", 0)
+                                index = tc.get("index")
+                                call_id = tc.get("id")
+                                if index is None and google_openai(cfg["base_url"]):
+                                    # Google may emit complete parallel calls with IDs
+                                    # but no OpenAI index. Do not collapse them into 0.
+                                    if isinstance(call_id, str) and call_id:
+                                        index = call_ids.get(call_id)
+                                        if index is None:
+                                            index = max(calls, default=-1) + 1
+                                    elif len(calls) == 1:
+                                        index = next(iter(calls))
+                                    else:
+                                        raise ModelError("AMBIGUOUS_TOOL_CALL_DELTA")
+                                elif index is None:
+                                    index = 0
+                                if type(index) is not int or index < 0:
+                                    raise ModelError("INVALID_MODEL_RESPONSE")
+                                if call_id:
+                                    if not isinstance(call_id, str):
+                                        raise ModelError("INVALID_MODEL_RESPONSE")
+                                    prior_index = call_ids.get(call_id)
+                                    if prior_index is not None and prior_index != index:
+                                        raise ModelError("INVALID_MODEL_RESPONSE")
+                                    previous_id = calls.get(index, {}).get("id")
+                                    if previous_id and previous_id != call_id:
+                                        raise ModelError("INVALID_MODEL_RESPONSE")
+                                    call_ids[call_id] = index
                                 target = calls.setdefault(
                                     index,
                                     {

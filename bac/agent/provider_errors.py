@@ -64,9 +64,10 @@ def request_topology(body):
         if m.get("role") == "assistant"
         for c in m.get("tool_calls", [])
     ]
+    choice = body.get("tool_choice")
+    choice = choice if isinstance(choice, dict) else {}
     return {
-        "forced_final": body.get("tool_choice", {}).get("function", {}).get("name")
-        == "render_answer",
+        "forced_final": choice.get("function", {}).get("name") == "render_answer",
         "declared_tool_count": len(declared),
         "prior_tool_calls": len(calls),
         "missing_declaration_count": sum(
@@ -81,6 +82,8 @@ def request_topology(body):
 
 def provider_diagnostic(code, payload, topology):
     """Text is examined transiently to produce a hint, NOT a proved diagnosis."""
+    if isinstance(payload, list) and len(payload) == 1:
+        payload = payload[0]
     error = payload.get("error", {}) if isinstance(payload, dict) else {}
     status = error.get("status") if isinstance(error, dict) else None
     text = error.get("message", "") if isinstance(error, dict) else error
