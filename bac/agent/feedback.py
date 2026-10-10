@@ -4,6 +4,10 @@ from pydantic import ValidationError
 from fastapi import HTTPException
 
 EXAMPLES = {
+    "run_python": {
+        "code": 'import sympy as sp\nx = sp.symbols("x", real=True)\nf = x**3\nd = sp.diff(f, x)\nemit("derivative", str(d))\ncheck("derivative identity", bool(sp.simplify(d-3*x**2) == 0), "real x; symbolic identity only")',
+        "inputs": {},
+    },
     "plot_function": {
         "expression": "v0y-g*t",
         "variable": "t",

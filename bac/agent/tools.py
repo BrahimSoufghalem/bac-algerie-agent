@@ -1,7 +1,9 @@
 import time, hashlib
 from bac.core.db import uid
 from bac.science.runner import ScienceRunner
-from bac.science.registry import CONTRACTS, DESCRIPTIONS
+from bac.science.registry import CONTRACTS
+from bac.science.python_contract import PythonCode, DESCRIPTION
+from bac.science.python_runner import PythonRunner
 from bac.science.contracts import PlotFromResult
 from pydantic import Field
 from bac.core.db import js
@@ -61,7 +63,8 @@ class Tools:
         self.assets = set()
         self.run_id = run_id
         self.scientific = {}
-        self.runner = ScienceRunner(s.settings)
+        self.runner = ScienceRunner(s.settings)  # Historical/internal compatibility only.
+        self.python_runner = PythonRunner(s.settings)
         self.learning = Learning(s)
         self.private = PrivateFiles(s)
         self.pending_private = None
@@ -137,16 +140,7 @@ class Tools:
                 SourceImage,
             ),
         ]
-        entries.extend(
-            (name, DESCRIPTIONS[name], schema) for name, schema in CONTRACTS.items()
-        )
-        entries.append(
-            (
-                "plot_from_result",
-                "Plot numeric array outputs actually computed in this run; no model replacements.",
-                PlotFromResult,
-            )
-        )
+        entries.append(("run_python", DESCRIPTION, PythonCode))
         entries.extend(
             [
                 (
@@ -300,7 +294,10 @@ class Tools:
             self.private_assets[payload["asset_id"]] = source
 
     def science(self, name, args):
-        if name == "plot_from_result":
+        if name == "run_python":
+            inputs = PythonCode.model_validate(args).model_dump()
+            output = self.python_runner.execute(inputs)
+        elif name == "plot_from_result":
             p = PlotFromResult.model_validate(args)
             previous = self.scientific.get(p.result_id)
             if not previous or previous["tool"] != "run_scientific_code":
@@ -435,7 +432,7 @@ class Tools:
                 raise ValueError("Teacher permission required")
             return self.learning.material(self, args)
 
-        if name in CONTRACTS or name == "plot_from_result":
+        if name in CONTRACTS or name in ("plot_from_result", "run_python"):
             return self.science(name, args)
         if name == "search_library":
             p = SearchArgs.model_validate(args)

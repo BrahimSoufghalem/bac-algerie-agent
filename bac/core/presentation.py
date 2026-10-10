@@ -11,7 +11,7 @@ INTERNAL = re.compile(
     r"|<!--.*?-->"
     r"|\b(?:essential_context|select_context|render_answer|search_library|get_lesson_full|get_section|get_table_of_contents|"
     r"get_document_metadata|inspect_source_image|verify_calculation|verify_equation|"
-    r"verify_dimensions|run_scientific_code|propose_note|write_learning_note|"
+    r"verify_dimensions|run_scientific_code|run_python|propose_note|write_learning_note|"
     r"save_practice_test|save_teaching_material|symbolic_math|convert_units|plot_function|"
     r"plot_data|plot_from_result|draw_diagram|list_lesson_parts|get_lesson_part|"
     r"get_exam_with_solution|get_exercise_collection|search_within_node|"

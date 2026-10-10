@@ -7,7 +7,13 @@ services:
     env_file: .env
     environment:
       DATA_DIR: /app/data
-    volumes: ["library:/app/data"]
+      PYTHON_SANDBOX_URL: http://python-sandbox:8080
+      PYTHON_SANDBOX_TOKEN_FILE: /run/masar-sandbox/token
+    volumes: ["library:/app/data", "python_auth:/run/masar-sandbox:ro"]
+    networks: [default, sandbox_net]
+    depends_on:
+      python-sandbox:
+        condition: service_healthy
     restart: unless-stopped
     init: true
     read_only: true
@@ -26,7 +32,13 @@ services:
     env_file: .env
     environment:
       DATA_DIR: /app/data
-    volumes: ["library:/app/data"]
+      PYTHON_SANDBOX_URL: http://python-sandbox:8080
+      PYTHON_SANDBOX_TOKEN_FILE: /run/masar-sandbox/token
+    volumes: ["library:/app/data", "python_auth:/run/masar-sandbox:ro"]
+    networks: [default, sandbox_net]
+    depends_on:
+      python-sandbox:
+        condition: service_healthy
     restart: unless-stopped
     init: true
     read_only: true
@@ -39,5 +51,51 @@ services:
     healthcheck:
       disable: true
     security_opt: ["no-new-privileges:true"]
+  python-runtime:
+    build:
+      context: .
+      dockerfile: deploy/python-sandbox/runtime.Dockerfile
+    image: masar-python-runtime:local
+    entrypoint: ["python", "-I", "-c", "print('Python runtime image ready')"]
+    network_mode: none
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    restart: "no"
+  python-sandbox:
+    build:
+      context: .
+      dockerfile: deploy/python-sandbox/broker.Dockerfile
+    image: masar-python-broker:local
+    environment:
+      PYTHON_SANDBOX_IMAGE: masar-python-runtime:local
+      PYTHON_SANDBOX_TOKEN_FILE: /run/masar-sandbox/token
+    # Trusted broker only. NEVER mount this socket in API, worker or runtime.
+    volumes: ["/var/run/docker.sock:/var/run/docker.sock", "python_auth:/run/masar-sandbox"]
+    networks: [sandbox_net]
+    depends_on:
+      python-runtime:
+        condition: service_completed_successfully
+    read_only: true
+    tmpfs: ["/tmp:size=16m,mode=1777"]
+    mem_limit: 256m
+    pids_limit: 128
+    cap_drop: [ALL]
+    # Needed only to create the owner-readable token on first volume initialization.
+    cap_add: [CHOWN, FOWNER, DAC_OVERRIDE]
+    security_opt: ["no-new-privileges:true"]
+    restart: unless-stopped
+    init: true
+    healthcheck:
+      test: ["CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/health', timeout=4)"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+networks:
+  sandbox_net:
+    internal: true
 volumes:
   library:
+  python_auth:
+

@@ -412,8 +412,16 @@ def test_scientific_results_private_api_integrity_and_delete(services):
 
 
 @pytest.mark.asyncio
-async def test_actual_agent_science_tools_records_sse_replay_and_no_fake_pass(services):
+async def test_actual_agent_science_tools_records_sse_replay_and_no_fake_pass(services, monkeypatch):
     user, chat = chat_and_config(services)
+
+    # Mock the broker transport, never execute model Python on the host.
+    from bac.science.python_runner import PythonRunner
+    monkeypatch.setattr(PythonRunner, "execute", lambda self, args: {
+        "status": "failed", "outputs": {"actual": 4},
+        "checks": [{"label": "2+2 equals proposed 5", "status": "failed", "details": "exact integers"}],
+        "origin": "executed_python", "scope": "Mocked broker output for pipeline test only",
+    })
 
     class ScriptedScience:
         def __init__(self):
@@ -423,8 +431,8 @@ async def test_actual_agent_science_tools_records_sse_replay_and_no_fake_pass(se
             self.step += 1
             if self.step == 1:
                 name, args = (
-                    "verify_calculation",
-                    {"expression": "2+2", "expected": "5"},
+                    "run_python",
+                    {"code": 'actual = 2+2\nemit("actual", actual)\ncheck("2+2 equals proposed 5", actual == inputs["expected"], "exact integers")', "inputs": {"expected": 5}},
                 )
             else:
                 r = json.loads(messages[-1]["content"])
@@ -483,7 +491,7 @@ async def test_actual_agent_science_tools_records_sse_replay_and_no_fake_pass(se
     assert (
         replay.status_code == 200
         and "tool_end" not in replay.text
-        and "verify_calculation" not in replay.text
+        and "run_python" not in replay.text
     )
     assert client.get("/api/conversations/" + chat).json()["messages"][-1][
         "blocks"

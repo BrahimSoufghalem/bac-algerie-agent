@@ -656,9 +656,9 @@ class AgentEngine:
                         )
                         continue
                     tool_count += 1
-                    if selector and name not in available_names:
+                    if name not in available_names:
                         raise ValueError(
-                            "This tool is not available in coordinated-source mode; use delivered evidence or a concise clarification"
+                            "This tool is not available; use run_python for computation and the currently advertised tools for sources"
                         )
                     if selector and name == "essential_context":
                         request = EssentialContext.model_validate(args)

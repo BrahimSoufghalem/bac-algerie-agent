@@ -103,6 +103,15 @@ jobs:
           docker run --rm -v masar-ci-data:/app/data -v masar-ci-backups:/backup masar-bac:ci python -m bac.cli backup --output /backup/smoke.zip
           docker run --rm -v masar-ci-backups:/backup:ro -v masar-ci-restore:/restore masar-bac:ci python -m bac.cli restore --archive /backup/smoke.zip --destination /restore/new-data
           docker run --rm -e DATA_DIR=/restore/new-data -v masar-ci-restore:/restore masar-bac:ci python -m bac.cli migrate
+      - name: Authenticated Python sandbox Compose smoke (no AI calls)
+        run: |
+          cp .env.example .env
+          export COMPOSE_PROJECT_NAME=masar-ci
+          docker compose up -d --build --wait python-sandbox
+          docker run --rm --network masar-ci_sandbox_net -v masar-ci_python_auth:/run/masar-sandbox:ro -e PYTHON_SANDBOX_URL=http://python-sandbox:8080 -e PYTHON_SANDBOX_TOKEN_FILE=/run/masar-sandbox/token masar-bac:ci python -c 'from bac.core.config import Settings; from bac.science.python_runner import PythonRunner; r=PythonRunner(Settings.from_env()).execute({"code":"import sympy as sp\nfrom pint import UnitRegistry\nx=sp.symbols(\"x\")\nemit(\"derivative\",str(sp.diff(x**3,x)))\ncheck(\"identity\",bool(sp.diff(x**3,x)==3*x**2))"}); assert "error" not in r, r; assert r["outputs"]["derivative"]=="3*x**2"; assert r["status"]=="computed"; print("Authenticated isolated Python OK")'
+      - name: Sandbox cleanup
+        if: always()
+        run: COMPOSE_PROJECT_NAME=masar-ci docker compose down --remove-orphans || true
       - name: Failure container logs
         if: failure()
         run: |
@@ -123,3 +132,23 @@ jobs:
               body += `\n### ${name}\n\`\`\`text\n${text}\n\`\`\`\n`;
             }
             await github.rest.issues.createComment({owner: context.repo.owner, repo: context.repo.repo, issue_number: context.issue.number, body: body.slice(-26000)});
+
+  python-sandbox:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - name: Dependencies and isolated Python images
+        run: |
+          python -m pip install -r requirements-dev.txt -c constraints.txt
+          docker build -f deploy/python-sandbox/runtime.Dockerfile -t masar-python-runtime:local .
+          docker build -f deploy/python-sandbox/broker.Dockerfile -t masar-python-broker:local .
+      - name: Actual container isolation, computation and limits (no AI calls)
+        env:
+          MASAR_PYTHON_DOCKER_TESTS: '1'
+        run: python -m pytest tests/test_python_sandbox.py -q
