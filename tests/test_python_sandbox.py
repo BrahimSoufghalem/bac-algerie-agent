@@ -427,12 +427,21 @@ emit("chart", {"title":"x²","x_label":"x","y_label":"f(x)","kind":"line","serie
 
 
 @docker_only
-def test_docker_no_network_no_host_files_no_secrets_read_only_and_temporary_files():
+def test_docker_no_network_no_host_files_no_secrets_read_only_and_temporary_files(
+    monkeypatch,
+):
+    # Official Python image has public GPG_KEY build metadata, not an API secret.
+    # Inject a fake provider credential into the BROKER env: it must not reach code.
+    monkeypatch.setenv(
+        "MASAR_TEST_PROVIDER_SECRET", "test-only-not-a-real-provider-key"
+    )
     code = """import os, socket
 check("platform files unavailable", not os.path.exists("/app/data"))
 check("docker socket unavailable", not os.path.exists("/var/run/docker.sock"))
 check("auth token unavailable", not os.path.exists("/run/masar-sandbox/token"))
-check("provider secrets absent", not any("KEY" in k or "TOKEN" in k for k in os.environ))
+suspect = [k for k in os.environ if any(t in k for t in ("API_KEY", "TOKEN", "SECRET", "PASSWORD"))]
+check("provider secrets absent", not suspect, ",".join(suspect))
+check("broker environment not inherited", os.getenv("MASAR_TEST_PROVIDER_SECRET") is None)
 try:
     open("/sandbox/modified", "w").write("bad")
     readonly = False
@@ -450,7 +459,7 @@ with open("/tmp/work", "w") as f:
 check("temporary Python files allowed", open("/tmp/work").read() == "temporary")"""
     output = broker.execute(request(code))
     assert "error" not in output, output
-    assert all(c["status"] == "passed" for c in output["checks"])
+    assert all(c["status"] == "passed" for c in output["checks"]), output["checks"]
     second = broker.execute(
         request('import os\ncheck("no previous file", not os.path.exists("/tmp/work"))')
     )
@@ -593,3 +602,14 @@ async def test_agent_uses_python_and_rejects_retired_calls(
     assert len(rows) == (0 if retired else 1)
     if not retired:
         assert rows[0]["tool"] == "run_python"
+
+
+def test_retired_tool_feedback_routes_to_python_without_obsolete_syntax():
+    from bac.agent.feedback import tool_feedback
+    from bac.science.registry import CONTRACTS
+
+    for name in [*CONTRACTS, "plot_from_result"]:
+        feedback = tool_feedback(name, ValueError("This tool is not available"))
+        assert feedback["replacement_tool"] == "run_python"
+        assert "import sympy" in feedback["example"]["code"]
+        assert "expression" not in feedback["example"]

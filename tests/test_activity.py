@@ -93,7 +93,7 @@ class WorkProvider:
     async def stream(self, messages, tools):
         self.step += 1
         name, args = (
-            ("calculate", {"expression": "2+2"})
+            ("run_python", {"code": 'emit("actual", 2+2)'})
             if self.step == 1
             else (
                 "render_answer",
@@ -119,9 +119,29 @@ class WorkProvider:
         }
 
 
+@pytest.fixture
+def mock_work_python(monkeypatch):
+    # Offline transport fixture, never a production host execution fallback.
+    from bac.science.python_runner import PythonRunner
+
+    monkeypatch.setattr(
+        PythonRunner,
+        "execute",
+        lambda self, args: {
+            "status": "computed",
+            "outputs": {"actual": 4},
+            "checks": [],
+            "stdout": "",
+            "origin": "executed_python",
+            "scope": "Mocked broker result for activity tests",
+        },
+    )
+
+
 @pytest.mark.asyncio
 async def test_two_answers_keep_their_own_activity_on_history_export_and_reopen(
     services,
+    mock_work_python,
 ):
     user, chat = chat_and_config(services)
     services.chat_factory = lambda config, key: WorkProvider()
@@ -163,6 +183,8 @@ async def test_two_answers_keep_their_own_activity_on_history_export_and_reopen(
         "tool_start",
         "tool_end",
         "calculate",
+        "run_python",
+        "code",
         "expression",
         "render_answer",
         "inputs",
@@ -176,6 +198,7 @@ async def test_two_answers_keep_their_own_activity_on_history_export_and_reopen(
 @pytest.mark.asyncio
 async def test_replayed_sse_is_ordered_sanitized_and_restores_prior_running_entries(
     services,
+    mock_work_python,
 ):
     user, chat = chat_and_config(services)
     services.chat_factory = lambda config, key: WorkProvider()
@@ -206,6 +229,7 @@ async def test_replayed_sse_is_ordered_sanitized_and_restores_prior_running_entr
     assert final["activity"] == client.get("/api/runs/" + rid).json()["activity"]
     for private in [
         "calculate",
+        "run_python",
         "tool_start",
         "tool_end",
         "model_start",

@@ -2,33 +2,12 @@
 
 from pydantic import ValidationError
 from fastapi import HTTPException
+from bac.science.registry import CONTRACTS
 
 EXAMPLES = {
     "run_python": {
         "code": 'import sympy as sp\nx = sp.symbols("x", real=True)\nf = x**3\nd = sp.diff(f, x)\nemit("derivative", str(d))\ncheck("derivative identity", bool(sp.simplify(d-3*x**2) == 0), "real x; symbolic identity only")',
         "inputs": {},
-    },
-    "plot_function": {
-        "expression": "v0y-g*t",
-        "variable": "t",
-        "values": {"v0y": "10", "g": "9.8"},
-        "lower": 0,
-        "upper": 2,
-        "samples": 41,
-        "title": "Illustrative vertical velocity",
-        "x_label": "time (s)",
-        "y_label": "velocity (m/s)",
-    },
-    "plot_data": {
-        "title": "Illustrative velocity",
-        "x_label": "time (s)",
-        "y_label": "velocity (m/s)",
-        "kind": "line",
-        "series": [{"label": "v", "x": [0, 1, 2], "y": [10, 0.2, -9.6]}],
-    },
-    "run_scientific_code": {
-        "code": 'ts = linspace(0, 2, 21)\nys = []\nfor t in ts:\n    ys = ys + [v0y - g*t]\nemit("time", ts)\nemit("velocity", ys)',
-        "inputs": {"v0y": 10, "g": 9.8},
     },
 }
 
@@ -81,8 +60,16 @@ def tool_feedback(name, exc):
             }
             for e in exc.errors(include_input=False, include_url=False)[:8]
         ]
-    if name in EXAMPLES:
-        result["example"] = EXAMPLES[name]
+    example_name = name
+    if name in CONTRACTS or name == "plot_from_result":
+        example_name = "run_python"
+        result["replacement_tool"] = "run_python"
+        result["instruction"] = (
+            "This specialized computation tool is retired. Use ordinary Python via run_python. "
+            + result["instruction"]
+        )
+    if example_name in EXAMPLES:
+        result["example"] = EXAMPLES[example_name]
         result["example_note"] = (
             "Illustrative syntax only; these numeric values are not supplied by the student or their source."
         )
