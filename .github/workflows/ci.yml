@@ -2,6 +2,9 @@ name: Platform verification
 on: [push, pull_request]
 permissions:
   contents: read
+defaults:
+  run:
+    shell: bash
 jobs:
   verify:
     permissions:
@@ -103,6 +106,15 @@ jobs:
           docker run --rm -v masar-ci-data:/app/data -v masar-ci-backups:/backup masar-bac:ci python -m bac.cli backup --output /backup/smoke.zip
           docker run --rm -v masar-ci-backups:/backup:ro -v masar-ci-restore:/restore masar-bac:ci python -m bac.cli restore --archive /backup/smoke.zip --destination /restore/new-data
           docker run --rm -e DATA_DIR=/restore/new-data -v masar-ci-restore:/restore masar-bac:ci python -m bac.cli migrate
+      - name: Authenticated Python sandbox Compose smoke (no AI calls)
+        run: |
+          cp .env.example .env
+          export COMPOSE_PROJECT_NAME=masar-ci
+          docker compose up -d --build --wait python-sandbox
+          docker run --rm --network masar-ci_sandbox_net -v masar-ci_python_auth:/run/masar-sandbox:ro -e PYTHON_SANDBOX_URL=http://python-sandbox:8080 -e PYTHON_SANDBOX_TOKEN_FILE=/run/masar-sandbox/token masar-bac:ci python -c 'from bac.core.config import Settings; from bac.science.python_runner import PythonRunner; r=PythonRunner(Settings.from_env()).execute({"code":"import sympy as sp\nfrom pint import UnitRegistry\nx=sp.symbols(\"x\")\nemit(\"derivative\",str(sp.diff(x**3,x)))\ncheck(\"identity\",bool(sp.diff(x**3,x)==3*x**2))"}); assert "error" not in r, r; assert r["outputs"]["derivative"]=="3*x**2"; assert r["status"]=="computed"; print("Authenticated isolated Python OK")'
+      - name: Sandbox cleanup
+        if: always()
+        run: COMPOSE_PROJECT_NAME=masar-ci docker compose down --remove-orphans || true
       - name: Failure container logs
         if: failure()
         run: |
@@ -123,3 +135,46 @@ jobs:
               body += `\n### ${name}\n\`\`\`text\n${text}\n\`\`\`\n`;
             }
             await github.rest.issues.createComment({owner: context.repo.owner, repo: context.repo.repo, issue_number: context.issue.number, body: body.slice(-26000)});
+
+  python-sandbox:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - name: Dependencies and isolated Python images
+        run: |
+          mkdir -p .ci-logs
+          python -m pip install -r requirements-dev.txt -c constraints.txt
+          docker build -f deploy/python-sandbox/runtime.Dockerfile -t masar-python-runtime:local . 2>&1 | tee .ci-logs/python-images.log
+          docker build -f deploy/python-sandbox/broker.Dockerfile -t masar-python-broker:local . 2>&1 | tee -a .ci-logs/python-images.log
+      - name: Actual container isolation, computation and limits (no AI calls)
+        env:
+          MASAR_PYTHON_DOCKER_TESTS: '1'
+        run: python -m pytest tests/test_python_sandbox.py -q 2>&1 | tee .ci-logs/python-tests.log
+      - name: Save isolated Python evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: python-isolation-tests
+          path: .ci-logs/python-*.log
+          retention-days: 14
+      - name: Report isolated Python failure to internal PR
+        if: failure() && github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            let body = `Isolated Python failure for ${context.payload.pull_request.head.sha}\nRun: ${process.env.GITHUB_SERVER_URL}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}\n`;
+            for (const name of ['python-images', 'python-tests']) {
+              const path = `.ci-logs/${name}.log`;
+              if (!fs.existsSync(path)) continue;
+              const text = fs.readFileSync(path, 'utf8').split('\n').slice(-140).join('\n').replace(/(?:sk-[a-zA-Z0-9-]{25,}|gh[pousr]_[a-zA-Z0-9]{25,})/g, '[REDACTED]').replace(/```/g, '~~~');
+              body += `\n### ${name}\n\`\`\`text\n${text}\n\`\`\`\n`;
+            }
+            await github.rest.issues.createComment({owner: context.repo.owner, repo: context.repo.repo, issue_number: context.issue.number, body: body.slice(-28000)});

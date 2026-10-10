@@ -19,6 +19,7 @@ LABELS = {
     "inspect_source_image": ("review", "فهم المعطيات"),
     "list_private_uploads": ("review", "مراجعة المعطيات المرفقة"),
     "read_private_page": ("review", "فهم المعطيات المرفقة"),
+    "run_python": ("math", "حساب القيم ومراجعتها"),
     "calculate": ("math", "حساب القيم"),
     "symbolic_math": ("math", "معالجة العلاقات الرياضية"),
     "convert_units": ("math", "مراجعة الوحدات"),

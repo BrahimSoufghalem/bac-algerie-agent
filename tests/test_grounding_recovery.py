@@ -189,21 +189,27 @@ async def test_retry_restores_actual_source_and_keeps_failed_attempt_in_history_
 
 
 @pytest.mark.asyncio
-async def test_graph_error_is_actionable_and_corrected_with_grounded_reply(services):
+async def test_graph_error_is_actionable_and_corrected_with_grounded_reply(
+    services, monkeypatch
+):
     node = await publish_reference(services)
     user, chat = chat_and_config(services)
     seen = []
-    good = {
-        "expression": "v0y-g*t",
-        "variable": "t",
-        "values": {"v0y": "10", "g": "9.8"},
-        "lower": 0,
-        "upper": 2,
-        "samples": 21,
-        "title": "مثال عددي توضيحي",
-        "x_label": "t (s)",
-        "y_label": "vy (m/s)",
-    }
+    # Execute fixed trusted fixture code, never incoming arbitrary model code.
+    from bac.science.python_child import compute
+    from bac.science.python_contract import validate_output
+    from bac.science.python_runner import PythonRunner
+
+    code = 'ts = [i/10 for i in range(21)]\nys = [10-9.8*t for t in ts]\nemit("chart", {"title":"مثال عددي توضيحي","x_label":"t (s)","y_label":"vy (m/s)","kind":"line","series":[{"label":"vy","x":ts,"y":ys}]})'
+    good = {"code": code}
+
+    def fixed_broker_result(self, args):
+        assert args["code"] == code
+        return validate_output(
+            compute({"code": code, "inputs": {}, "limits": {"output_chars": 16000}})
+        )
+
+    monkeypatch.setattr(PythonRunner, "execute", fixed_broker_result)
 
     class Provider:
         async def stream(self, messages, definitions):
@@ -212,16 +218,12 @@ async def test_graph_error_is_actionable_and_corrected_with_grounded_reply(servi
             if step == 1:
                 message = call("get_section", {"node_id": node}, step)
             elif step == 2:
-                message = call(
-                    "plot_function", {"expression": "v0y-g*t", "title": "invalid"}, step
-                )
+                message = call("run_python", {"inputs": {}}, step)
             elif step == 3:
                 feedback = json.loads(messages[-1]["content"])
-                assert {"lower", "upper"}.issubset(
-                    {i["field"] for i in feedback["issues"]}
-                )
-                assert feedback["example"]["values"]["g"] == "9.8"
-                message = call("plot_function", good, step)
+                assert "code" in {i["field"] for i in feedback["issues"]}
+                assert "import sympy" in feedback["example"]["code"]
+                message = call("run_python", good, step)
             else:
                 result = json.loads(messages[-1]["content"])
                 message = call(
@@ -253,7 +255,7 @@ async def test_graph_error_is_actionable_and_corrected_with_grounded_reply(servi
     )
     messages = attach_activity(services.db, chat, user["id"], messages)
     states = [
-        i["state"] for i in messages[-1]["activity"]["items"] if i["kind"] == "diagram"
+        i["state"] for i in messages[-1]["activity"]["items"] if i["kind"] == "math"
     ]
     assert states == ["unavailable", "done"]
     blocks = json.loads(messages[-1]["blocks"])

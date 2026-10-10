@@ -17,9 +17,11 @@ class Settings:
     max_tool_chars: int = 22000
     max_daily_requests: int = 50
     max_upload_mb: int = 100
-    science_timeout: int = 6
-    science_cpu_seconds: int = 4
-    science_memory_mb: int = 256
+    science_timeout: int = 15
+    science_cpu_seconds: int = 10
+    science_memory_mb: int = 512
+    python_sandbox_url: str = ""
+    python_sandbox_token_file: Path = Path("/run/masar-sandbox/token")
     allow_private_model_urls: bool = False
 
     public_origin: str = ""
@@ -57,9 +59,11 @@ class Settings:
             max_tool_chars=int(os.getenv("MAX_TOOL_CHARS", "22000")),
             max_daily_requests=int(os.getenv("MAX_DAILY_REQUESTS", "50")),
             max_upload_mb=int(os.getenv("MAX_UPLOAD_MB", "100")),
-            science_timeout=int(os.getenv("SCIENCE_TIMEOUT", "6")),
-            science_cpu_seconds=int(os.getenv("SCIENCE_CPU_SECONDS", "4")),
-            science_memory_mb=int(os.getenv("SCIENCE_MEMORY_MB", "256")),
+            science_timeout=int(os.getenv("SCIENCE_TIMEOUT", "15")),
+            science_cpu_seconds=int(os.getenv("SCIENCE_CPU_SECONDS", "10")),
+            science_memory_mb=int(os.getenv("SCIENCE_MEMORY_MB", "512")),
+            python_sandbox_url=os.getenv("PYTHON_SANDBOX_URL", ""),
+            python_sandbox_token_file=Path(os.getenv("PYTHON_SANDBOX_TOKEN_FILE", "/run/masar-sandbox/token")),
             allow_private_model_urls=os.getenv("ALLOW_PRIVATE_MODEL_URLS", "false")
             == "true",
         )

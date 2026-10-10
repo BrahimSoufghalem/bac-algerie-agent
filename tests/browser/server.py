@@ -15,6 +15,16 @@ from tests.grounding_fixture import publish_reference
 from bac.agent.provider import ModelError
 
 fixture_nodes = {}
+from bac.science.python_runner import PythonRunner
+from tests.browser.python_fixture import (
+    CHART_CODES,
+    DIAGRAM_CODE,
+    VELOCITY_CODE,
+    fixed_python_result,
+)
+
+# Test server only; no arbitrary code, no production fallback.
+PythonRunner.execute = fixed_python_result
 
 
 class FixtureChat:
@@ -131,10 +141,22 @@ async def lifespan(app):
     fixture_nodes["projectile"] = await publish_reference(s, "projectile")
     from bac.library.service import Library
     from tests.test_library import SOURCE
+
     lib = Library(s)
-    source = s.store.path("browser-heat.md"); source.write_text(SOURCE)
+    source = s.store.path("browser-heat.md")
+    source.write_text(SOURCE)
     owner = s.db.one("SELECT id FROM users WHERE email='owner@test.invalid'")["id"]
-    result = lib.upload(source, "browser-heat.md", {"title":"الحرارة — مصدر محلي", "kind":"book", "subject":"physics", "track":"science"}, owner)
+    result = lib.upload(
+        source,
+        "browser-heat.md",
+        {
+            "title": "الحرارة — مصدر محلي",
+            "kind": "book",
+            "subject": "physics",
+            "track": "science",
+        },
+        owner,
+    )
     lib.review(result["version_id"], owner, True, "Synthetic fixture")
     lib.publish(result["version_id"], owner)
     engine = AgentEngine(s)
@@ -152,11 +174,11 @@ app.router.lifespan_context = lifespan
 
 
 class FixtureScience:
-    """Exercises real scientific tools with an explicit no-network chat fixture."""
+    """Real tool/provenance pipeline with fixed trusted offline Python transport."""
 
     def __init__(self):
         self.step = 0
-        self.checks = []
+        self.chart_id = None
 
     async def stream(self, messages, tools):
         self.step += 1
@@ -164,108 +186,43 @@ class FixtureScience:
             question = next(
                 m["content"] for m in reversed(messages) if m["role"] == "user"
             )
-            self.kind = (
+            kind = (
                 "bar"
                 if "أعمدة" in question
                 else "scatter"
                 if "نقاط" in question
                 else "line"
             )
-            tasks = [
-                ("verify_calculation", {"expression": "2+2", "expected": "5"}),
-                (
-                    "verify_dimensions",
-                    {
-                        "lhs": "v*t+a*t**2/2",
-                        "rhs": "d",
-                        "units": {"v": "m/s", "t": "s", "a": "m/s**2", "d": "m"},
-                    },
-                ),
-            ]
+            name, args = "run_python", {"code": CHART_CODES[kind]}
         elif self.step == 2:
-            self.checks = [
-                json.loads(x["content"])["result_id"]
-                for x in messages
-                if x["role"] == "tool"
-            ]
-            tasks = [
-                (
-                    "run_scientific_code",
-                    {
-                        "code": 'xs = linspace(0, 2, 21)\nys = []\nfor t in xs:\n    ys = ys + [v*t + a*t**2/2]\nemit("time", xs)\nemit("distance", ys)',
-                        "inputs": {"v": 3, "a": 2},
-                    },
-                )
-            ]
-        elif self.step == 3:
-            result = json.loads(messages[-1]["content"])
-            tasks = [
-                (
-                    "plot_from_result",
-                    {
-                        "result_id": result["result_id"],
-                        "x_output": "time",
-                        "y_output": "distance",
-                        "title": "الحركة تحت تسارع ثابت — بيانات اختبار",
-                        "x_label": "time (s)",
-                        "y_label": "distance (m)",
-                        "kind": self.kind,
-                    },
-                )
-            ]
-            tasks.append(
-                (
-                    "draw_diagram",
-                    {
-                        "title": "مخطط متجه تعليمي — مثال مقيّد",
-                        "x_min": -2,
-                        "x_max": 2,
-                        "y_min": -2,
-                        "y_max": 2,
-                        "elements": [
-                            {"kind": "circle", "x": 0, "y": 0, "radius": 0.4},
-                            {
-                                "kind": "vector",
-                                "x": 0,
-                                "y": 0,
-                                "x2": 1,
-                                "y2": 1,
-                                "label": "F = ma",
-                            },
-                        ],
-                    },
-                )
-            )
+            self.chart_id = json.loads(messages[-1]["content"])["result_id"]
+            name, args = "run_python", {"code": DIAGRAM_CODE}
         else:
-            result = json.loads(messages[-2]["content"])
-            diagram = json.loads(messages[-1]["content"])
-            tasks = [
-                (
-                    "render_answer",
-                    {
-                        "response_kind": "calculation",
-                        "blocks": [
-                            {
-                                "type": "text",
-                                "text": "## حساب علمي بأدوات فعلية\n\nهذا اختبار محلي صريح دون نموذج خارجي. نبدأ بفحص نتيجة خاطئة، ثم نفحص الأبعاد ونحسب مسارًا.",
-                            },
-                            {"type": "verification", "result_id": self.checks[0]},
-                            {
-                                "type": "equation",
-                                "latex": "d=vt+\\frac{1}{2}at^2",
-                                "result_ids": [self.checks[1]],
-                            },
-                            {"type": "verification", "result_id": self.checks[1]},
-                            {"type": "graph", "result_id": result["result_id"]},
-                            {"type": "graph", "result_id": diagram["result_id"]},
-                            {
-                                "type": "text",
-                                "text": "### تفسير بعد الرسم\n\nباستخدام v = 3 m/s وa = 2 m/s² نحصل عند t = 2 s على d = 10 m. الأبعاد متسقة، لكن ذلك لا يثبت أن هذه المعطيات تفسر مسألة أصلية بعينها.",
-                            },
-                        ],
-                    },
-                )
-            ]
+            diagram_id = json.loads(messages[-1]["content"])["result_id"]
+            name, args = (
+                "render_answer",
+                {
+                    "response_kind": "calculation",
+                    "blocks": [
+                        {
+                            "type": "text",
+                            "text": "## حساب علمي عبر Python\n\nاختبار محلي بكود ثابت، دون نموذج خارجي. فحصنا نتيجة خاطئة وأبعاد حدّي المسافة وحسبنا المسار.",
+                        },
+                        {"type": "verification", "result_id": self.chart_id},
+                        {
+                            "type": "equation",
+                            "latex": "d=vt+\\frac{1}{2}at^2",
+                            "result_ids": [self.chart_id],
+                        },
+                        {"type": "graph", "result_id": self.chart_id},
+                        {"type": "graph", "result_id": diagram_id},
+                        {
+                            "type": "text",
+                            "text": "### تفسير بعد الرسم\n\nباستخدام v = 3 m/s وa = 2 m/s² نحصل عند t = 2 s على d = 10 m. الأبعاد متسقة، لكن ذلك لا يثبت صحة تفسير مسألة أصلية.",
+                        },
+                    ],
+                },
+            )
         yield {"type": "usage", "data": {"prompt_tokens": 0, "completion_tokens": 0}}
         yield {
             "type": "result",
@@ -274,11 +231,10 @@ class FixtureScience:
                 "content": None,
                 "tool_calls": [
                     {
-                        "id": f"science{self.step}_{i}",
+                        "id": f"science{self.step}",
                         "type": "function",
                         "function": {"name": name, "arguments": js(args)},
                     }
-                    for i, (name, args) in enumerate(tasks)
                 ],
             },
         }
@@ -481,26 +437,10 @@ class RetryFixture:
             name, args = "get_section", {"node_id": node}
         elif "رسم" in self.question:
             if self.step == 1:
-                name, args = (
-                    "plot_function",
-                    {"expression": "v0y-g*t", "title": "invalid"},
-                )
+                name, args = "run_python", {"inputs": {}}
             elif self.step == 2:
                 assert "issues" in json.loads(messages[-1]["content"])
-                name, args = (
-                    "plot_function",
-                    {
-                        "expression": "v0y-g*t",
-                        "variable": "t",
-                        "values": {"v0y": "10", "g": "9.8"},
-                        "lower": 0,
-                        "upper": 2,
-                        "samples": 21,
-                        "title": "مثال توضيحي",
-                        "x_label": "t (s)",
-                        "y_label": "vy (m/s)",
-                    },
-                )
+                name, args = "run_python", {"code": VELOCITY_CODE}
             else:
                 result = json.loads(messages[-1]["content"])
                 name, args = (
@@ -576,4 +516,16 @@ if not s.db.one("SELECT 1 FROM users WHERE email=?", ("study-new@test.invalid",)
 
 # Independent owner for design-only checks; retain production sign-in rate limits.
 if not s.db.one("SELECT 1 FROM users WHERE email=?", ("design-owner@test.invalid",)):
-    create_user(s.db, "design-owner@test.invalid", "Test-design-password-1", "مالك اختبار التصميم", "owner")
+    create_user(
+        s.db,
+        "design-owner@test.invalid",
+        "Test-design-password-1",
+        "مالك اختبار التصميم",
+        "owner",
+    )
+
+
+# Isolate provider controls from shared-owner sign-in/session mutations and quotas.
+# Production auth/rate policies are unchanged; this is a preseeded test account.
+if not s.db.one("SELECT 1 FROM users WHERE email=?", ("providers-owner@test.invalid",)):
+    create_user(s.db, "providers-owner@test.invalid", "Test-password-only-1", "مالك اختبار المزوّد", "owner")

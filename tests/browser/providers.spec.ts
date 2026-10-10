@@ -5,9 +5,14 @@ test("owner: independent provider presets clear secrets and never auto-generate"
   page,
 }) => {
   await page.goto("/");
-  await page.getByLabel("البريد الإلكتروني").fill("owner@test.invalid");
+  await page.getByLabel("البريد الإلكتروني").fill("providers-owner@test.invalid");
   await page.getByLabel("كلمة المرور").fill("Test-password-only-1");
+  // Dedicated account: other browser tests may mutate/throttle the shared owner.
+  const loginResponse = page.waitForResponse((r) =>
+    r.request().method() === "POST" && r.url().endsWith("/login"),
+  );
   await page.getByRole("button", { name: "دخول", exact: true }).click();
+  expect((await loginResponse).status()).toBe(200);
   await navigate(page, "⚙ إعداد النماذج");
   await expect(
     page.getByLabel("نمط الإجابة المنضبطة", { exact: false }),

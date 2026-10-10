@@ -18,7 +18,7 @@ export type ScientificResult = {
     absolute_error?: string;
     effective_tolerance?: string;
     reason?: string;
-    outputs?: Record<string, number | number[]>;
+    outputs?: Record<string, unknown>;
     conditions?: {
       condition: { lhs: string; relation: string; rhs: string };
       passed: boolean;
@@ -133,7 +133,7 @@ export function ScientificChart({ result }: { result: ScientificResult }) {
         <span className="muted">
           {result.output.origin === "sampled_function"
             ? "منحنى محسوب عيّنيًا"
-            : result.output.origin === "computed_program_outputs"
+            : ["computed_program_outputs", "executed_python"].includes(result.output.origin || "")
               ? "من المخرجات المحسوبة مباشرة"
               : "بيانات مقدّمة — لم يُؤكّد مصدرها"}
         </span>
