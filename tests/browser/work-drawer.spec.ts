@@ -43,8 +43,8 @@ test("each answer keeps its drawer above the reply after follow-up, reload and t
   );
   const history = await first.locator(".work-timeline").innerText();
   expect(history).toContain("حساب القيم");
-  expect(history).toContain("مراجعة النتيجة المحددة");
-  expect(history).not.toMatch(/calculate|tool|reasoning|library|get_section/);
+  expect(history).toContain("حساب القيم ومراجعتها");
+  expect(history).not.toMatch(/calculate|run_python|tool|reasoning|library|get_section/);
   expect(
     await first.evaluate((el) => {
       const article = el.closest(".message")!;

@@ -3,7 +3,7 @@ import { test, expect } from "@playwright/test";
 import { mkdir } from "node:fs/promises";
 import { snapshot, assertNoOverflow } from "./helpers";
 for (const mode of ["line", "bar", "scatter"])
-  test(`${mode}: real scientific tools → failed and passed evidence → interactive chart → explanation → reload/mobile`, async ({
+  test(`${mode}: fixed Python fixture → failed and passed checks → interactive chart → explanation → reload/mobile`, async ({
     page,
   }) => {
     const errors: string[] = [];
