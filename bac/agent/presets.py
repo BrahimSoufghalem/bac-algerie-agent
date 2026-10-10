@@ -1,5 +1,33 @@
 """Explicit endpoint/protocol presets. No key guessing or implicit generation."""
 
+GENERATION_OUTPUT_MIN = 6000
+FOCUSED_TEMPERATURE_MAX = 0.1
+
+
+def generation_config(config, slot, *, effective=True):
+    """Non-mutating compatibility defaults for old and new saved configurations.
+
+    Focus is local temperature policy, NOT an invented provider reasoning option.
+    Keep configured temperature when displaying/saving so disabling focus restores
+    an owner's model-specific setting. Extraction settings are never changed.
+    """
+    result = dict(config)
+    if slot not in {"agent", "selector"}:
+        return result
+    result["max_tokens"] = max(
+        result.get("max_tokens") or GENERATION_OUTPUT_MIN, GENERATION_OUTPUT_MIN
+    )
+    result.setdefault("focused_mode", True)
+    if slot == "selector":
+        result["temperature"] = 0
+    elif effective and result["focused_mode"]:
+        result["temperature"] = min(
+            result.get("temperature", FOCUSED_TEMPERATURE_MAX),
+            FOCUSED_TEMPERATURE_MAX,
+        )
+    return result
+
+
 PRESETS = [
     {
         "id": "openai",
@@ -8,7 +36,7 @@ PRESETS = [
         "protocol": "openai",
         "model": "gpt-4.1-mini",
         "temperature": 0.2,
-        "slots": ["agent", "extraction", "selector"],
+        "slots": ["agent", "selector"],
     },
     {
         "id": "google",
@@ -17,7 +45,7 @@ PRESETS = [
         "protocol": "openai",
         "model": "gemini-3.5-flash-lite",
         "temperature": 1.0,
-        "slots": ["agent", "extraction", "selector"],
+        "slots": ["agent", "selector"],
     },
     {
         "id": "anthropic",
@@ -26,7 +54,7 @@ PRESETS = [
         "protocol": "anthropic",
         "model": "claude-sonnet-4-5",
         "temperature": 0.2,
-        "slots": ["agent", "extraction"],
+        "slots": ["agent"],
     },
     {
         "id": "vercel",
@@ -35,7 +63,7 @@ PRESETS = [
         "protocol": "openai",
         "model": "openai/gpt-4.1-mini",
         "temperature": 0.2,
-        "slots": ["agent", "extraction", "selector"],
+        "slots": ["agent", "selector"],
     },
     {
         "id": "openrouter",
@@ -44,7 +72,7 @@ PRESETS = [
         "protocol": "openai",
         "model": "openai/gpt-4.1-mini",
         "temperature": 0.2,
-        "slots": ["agent", "extraction", "selector"],
+        "slots": ["agent", "selector"],
     },
     {
         "id": "custom",
@@ -53,7 +81,7 @@ PRESETS = [
         "protocol": "openai",
         "model": "",
         "temperature": 0.2,
-        "slots": ["agent", "extraction", "selector"],
+        "slots": ["agent", "selector"],
     },
 ]
 
@@ -64,8 +92,14 @@ def presets(slot):
         if slot not in entry["slots"]:
             continue
         p = {**entry}
+        if slot == "agent":
+            p.update(
+                temperature=FOCUSED_TEMPERATURE_MAX,
+                max_tokens=GENERATION_OUTPUT_MIN,
+                focused_mode=True,
+            )
         if slot == "selector":
-            p.update(temperature=0,max_tokens=1000)
+            p.update(temperature=0,max_tokens=GENERATION_OUTPUT_MIN)
         if slot == "selector" and p["id"] == "google":
             p.update(
                 name="Google AI Studio / Gemini LLM router",
@@ -73,7 +107,7 @@ def presets(slot):
                 protocol="google",
                 model="gemini-3.5-flash-lite",
                 temperature=0,
-                max_tokens=1000,
+                max_tokens=GENERATION_OUTPUT_MIN,
             )
         items.append(p)
     return items

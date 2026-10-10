@@ -207,7 +207,7 @@ def test_private_files_ownership_chat_expiry_delete_no_shared_index(
     if ext == ".png":
         assert path.read_bytes().startswith(b"\xff\xd8")
     assert services.db.rows("SELECT * FROM published_nodes") == []
-    assert services.extraction_db.rows("SELECT * FROM books") == []
+    assert services.db.rows("SELECT * FROM documents") == []
     services.db.execute(
         "UPDATE private_uploads SET expires_at=? WHERE id=?", (time.time() - 1, f["id"])
     )
@@ -429,37 +429,14 @@ def test_real_usage_nulls_pricing_cache_and_budget(services):
         check_budget(services, u["id"])
 
 
-@pytest.mark.asyncio
-async def test_metered_extraction_records_requests_not_cached_artifacts(services):
-    from bac.learning.usage import MeteredVision
-    from tests.test_library import FakeVision
-
+def test_markdown_import_never_records_model_usage(services):
     lib, r, owner = seeded(services)
-    cfg = uid("cfg")
-    services.db.execute(
-        "INSERT INTO model_configs VALUES(?,?,?,?,?)",
-        (
-            cfg,
-            "extraction",
-            js({"base_url": "https://example.org/v1", "model": "fake"}),
-            services.vault.encrypt("fake"),
-            time.time(),
-        ),
-    )
-    services.db.execute("INSERT INTO active_models VALUES(?,?)", ("extraction", cfg))
-    services.extraction_engine.provider_factory = lambda config, key: MeteredVision(
-        services, FakeVision(), config
-    )
-    lib.process(r["version_id"], owner)
-    while job := services.extraction_queue.claim():
-        await services.extraction_engine.process(job)
-    rows = services.db.rows("SELECT * FROM model_usage WHERE feature='extraction'")
-    assert len(rows) == 1 and rows[0]["run_id"] is None and rows[0]["config_id"] == cfg
+    lib.review(r["version_id"], owner, True, "Reviewed")
+    lib.publish(r["version_id"], owner)
     lib.version(r["version_id"])
-    assert (
-        len(services.db.rows("SELECT * FROM model_usage WHERE feature='extraction'"))
-        == 1
-    )
+    assert not services.db.rows("SELECT * FROM model_usage")
+    assert not hasattr(services, "extraction_engine")
+
 
 
 def test_private_api_csrf_no_store_export_erase(services):
@@ -550,7 +527,7 @@ def test_migrations_concurrent_startup(tmp_path):
     path = tmp_path / "fresh.sqlite3"
     with ThreadPoolExecutor(max_workers=4) as pool:
         list(pool.map(lambda _: DB(path), range(4)))
-    assert len(DB(path).rows("SELECT * FROM migrations")) == 9
+    assert len(DB(path).rows("SELECT * FROM migrations")) == 10
 
 
 @pytest.mark.parametrize(

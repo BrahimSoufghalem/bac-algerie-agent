@@ -9,7 +9,7 @@ async def main():
     loop = asyncio.get_running_loop()
     for sig in (signal.SIGTERM, signal.SIGINT):
         loop.add_signal_handler(
-            sig, lambda: (agent.stop.set(), s.extraction_engine.stopping.set())
+            sig, agent.stop.set
         )
     from bac.learning.private import PrivateFiles
     from bac.ops.lifecycle import MailWorker
@@ -17,7 +17,6 @@ async def main():
     try:
         await asyncio.gather(
             agent.run(),
-            s.extraction_engine.run(),
             PrivateFiles(s).run(agent.stop),
             MailWorker(s).run(agent.stop),
         )

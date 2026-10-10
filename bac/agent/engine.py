@@ -13,6 +13,7 @@ from bac.agent.full_index import (
 )
 from bac.core.study import StudyScope
 from bac.agent.compat import google_openai, automatic_prefix_cache
+from bac.agent.presets import generation_config
 from bac.agent.memory import history_text, recent_dialogue, fit_history, message_chars
 from bac.agent.provider_errors import safe_provider_diagnostic
 from bac.agent.tools import Tools
@@ -310,7 +311,7 @@ class AgentEngine:
 
     async def body(self, run):
         row = self.db.one("SELECT * FROM model_configs WHERE id=?", (run["config_id"],))
-        cfg = json.loads(row["config"])
+        cfg = generation_config(json.loads(row["config"]), "agent")
         deadline = time.monotonic() + self.s.settings.max_run_seconds
         context_limit = (
             cfg.get("max_context_chars") or self.s.settings.max_context_chars

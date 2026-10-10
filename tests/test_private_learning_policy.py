@@ -18,7 +18,7 @@ async def test_source_routes_hidden_even_with_known_ids_teacher_or_student(servi
     lib, r, owner = seeded(services)
     doc = await process_and_publish(services, lib, r, owner)
     node = lib.nodes(doc["id"], "lesson")[0]["id"]
-    asset = lib.node(node)["assets"][0]["id"]
+    asset = "legacy-known-asset-id"
     paths = [
         "/api/library/documents",
         f"/api/library/documents/{doc['id']}",
@@ -50,8 +50,7 @@ async def test_source_routes_hidden_even_with_known_ids_teacher_or_student(servi
     tools = Tools(services, user, chat)
     payload = tools.execute("get_lesson_full", {"node_id": node})
     assert payload["sources"]
-    tools.execute("inspect_source_image", {"asset_id": asset})
-    assert tools.pending_source[1].startswith(b"\xff\xd8")
+    assert not payload["assets"]  # Source descriptions are Markdown, not reconstructed images.
     with pytest.raises(ValueError, match="private"):
         tools.answer({"blocks": [{"type": "image", "asset_id": asset}]})
     c, h, user = setup_client(services, email="owner2@private.invalid", role="owner")
@@ -341,7 +340,7 @@ def test_upgrade_retires_source_tokens_and_practice_without_erasing_other_data(
     ]
     assert db.one("SELECT * FROM service_tokens")["revoked_at"] is not None
     assert db.one("SELECT * FROM users")["name"] == "Legacy"
-    assert len(db.rows("SELECT * FROM migrations")) == 9
+    assert len(db.rows("SELECT * FROM migrations")) == 10
 
 
 def test_all_internal_tool_identifiers_are_hidden_but_ordinary_english_is_kept():

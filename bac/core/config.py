@@ -16,7 +16,6 @@ class Settings:
     max_context_chars: int = 60000
     max_tool_chars: int = 22000
     max_daily_requests: int = 50
-    extraction_workers: int = 2
     max_upload_mb: int = 100
     science_timeout: int = 6
     science_cpu_seconds: int = 4
@@ -52,7 +51,6 @@ class Settings:
             data_dir=Path(os.getenv("DATA_DIR", "data")),
             secure_cookies=os.getenv("SECURE_COOKIES", "false") == "true",
             agent_workers=int(os.getenv("AGENT_WORKERS", "2")),
-            extraction_workers=int(os.getenv("EXTRACTION_WORKERS", "2")),
             max_run_steps=0,
             max_run_seconds=int(os.getenv("MAX_RUN_SECONDS", "180")),
             max_context_chars=int(os.getenv("MAX_CONTEXT_CHARS", "60000")),
@@ -67,7 +65,6 @@ class Settings:
         )
         if not (
             1 <= s.agent_workers <= 16
-            and 1 <= s.extraction_workers <= 16
             and 10 <= s.max_run_seconds <= 600
         ):
             raise ValueError("Invalid worker/run limits")

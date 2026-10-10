@@ -174,7 +174,7 @@ test("tablet drawer retains owner navigation after desktop rail collapse", async
     .click();
   await expect(
     page.getByRole("heading", {
-      name: "من المصدر إلى نسخة معتمدة",
+      name: "ملفاتك، بوضوح.",
       exact: true,
     }),
   ).toBeVisible();

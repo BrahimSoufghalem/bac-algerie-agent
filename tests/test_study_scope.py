@@ -15,6 +15,7 @@ from bac.agent.tools import Tools
 from bac.agent.engine import AgentEngine
 from bac.agent.full_index import build_catalog
 from tests.test_library import seeded, process_and_publish
+from tests.test_api import login
 from tests.test_agent import chat_and_config
 
 
@@ -160,8 +161,8 @@ async def test_scope_blocks_foreign_search_catalog_nodes_parts_assets_and_restor
         ("mathematics", "physics"),
     ]:
         upload = lib.upload(
-            services.store.path("test.pdf"),
-            "foreign.pdf",
+            services.store.path("test.md"),
+            "foreign.md",
             {
                 "title": "FOREIGN_SECRET",
                 "kind": "book",
@@ -173,7 +174,7 @@ async def test_scope_blocks_foreign_search_catalog_nodes_parts_assets_and_restor
         other = await process_and_publish(services, lib, upload, owner)
         n = lib.nodes(other["id"], "lesson")[0]["id"]
         foreign.append(
-            (other, n, lib.parts(n)[0]["id"], lib.node(n)["assets"][0]["id"])
+            (other, n, lib.parts(n)[0]["id"], "legacy-foreign-asset")
         )
     u, chat = chat_and_config(services)
     tools = Tools(services, u, chat, "test")
@@ -219,104 +220,37 @@ def pdf(s, name, pages):
     return path
 
 
-@pytest.mark.parametrize("layout", ["combined", "separate"])
-def test_paired_upload_links_one_version_without_claiming_official_solution(
-    services, layout
-):
+def test_paired_markdown_upload_links_owner_matched_solution_without_official_claim(services):
     lib, _, owner = seeded(services)
-    primary = pdf(services, "statement.pdf", 4)
-    answer = pdf(services, "answer.pdf", 2) if layout == "separate" else None
-    pack = {"layout": layout, "matching_confirmed": True}
-    if layout == "combined":
-        pack.update(
-            primary_range={"first_page": 1, "last_page": 2},
-            solution_range={"first_page": 3, "last_page": 4},
-        )
-    meta = {
-        "title": "Exam",
-        "kind": "exam",
-        "content_type": "bac_exams",
-        "subject": "physics",
-        "track": "experimental_sciences",
-        "year": "2025",
-    }
-    result = lib.upload_package(
-        primary,
-        "statement.pdf",
-        meta,
-        owner,
-        pack,
-        answer,
-        "answer.pdf" if answer else None,
-    )
-    v = lib.version(result["version_id"])
-    assert result["solution_linked"] and result["solution_status"] == "pending"
-    assert len(v["files"]) == 2 and {f["role"] for f in v["files"]} == {
-        "primary",
-        "solution",
-    }
-    sol = next(f for f in v["files"] if f["role"] == "solution")
-    assert (
-        sol["metadata"]["designation"] == "provided"
-        and sol["metadata"]["subject"] == "physics"
-    )
-    assert sol["verification"] == "pending"
-    assert (
-        v["status"] == "UPLOADED"
-        and not lib.get_doc(result["document_id"])["published_version"]
-    )
+    source = services.store.path("test.md")
+    meta={"kind":"exam","content_type":"bac_exams","subject":"physics","track":"science"}
+    result=lib.upload_package(source,"statement.md",meta,owner,{"layout":"separate","matching_confirmed":True},source,"answer.md")
+    v=lib.version(result["version_id"])
+    solution=next(f for f in v["files"] if f["role"]=="solution")
+    assert result["solution_linked"] and solution["verification"]=="owner_verified"
+    assert solution["metadata"]["designation"]=="provided"
+    assert v["status"]=="UPLOADED" and not lib.get_doc(result["document_id"])["published_version"]
 
 
-def test_paired_preflight_and_failure_rollback_preserve_old_versions(
-    services, monkeypatch
-):
+
+def test_paired_markdown_preflight_rollback_preserves_old_versions(services, monkeypatch):
     lib, r, owner = seeded(services)
-    primary = pdf(services, "p.pdf", 2)
-    answer = pdf(services, "a.pdf", 1)
-    meta = {"kind": "exam", "subject": "physics", "track": "experimental_sciences"}
-    before = services.db.rows("SELECT id FROM versions")
-    for pack, sol in [
-        ({"layout": "separate", "matching_confirmed": True}, None),
-        ({"layout": "combined", "matching_confirmed": True}, None),
-        ({"layout": "separate", "matching_confirmed": False}, answer),
-        ({"layout": "separate", "matching_confirmed": True}, primary),
-        ({"layout": "none"}, answer),
-    ]:
-        with pytest.raises(HTTPException):
-            lib.upload_package(primary, "p.pdf", meta, owner, pack, sol, "a.pdf")
-        assert services.db.rows("SELECT id FROM versions") == before
-    bad = services.store.path("bad.pdf")
-    bad.write_text("not a PDF")
-    with pytest.raises(Exception):
-        lib.upload_package(
-            primary,
-            "p.pdf",
-            meta,
-            owner,
-            {"layout": "separate", "matching_confirmed": True},
-            bad,
-            "bad.pdf",
-        )
-    assert services.db.rows("SELECT id FROM versions") == before
-
-    def fail(*a, **k):
+    source=services.store.path("test.md")
+    before=services.db.rows("SELECT id FROM versions")
+    meta={"kind":"exam","subject":"physics","track":"science"}
+    bad=services.store.path("bad.md");bad.write_text("missing metadata")
+    with pytest.raises(HTTPException):lib.upload_package(source,"p.md",meta,owner,{"layout":"separate","matching_confirmed":True},bad,"bad.md")
+    assert services.db.rows("SELECT id FROM versions")==before
+    original=lib._snapshot_file
+    def fail(*a,**kw):
+        original(*a,**kw)
         raise RuntimeError("injected failure")
+    monkeypatch.setattr(lib,"_snapshot_file",fail)
+    for existing in (None,r["document_id"]):
+        with pytest.raises(RuntimeError):lib.upload_package(source,"p.md",meta,owner,{"layout":"separate","matching_confirmed":True},source,"a.md",existing)
+        assert services.db.rows("SELECT id FROM versions")==before
+    assert len(services.db.rows("SELECT id FROM documents"))==1
 
-    monkeypatch.setattr(lib, "attach_solution", fail)
-    for existing in [None, r["document_id"]]:
-        with pytest.raises(RuntimeError):
-            lib.upload_package(
-                primary,
-                "p.pdf",
-                meta,
-                owner,
-                {"layout": "separate", "matching_confirmed": True},
-                answer,
-                "a.pdf",
-                existing,
-            )
-        assert services.db.rows("SELECT id FROM versions") == before
-        assert len(services.db.rows("SELECT id FROM documents")) == 1
 
 
 @pytest.mark.asyncio
@@ -329,8 +263,8 @@ async def test_router_keeps_book_hierarchy_but_only_titles_for_nonbooks(services
         ("bac_exams", "exam"),
     ]:
         upload = lib.upload(
-            services.store.path("test.pdf"),
-            category + ".pdf",
+            services.store.path("test.md"),
+            category + ".md",
             {
                 "title": "FILE_TITLE_" + category,
                 "kind": kind,
@@ -383,47 +317,13 @@ def test_predefined_metadata_and_preferences_cannot_override_scope(services):
     assert pref["track"] == "علوم تجريبية" and pref["subjects"] == ["العلوم الفيزيائية"]
 
 
-def test_multipart_pair_api_and_invalid_second_pdf_leave_no_partial_document(services):
-    lib, _, owner = seeded(services)
-    from tests.test_api import login
-
-    c = TestClient(create_app(services))
-    h = login(c, "owner@example.com")
-    primary = pdf(services, "p-api.pdf", 2)
-    answer = pdf(services, "a-api.pdf", 1)
-    data = {
-        "metadata": json.dumps(
-            {
-                "kind": "exam",
-                "content_type": "school_tests",
-                "subject": "physics",
-                "track": "experimental_sciences",
-            }
-        ),
-        "package": json.dumps({"layout": "separate", "matching_confirmed": True}),
-    }
-    before = services.db.rows("SELECT id FROM documents")
-    r = c.post(
-        "/api/owner/documents/upload",
-        data=data,
-        files={
-            "file": ("p.pdf", primary.read_bytes(), "application/pdf"),
-            "solution_file": ("bad.pdf", b"not a pdf", "application/pdf"),
-        },
-        headers=h,
-    )
-    assert (
-        r.status_code == 422 and services.db.rows("SELECT id FROM documents") == before
-    )
-    r = c.post(
-        "/api/owner/documents/upload",
-        data=data,
-        files={
-            "file": ("p.pdf", primary.read_bytes(), "application/pdf"),
-            "solution_file": ("a.pdf", answer.read_bytes(), "application/pdf"),
-        },
-        headers=h,
-    )
-    assert r.status_code == 200 and r.json()["solution_linked"]
-    assert len(lib.version(r.json()["version_id"])["files"]) == 2
-    assert not list(services.store.path("incoming").iterdir())
+def test_multipart_markdown_pair_invalid_second_file_has_no_partial_document(services):
+    lib, _, owner=seeded(services)
+    c=TestClient(create_app(services));h=login(c,"owner@example.com")
+    data={"metadata":json.dumps({"kind":"exam","subject":"physics","track":"science"}),"package":json.dumps({"layout":"separate","matching_confirmed":True})}
+    source=services.store.path("test.md").read_bytes()
+    before=services.db.rows("SELECT id FROM documents")
+    res=c.post("/api/owner/documents/upload",data=data,files={"file":("p.md",source,"text/markdown"),"solution_file":("bad.md",b"no metadata","text/markdown")},headers=h)
+    assert res.status_code==422 and services.db.rows("SELECT id FROM documents")==before
+    res=c.post("/api/owner/documents/upload",data=data,files={"file":("p.md",source,"text/markdown"),"solution_file":("a.md",source,"text/markdown")},headers=h)
+    assert res.status_code==200 and res.json()["solution_linked"]

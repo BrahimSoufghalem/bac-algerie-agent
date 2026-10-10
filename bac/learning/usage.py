@@ -152,32 +152,3 @@ def report(s, user=None, days=30):
         )
         out["budget_unknown"] = bool(daily["missing"])
     return out
-
-
-class MeteredVision:
-    def __init__(self, s, provider, cfg):
-        self.s, self.provider, self.cfg = s, provider, cfg
-
-    async def extract(self, image, page, width, height):
-        started = time.monotonic()
-        usage = {}
-        status = "error"
-        try:
-            doc, usage = await self.provider.extract(image, page, width, height)
-            status = "ok"
-            return doc, usage
-        finally:
-            config = self.cfg.get("_platform_config_id")
-            actor = self.cfg.get("_platform_actor_id")
-            if config and actor:
-                record(
-                    self.s,
-                    self.cfg,
-                    usage,
-                    (time.monotonic() - started) * 1000,
-                    user=actor,
-                    config_id=config,
-                    feature="extraction",
-                    status=status,
-                    target=f"{image.parent.parent.name}:{page}",
-                )

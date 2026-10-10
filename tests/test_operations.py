@@ -327,9 +327,7 @@ async def test_full_backup_restore_preserves_approved_source_two_keys_and_auth(
     restored = Services(replace(services.settings, data_dir=dest))
     try:
         assert restored.vault.decrypt(marker) == "test-vault-secret"
-        assert (dest / "extraction/.encryption.key").read_bytes() == (
-            root / "extraction/.encryption.key"
-        ).read_bytes()
+        assert (dest / ".encryption.key").read_bytes() == (root / ".encryption.key").read_bytes()
         from bac.library.service import Library
 
         new = Library(restored)
@@ -368,7 +366,7 @@ def test_restore_rejects_corruption_missing_key_duplicates_symlink_and_zip_bomb(
         out = tmp_path / (name + ".zip")
         with zipfile.ZipFile(out, "w") as z:
             for path, data in source.items():
-                if name == "missing" and path == "extraction/.encryption.key":
+                if name == "missing" and path == ".encryption.key":
                     continue
                 z.writestr(
                     path,
@@ -451,98 +449,11 @@ def test_crash_orphan_cleanup_preserves_fresh_inflight_directory(services):
     assert not old.exists() and fresh.exists()
 
 
-@pytest.mark.asyncio
-async def test_opt_in_provider_smoke_two_calls_no_retry_no_secret_report(tmp_path):
-    from PIL import Image
-    from bac.ops.evaluate_provider import evaluate
+def test_retired_extraction_is_not_an_available_model_preset():
+    from bac.agent.presets import presets
+    assert not presets("extraction")
+    assert presets("agent") and presets("selector")
 
-    image = tmp_path / "page.png"
-    Image.new("RGB", (200, 300), "white").save(image)
-    calls = []
-
-    def respond(req):
-        calls.append(json.loads(req.content))
-        msg = (
-            {
-                "content": json.dumps(
-                    {
-                        "pdf_page": 1,
-                        "width": 200,
-                        "height": 300,
-                        "languages": ["ar"],
-                        "elements": [
-                            {
-                                "id": "p",
-                                "type": "paragraph",
-                                "order": 0,
-                                "text": "حرارة",
-                                "bbox": [1, 1, 50, 50],
-                            }
-                        ],
-                    }
-                )
-            }
-            if len(calls) == 1
-            else {
-                "content": None,
-                "tool_calls": [
-                    {
-                        "id": "t",
-                        "type": "function",
-                        "function": {
-                            "name": "render_answer",
-                            "arguments": json.dumps(
-                                {
-                                    "text": "الناتج 24 J",
-                                    "source_ids": ["fixture-source"],
-                                }
-                            ),
-                        },
-                    }
-                ],
-            }
-        )
-        return httpx.Response(
-            200,
-            json={
-                "choices": [{"finish_reason": "stop", "message": msg}],
-                "usage": {"prompt_tokens": 10, "completion_tokens": 20},
-            },
-        )
-
-    out = tmp_path / "result.json"
-    result = await evaluate(
-        image,
-        out,
-        "secret-test-key",
-        "https://example.invalid/v1",
-        "mock",
-        transport=httpx.MockTransport(respond),
-    )
-    assert (
-        len(calls) == result["generation_calls"] == 2
-        and result["automatic_retries"] == 0
-    )
-    assert (
-        result["checks"]["vision"]["schema_valid"]
-        and result["checks"]["teaching"]["tool_call_valid"]
-    )
-    assert "secret-test-key" not in out.read_text()
-    calls.clear()
-
-    def failing(req):
-        calls.append(1)
-        return httpx.Response(429)
-
-    result = await evaluate(
-        image,
-        out,
-        "secret-test-key",
-        "https://example.invalid/v1",
-        "mock",
-        transport=httpx.MockTransport(failing),
-    )
-    assert len(calls) == 2 and result["checks"]["vision"]["error"] == "HTTP_429"
 
 
 def test_login_session_refuses_stale_password_hash_after_password_reset(services):

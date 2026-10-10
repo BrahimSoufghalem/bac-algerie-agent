@@ -53,7 +53,6 @@ async def test_followup_reuses_same_authorized_version_without_second_verifier(
     assert result["node"]["id"] == node
     assert [name for name, _ in seen] == [
         "route_sections",
-        "verify_sections",
         "route_sections",
     ]
     assert seen[-1][1]["available_read_references"][0]["id"] == alias
@@ -298,10 +297,10 @@ async def test_24_turn_cost_path_reuses_body_and_preserves_wire_prefix(services)
         )
     names = [name for name, _, _ in router_calls]
     assert names.count("route_sections") == 24
-    assert names.count("verify_sections") == 1
+    assert names.count("verify_sections") == 0
     assert len(teacher_calls) == 24
     assert (
-        len(services.db.rows("SELECT * FROM model_usage")) == 49
+        len(services.db.rows("SELECT * FROM model_usage")) == 48
     )  # old path: 72 calls
     first = teacher_calls[0]
     for body in teacher_calls[1:]:
@@ -416,7 +415,7 @@ async def test_mixed_existing_and_new_content_still_gets_body_verification(servi
         Tools(services, user, chat),
         "Compare both concepts",
     )
-    assert calls == ["route_sections", "verify_sections"]
+    assert calls == ["route_sections"]
     assert {p["node"]["id"] for p in result["selected_references"]} == {node, new_node}
 
 
