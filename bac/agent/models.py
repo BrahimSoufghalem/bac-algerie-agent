@@ -115,7 +115,10 @@ class ModelConfig(Strict):
         "custom", "openai", "google", "anthropic", "vercel", "openrouter"
     ] = "custom"
     protocol: Literal["openai", "anthropic", "google"] = "openai"
-    max_context_chars: int | None = Field(default=None, ge=10000, le=4000000)
+    max_context_chars: int | None = Field(
+        default=None, ge=10000, le=4000000,
+        description="Legacy stored configuration only; application character caps are retired.",
+    )
     main_max_rounds: int = Field(default=4, ge=2, le=8)
     selector_enabled: bool = False
     selector_document_id: str | None = Field(default=None, min_length=1, max_length=200)

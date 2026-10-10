@@ -397,7 +397,9 @@ class Learning:
             raise HTTPException(
                 413, "Export too large; export individual conversations first"
             )
+        from bac.agent.session_state import session_summary
         for chat in chats:
+            chat["session_summary"] = session_summary(self.db, user["id"], chat["id"], persist=False)
             chat["messages"] = self.db.rows(
                 "SELECT id,role,content,blocks,sources,active,created_at FROM messages WHERE conversation_id=? ORDER BY created_at",
                 (chat["id"],),

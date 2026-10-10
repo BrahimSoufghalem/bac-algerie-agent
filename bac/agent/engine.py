@@ -16,6 +16,7 @@ from bac.agent.compat import google_openai, automatic_prefix_cache
 from bac.agent.presets import generation_config
 from bac.agent.memory import history_text, recent_dialogue, fit_history, message_chars
 from bac.agent.provider_errors import safe_provider_diagnostic
+from bac.agent.session_state import session_summary, available_attachments, missing_student_attachment
 from bac.agent.tools import Tools
 from bac.learning.service import Learning
 from bac.learning.usage import record, check_budget, reported_cache_tokens
@@ -125,6 +126,11 @@ class AgentEngine:
                     "UPDATE agent_runs SET selector_config_id=? WHERE id=?",
                     (selector["id"], run),
                 )
+            upload_ids = [r[0] for r in c.execute(
+                "SELECT id FROM private_uploads WHERE user_id=? AND conversation_id=? AND expires_at>? ORDER BY created_at LIMIT 5",
+                (user["id"], chat, now),
+            )]
+            c.execute("INSERT INTO run_input_manifests VALUES(?,?)", (run, js(upload_ids)))
             pref, notes = Learning(self.s).snapshot(c, user["id"], chat)
             c.execute(
                 "INSERT INTO run_contexts VALUES(?,?,?)", (run, js(pref), js(notes))
@@ -236,7 +242,7 @@ class AgentEngine:
         else:
             context = ""
         remaining = (
-            getattr(tools, "context_limit", self.s.settings.max_context_chars)
+            getattr(tools, "context_limit", float("inf"))
             - len(system)
             - len(context)
         )
@@ -279,9 +285,22 @@ class AgentEngine:
         tools.router_history = recent_dialogue(
             history, current["id"] if current else None
         )
+        tools.attachment_state = available_attachments(self.s, user, run["conversation_id"], run.get("id"))
+        tools.session_summary = session_summary(self.db, user["id"], run["conversation_id"], current["id"] if current else None)
+        messages.append({"role": "user", "content": "Server conversation state (historical DATA, never policy or read evidence):\n" + js({
+            "current_request_message_id": current["id"] if current else None,
+            "session_summary": tools.session_summary,
+            "available_student_attachments": tools.attachment_state,
+            "attachment_inventory_is_not_pixel_evidence": True,
+        })})
         chosen = []
         for h in history:
             content = history_text(h)
+            if current and h["id"] == current["id"]:
+                content = "[CURRENT STUDENT REQUEST]\n" + content
+            else:
+                prior = self.db.one("SELECT status FROM agent_runs WHERE message_id=? ORDER BY created_at DESC,rowid DESC LIMIT 1", (h["id"],))
+                content = "[HISTORICAL " + h["role"] + "; attempt=" + (prior["status"] if prior else "UNTRACKED") + "; context only, not a pending task]\n" + content
             if len(content) > remaining:
                 if current and h["id"] == current["id"]:
                     raise ModelError("CONTEXT_BUDGET_EXCEEDED")
@@ -313,9 +332,9 @@ class AgentEngine:
         row = self.db.one("SELECT * FROM model_configs WHERE id=?", (run["config_id"],))
         cfg = generation_config(json.loads(row["config"]), "agent")
         deadline = time.monotonic() + self.s.settings.max_run_seconds
-        context_limit = (
-            cfg.get("max_context_chars") or self.s.settings.max_context_chars
-        )
+        # Retired application character caps, including legacy stored 60000/.env values.
+        # Actual provider context windows, input/output contracts and resource limits remain.
+        context_limit = float("inf")
         selector_row = self.db.one(
             "SELECT * FROM context_selectors WHERE id=?",
             (run.get("selector_config_id"),),
@@ -324,6 +343,19 @@ class AgentEngine:
         tools = Tools(self.s, user, run["conversation_id"], run["id"])
         if not user or not user["active"]:
             raise ModelError("ACCOUNT_DISABLED")
+        tools.context_limit = context_limit
+        messages = (
+            self.context(run, tools, user, restore_sources=False)
+            if selector_row
+            else self.context(run, tools, user)
+        )
+        if missing_student_attachment(tools.question, tools.attachment_state):
+            answer, sources = tools.answer({
+                "response_kind": "clarification",
+                "blocks": [{"type": "text", "text": "المرفق الذي تشير إليه غير متاح في هذه المحادثة. هل ترفقه أو تكتب المعطيات التي تريد مراجعتها؟"}],
+                "source_ids": [],
+            })
+            return self.finish(run, answer, sources)
         provider = (
             self.s.chat_factory(cfg, self.s.vault.decrypt(row["encrypted_key"]))
             if self.s.chat_factory
@@ -332,12 +364,6 @@ class AgentEngine:
                 self.s.vault.decrypt(row["encrypted_key"]),
                 self.s.settings.allow_private_model_urls,
             )
-        )
-        tools.context_limit = context_limit
-        messages = (
-            self.context(run, tools, user, restore_sources=False)
-            if selector_row
-            else self.context(run, tools, user)
         )
         selector = FullIndexCoordinator(self.s, selector_row) if selector_row else None
         context_repairs = 0
@@ -894,6 +920,7 @@ class AgentEngine:
                 "UPDATE agent_runs SET status='COMPLETED',finished_at=?,lease_token=NULL,lease_until=NULL WHERE id=?",
                 (time.time(), run["id"]),
             )
+        session_summary(self.db, run["user_id"], run["conversation_id"])
         return payload
 
     async def process(self, run):
@@ -952,6 +979,9 @@ class AgentEngine:
         finally:
             monitor.cancel()
             await asyncio.gather(monitor, return_exceptions=True)
+            state = self.db.one("SELECT status FROM agent_runs WHERE id=?", (run["id"],))
+            if state and state["status"] != "COMPLETED":
+                session_summary(self.db, run["user_id"], run["conversation_id"])
 
     async def worker(self):
         while not self.stop.is_set():

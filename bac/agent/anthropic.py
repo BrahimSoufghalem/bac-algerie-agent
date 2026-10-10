@@ -3,7 +3,7 @@
 import json
 import httpx
 from bac.agent.provider import ChatProvider, ModelError
-from bac.agent.provider_errors import provider_diagnostic
+from bac.agent.provider_errors import provider_diagnostic, request_topology, read_error_payload
 from bac.agent.presets import auth_headers
 from bac.agent.compat import answer_tools
 from bac.vendor.bookforge.vision.provider import validate_base_url
@@ -134,7 +134,7 @@ class AnthropicChat(ChatProvider):
                     if r.status_code != 200:
                         raise ModelError(
                             "HTTP_" + str(r.status_code),
-                            provider_diagnostic(r.status_code, {}, {}),
+                            provider_diagnostic(r.status_code, await read_error_payload(r), request_topology(body, "anthropic")),
                         )
                     async for line in r.aiter_lines():
                         total += len(line)

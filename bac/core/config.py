@@ -13,7 +13,8 @@ class Settings:
     # Legacy constructor argument only; coordinated mode has a per-model ceiling.
     max_run_steps: int = 0
     max_run_seconds: int = 180
-    max_context_chars: int = 60000
+    # Legacy compatibility only; actual provider context limits still apply.
+    max_context_chars: int = 0
     max_tool_chars: int = 22000
     max_daily_requests: int = 50
     max_upload_mb: int = 100
@@ -55,7 +56,7 @@ class Settings:
             agent_workers=int(os.getenv("AGENT_WORKERS", "2")),
             max_run_steps=0,
             max_run_seconds=int(os.getenv("MAX_RUN_SECONDS", "180")),
-            max_context_chars=int(os.getenv("MAX_CONTEXT_CHARS", "60000")),
+            max_context_chars=0,  # Retired, including legacy .env values.
             max_tool_chars=int(os.getenv("MAX_TOOL_CHARS", "22000")),
             max_daily_requests=int(os.getenv("MAX_DAILY_REQUESTS", "50")),
             max_upload_mb=int(os.getenv("MAX_UPLOAD_MB", "100")),
@@ -73,8 +74,7 @@ class Settings:
         ):
             raise ValueError("Invalid worker/run limits")
         if not (
-            10000 <= s.max_context_chars <= 300000
-            and 1000 <= s.max_tool_chars <= s.max_context_chars
+            1000 <= s.max_tool_chars <= 1000000
             and s.max_daily_requests >= 1
         ):
             raise ValueError("Invalid context/usage limits")
