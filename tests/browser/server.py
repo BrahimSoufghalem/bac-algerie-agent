@@ -523,3 +523,9 @@ if not s.db.one("SELECT 1 FROM users WHERE email=?", ("design-owner@test.invalid
         "مالك اختبار التصميم",
         "owner",
     )
+
+
+# Isolate provider controls from shared-owner sign-in/session mutations and quotas.
+# Production auth/rate policies are unchanged; this is a preseeded test account.
+if not s.db.one("SELECT 1 FROM users WHERE email=?", ("providers-owner@test.invalid",)):
+    create_user(s.db, "providers-owner@test.invalid", "Test-password-only-1", "مالك اختبار المزوّد", "owner")

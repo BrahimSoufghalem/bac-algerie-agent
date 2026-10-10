@@ -51,7 +51,7 @@ test("failed read attempt remains distinct after retry, actual cache reload and 
   const plotStages = current
     .last()
     .locator(".work-timeline li")
-    .filter({ hasText: "إعداد رسم توضيحي" });
+    .filter({ hasText: "حساب القيم ومراجعتها" });
   await expect(plotStages).toHaveCount(2);
   await expect(plotStages.first()).toHaveAttribute("data-state", "unavailable");
   await expect(plotStages.last()).toHaveAttribute("data-state", "done");
