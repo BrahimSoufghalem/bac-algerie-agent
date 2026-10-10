@@ -4,7 +4,7 @@ import httpx
 from bac.vendor.bookforge.vision.provider import validate_base_url
 from bac.agent.compat import answer_tools, google_answer_tools, google_openai, model_identity
 from bac.agent.provider_errors import (
-    ERROR_BODY_LIMIT,
+    read_error_payload,
     provider_diagnostic,
     request_topology,
 )
@@ -156,17 +156,7 @@ class OpenAIChat(ChatProvider):
                 ) as response:
                     if response.status_code != 200:
                         # Bounded, transient inspection: no raw error body enters logs/events.
-                        raw = bytearray()
-                        async for chunk in response.aiter_bytes():
-                            raw.extend(chunk[: ERROR_BODY_LIMIT + 1 - len(raw)])
-                            if len(raw) > ERROR_BODY_LIMIT:
-                                break
-                        try:
-                            payload = (
-                                json.loads(raw) if len(raw) <= ERROR_BODY_LIMIT else {}
-                            )
-                        except (ValueError, TypeError):
-                            payload = {}
+                        payload = await read_error_payload(response)
                         raise ModelError(
                             "HTTP_" + str(response.status_code),
                             provider_diagnostic(

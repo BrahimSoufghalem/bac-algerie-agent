@@ -527,7 +527,7 @@ def test_migrations_concurrent_startup(tmp_path):
     path = tmp_path / "fresh.sqlite3"
     with ThreadPoolExecutor(max_workers=4) as pool:
         list(pool.map(lambda _: DB(path), range(4)))
-    assert len(DB(path).rows("SELECT * FROM migrations")) == 10
+    assert len(DB(path).rows("SELECT * FROM migrations")) == 11
 
 
 @pytest.mark.parametrize(

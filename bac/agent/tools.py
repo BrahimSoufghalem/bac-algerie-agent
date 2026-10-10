@@ -73,6 +73,8 @@ class Tools:
         self.question = ""
         self.study_context = ""
         self.router_history = []
+        self.attachment_state = []
+        self.session_summary = {}
         self.history_messages = []
         self.current_message = None
         self.delivered_sources = set()
@@ -260,7 +262,7 @@ class Tools:
                 p = self.library.node(id)
         result = self._compact(p)
         limit = (
-            getattr(self, "context_limit", self.s.settings.max_context_chars)
+            float("inf")
             if full_context
             else self.s.settings.max_tool_chars
         )
