@@ -159,10 +159,10 @@ async def test_first_route_then_actual_read_then_verification_then_remember(serv
     run=services.db.one("SELECT * FROM agent_runs WHERE id=?",(rid,))
     result=await FullIndexCoordinator(services,row).prepare(run,Tools(services,user,chat,rid),"اشرح القذف")
     assert result["node"]["id"]==node
-    assert calls==["route_sections","verify_sections"]
+    assert calls==["route_sections"]
     assert len(services.db.rows("SELECT * FROM loaded_context"))==1
     assert {r["feature"] for r in services.db.rows("SELECT * FROM model_usage")}=={
-        "source_selection","source_verification"}
+        "source_selection"}
 
 
 @pytest.mark.asyncio

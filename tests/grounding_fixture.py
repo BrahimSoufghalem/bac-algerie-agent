@@ -1,11 +1,9 @@
-"""Known bilingual source/PDF fixtures; no OCR benchmark or official curriculum."""
+"""Known synthetic Markdown references; never an official-curriculum benchmark."""
 
-import pymupdf
+import yaml
 from bac.core.auth import create_user
 from bac.core.db import uid
 from bac.library.service import Library
-from bac.vendor.bookforge.models.page import PageDocument
-from tests.test_library import process_and_publish
 
 TOPICS = {
     "projectile": (
@@ -31,63 +29,41 @@ TOPICS = {
 
 async def publish_reference(s, topic="projectile"):
     title, text = TOPICS[topic]
-    user = create_user(
+    owner = create_user(
         s.db,
         topic + "@fixture.invalid",
         "Synthetic-password-1",
         "Synthetic source owner",
         "owner",
     )
-    pdf = s.store.path(uid("fixture") + ".pdf")
-    with pymupdf.open() as doc:
-        page = doc.new_page(width=600, height=850)
-        page.insert_htmlbox(
-            pymupdf.Rect(30, 30, 570, 820), f'<h2 dir="rtl">{title}</h2><p>{text}</p>'
-        )
-        doc.save(pdf)
+    path = s.store.path(uid("fixture") + ".md")
+    metadata = {
+        "section_id": "1",
+        "title": title,
+        "summary": "شرح للمفهوم وشروطه وعلاقاته وأمثلة حسابية؛ " + title,
+        "covers": [title],
+    }
+    path.write_text(
+        "## [صفحة الكتاب 1 / صفحة PDF 1]\n# "
+        + title
+        + "\n\n"
+        + text
+        + "\n\n```yaml\n"
+        + yaml.safe_dump(metadata, allow_unicode=True)
+        + "```\n"
+    )
     lib = Library(s)
-    uploaded = lib.upload(
-        pdf,
-        topic + ".pdf",
+    result = lib.upload(
+        path,
+        topic + ".md",
         {
             "title": title,
             "kind": "book",
             "subject": "physics" if topic == "projectile" else "mathematics",
             "track": "science",
         },
-        user,
+        owner,
     )
-    original_factory = s.extraction_engine.provider_factory
-    original_process = s.extraction_engine.process
-
-    class Vision:
-        async def extract(self, image, page, width, height):
-            return PageDocument(
-                pdf_page=page,
-                width=width,
-                height=height,
-                languages=["ar", "en"],
-                elements=[
-                    {
-                        "id": "lesson",
-                        "type": "heading",
-                        "order": 0,
-                        "structure_type": "lesson",
-                        "text": title,
-                    },
-                    {"id": "paragraph", "type": "paragraph", "order": 1, "text": text},
-                ],
-            ), {"total_tokens": 0}
-
-    async def process(job):
-        s.extraction_engine.provider_factory = lambda cfg, key: Vision()
-        return await original_process(job)
-
-    # Existing reviewed/published pipeline, but known transcription instead of paid Vision.
-    s.extraction_engine.process = process
-    try:
-        document = await process_and_publish(s, lib, uploaded, user)
-    finally:
-        s.extraction_engine.process = original_process
-        s.extraction_engine.provider_factory = original_factory
-    return lib.nodes(document["id"], "lesson")[0]["id"]
+    lib.review(result["version_id"], owner, True, "Synthetic source reviewed")
+    doc = lib.publish(result["version_id"], owner)
+    return lib.nodes(doc["id"], "lesson")[0]["id"]

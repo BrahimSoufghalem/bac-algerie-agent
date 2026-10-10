@@ -32,6 +32,19 @@ export async function snapshot(page: Page, name: string) {
       });
       img.setAttribute("src", data);
     }
+    // Native control state is a property, not always an HTML attribute.
+    const selects = document.querySelectorAll("select");
+    clone.querySelectorAll("select").forEach((x, i) => {
+      Array.from(x.options).forEach((o, j) => {
+        o.toggleAttribute("selected", selects[i].options[j].selected);
+      });
+    });
+    const checks = document.querySelectorAll('input[type="checkbox"]');
+    clone
+      .querySelectorAll('input[type="checkbox"]')
+      .forEach((x, i) =>
+        x.toggleAttribute("checked", (checks[i] as HTMLInputElement).checked),
+      );
     // Never retain secret input values in offline snapshots.
     clone
       .querySelectorAll('input[type="password"]')

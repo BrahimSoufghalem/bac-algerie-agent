@@ -25,7 +25,6 @@ import {
   SubjectPicker,
   Starters,
   WorkspaceHeading,
-  ContentWorkflow,
   CountBadge,
 } from "./BrandUI";
 import { TooltipProvider } from "./components/ui/tooltip";
@@ -48,11 +47,10 @@ import {
 } from "./LearningPanels";
 import { Recovery, SecurityPanel, ServiceTokens } from "./SecurityPanels";
 import {
-  IdentityChoices,
   emptyCatalogue,
   StudyCatalogue,
 } from "./StudyChoices";
-import BundleEditor from "./BundleEditor";
+import OwnerLibrary from "./OwnerLibrary";
 import { RunActivity, type WorkActivity } from "./RunActivity";
 import {
   ScientificChart,
@@ -276,14 +274,8 @@ function App() {
   const stream = useRef<EventSource | null>(null);
   const chatLoad = useRef(0);
   const bottom = useRef<HTMLDivElement>(null);
-  const [docs, setDocs] = useState<any[]>([]),
-    [ownerDocs, setOwnerDocs] = useState<any[]>([]),
-    [version, setVersion] = useState<any>(null),
-    [reviewPage, setReviewPage] = useState<any>(null),
-    [reextractConfirm, setReextractConfirm] = useState(false),
-    [ack, setAck] = useState(false),
-    [reviewNotes, setReviewNotes] = useState(""),
-    [busy, setBusy] = useState(false);
+  const [docs, setDocs] = useState<any[]>([]);
+  const [busy, setBusy] = useState(false);
   const [providerPresets, setProviderPresets] = useState<any[]>([]);
   const [catalog, setCatalog] = useState<any[]>([]);
   const [models, setModels] = useState<any[]>([]),
@@ -307,34 +299,6 @@ function App() {
     }),
     [key, setKey] = useState(""),
     [usage, setUsage] = useState<any>(null);
-  const [uploadFile, setUploadFile] = useState<File | null>(null),
-    [meta, setMeta] = useState({
-      title: "",
-      kind: "book",
-      content_type: "textbook",
-      subject: "",
-      track: "",
-      tracks: [] as string[],
-      year: "",
-      session: "",
-      exam_type: "",
-      institution: "",
-      source: "",
-    });
-  const [solutionLayout, setSolutionLayout] = useState("none");
-  const [solutionFile, setSolutionFile] = useState<File | null>(null);
-  const [packageMatching, setPackageMatching] = useState(false);
-  const [packageRanges, setPackageRanges] = useState({
-    primary_first: 1,
-    primary_last: 1,
-    solution_first: 2,
-    solution_last: 2,
-  });
-  useEffect(() => {
-    setAck(false);
-    setReviewPage(null);
-    setReviewNotes("");
-  }, [version?.id]);
   const [filters, setFilters] = useState({
     kind: "",
     subject: "",
@@ -551,63 +515,6 @@ function App() {
       document.removeEventListener("keydown", keydown);
     };
   }, [accountOpen]);
-  useEffect(() => {
-    if (
-      !version ||
-      view !== "owner-library" ||
-      ["REVIEWED", "PUBLISHED"].includes(version.status)
-    )
-      return;
-    const timer = setInterval(
-      () =>
-        api("/api/owner/versions/" + version.id)
-          .then(setVersion)
-          .catch(() => {}),
-      2500,
-    );
-    return () => clearInterval(timer);
-  }, [version?.id, version?.status, view]);
-  const selectedPageStatus = version?.files
-    ?.find((f: any) => f.id === reviewPage?.file_id)
-    ?.pages?.find((p: any) => p.pdf_page === reviewPage?.page)?.status;
-  useEffect(() => {
-    if (
-      !version ||
-      !reviewPage ||
-      !selectedPageStatus ||
-      selectedPageStatus === reviewPage.status
-    )
-      return;
-    let cancelled = false;
-    const file = reviewPage.file_id,
-      page = reviewPage.page,
-      role = reviewPage.role;
-    api(
-      `/api/owner/versions/${version.id}/page/${page}?file_id=${encodeURIComponent(file)}`,
-    )
-      .then((data) => {
-        if (!cancelled)
-          setReviewPage((old: any) =>
-            old?.file_id === file && old?.page === page
-              ? { ...data, file_id: file, role }
-              : old,
-          );
-      })
-      .catch(() => {});
-    return () => {
-      cancelled = true;
-    };
-  }, [
-    version?.id,
-    reviewPage?.file_id,
-    reviewPage?.page,
-    reviewPage?.status,
-    selectedPageStatus,
-  ]);
-  useEffect(() => {
-    setReextractConfirm(false);
-  }, [version?.id, reviewPage?.file_id, reviewPage?.page]);
-
   async function authenticate(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     const f = new FormData(e.currentTarget);
@@ -736,8 +643,6 @@ function App() {
     try {
       if (next === "library")
         setDocs((await api("/api/library/documents")).items);
-      if (next === "owner-library")
-        setOwnerDocs((await api("/api/owner/documents")).items);
       if (next === "models") {
         const [saved, offered] = await Promise.all([
           api("/api/owner/models"),
@@ -764,39 +669,6 @@ function App() {
       setBusy(false);
     }
   }
-  async function reextractSelectedPage() {
-    if (!version || !reviewPage) return;
-    const selected = reviewPage;
-    let target = version;
-    let file = selected.file_id;
-    if (["REVIEWED", "PUBLISHED"].includes(target.status)) {
-      target = await api(`/api/owner/versions/${target.id}/clone`, "POST", {});
-      file = target.files.find((f: any) => f.role === selected.role)?.id;
-      if (!file)
-        throw new Error("تعذر العثور على ملف الصفحة في المسودة الجديدة.");
-      setVersion(target);
-    }
-    await api(
-      `/api/owner/versions/${target.id}/page/${selected.page}/reextract`,
-      "POST",
-      { file_id: file, confirm: true },
-    );
-    setAck(false);
-    setReviewNotes("");
-    setReextractConfirm(false);
-    setVersion(await api(`/api/owner/versions/${target.id}`));
-    setReviewPage({
-      ...(await api(
-        `/api/owner/versions/${target.id}/page/${selected.page}?file_id=${encodeURIComponent(file)}`,
-      )),
-      file_id: file,
-      role: selected.role,
-    });
-    setNotice(
-      `أُعيدت جدولة ص ${selected.page} وحدها لنموذج الاستخراج الحالي، دون إعادة استخدام النتيجة السابقة. النسخة المنشورة لا تتغير قبل المراجعة والنشر.`,
-    );
-  }
-
   async function privateSource(src: Source) {
     await action(async () => {
       const path = `/api/private/${src.node_id}/pages/${src.pages[0]}`;
@@ -840,48 +712,6 @@ function App() {
       setSource(await api("/api/library/parts/" + encodeURIComponent(id))),
     );
   }
-  async function refreshVersion() {
-    setVersion(await api("/api/owner/versions/" + version.id));
-    setOwnerDocs((await api("/api/owner/documents")).items);
-  }
-  async function upload(e: React.FormEvent) {
-    e.preventDefault();
-    if (!uploadFile) return;
-    await action(async () => {
-      const f = new FormData();
-      f.append("metadata", JSON.stringify(meta));
-      f.append("file", uploadFile);
-      if (meta.content_type !== "textbook" && solutionLayout !== "none") {
-        f.append(
-          "package",
-          JSON.stringify({
-            layout: solutionLayout,
-            matching_confirmed: packageMatching,
-            ...(solutionLayout === "combined"
-              ? {
-                  primary_range: {
-                    first_page: packageRanges.primary_first,
-                    last_page: packageRanges.primary_last,
-                  },
-                  solution_range: {
-                    first_page: packageRanges.solution_first,
-                    last_page: packageRanges.solution_last,
-                  },
-                }
-              : {}),
-          }),
-        );
-        if (solutionLayout === "separate" && solutionFile)
-          f.append("solution_file", solutionFile);
-      }
-      const r = await api("/api/owner/documents/upload", "POST", f);
-      setVersion(await api("/api/owner/versions/" + r.version_id));
-      setOwnerDocs((await api("/api/owner/documents")).items);
-      setNotice(
-        "حُفظت نسخة خام. عاين المصدر قبل بدء Vision؛ لم تُتفعيل للوكيل.",
-      );
-    });
-  }
   function toggleWork(id: string) {
     pinned.current = false;
     setExpandedRuns((old) => ({ ...old, [id]: !old[id] }));
@@ -890,7 +720,7 @@ function App() {
   const titles: Record<string, string> = {
     chat: "مسار",
     library: "المكتبة المنشورة",
-    "owner-library": "مراجعة المحتوى ونشره",
+    "owner-library": "إدارة الملفات وتغطية المواد",
     models: "نماذج التدريس واختيار المراجع",
     usage: "الاستخدام والمحاسبة",
     security: "أمان الحساب",
@@ -1857,7 +1687,7 @@ function App() {
                         saved || {
                           max_tokens:
                             preset.max_tokens ||
-                            (next === "extraction" ? 4000 : 6000),
+                            6000,
                           focused_mode: true,
                           timeout: 90,
                           max_context_chars: null,
@@ -1878,7 +1708,6 @@ function App() {
                   }}
                 >
                   <option value="agent">وكيل التدريس</option>
-                  <option value="extraction">استخراج الكتب</option>
                   <option value="selector">
                     راوتر المراجع — LLM بالفهرس الكامل
                   </option>
@@ -2129,7 +1958,7 @@ function App() {
                   حد رموز الإخراج
                   <Input
                     type="number"
-                    min={slot === "extraction" ? "500" : "6000"}
+                    min="6000"
                     max="32000"
                     value={model.max_tokens}
                     onChange={(e) =>
@@ -2253,21 +2082,6 @@ function App() {
               >
                 اختبار الاتصال المحفوظ
               </Button>
-              {slot === "extraction" && (
-                <label>
-                  Structured output
-                  <NativeSelect
-                    value={model.output_mode}
-                    onChange={(e) =>
-                      setModel({ ...model, output_mode: e.target.value })
-                    }
-                  >
-                    <option value="json_object">JSON object</option>
-                    <option value="json_schema">JSON schema</option>
-                    <option value="none">Prompt only</option>
-                  </NativeSelect>
-                </label>
-              )}
               <Button variant="outline" className="primary" disabled={busy}>
                 حفظ الإعداد
               </Button>
@@ -2307,581 +2121,7 @@ function App() {
           <ServiceTokens api={api} notify={setNotice} />
         )}
         {view === "owner-library" && user.role === "owner" && (
-          <section tabIndex={0} className="page-content">
-            <h1>من المصدر إلى نسخة معتمدة</h1>
-            <p className="muted">
-              رفع ← معاينة ← معالجة ← مراجعة ← نشر. لا تُستبدل النسخة المنشورة
-              بمسودة جديدة بصمت.
-            </p>
-            <ContentWorkflow />
-            <div className="owner-layout">
-              <form className="panel" onSubmit={upload}>
-                <div className="section-heading">
-                  <h2>إضافة مصدر</h2>
-                  <CountBadge>PDF</CountBadge>
-                </div>
-                <label className="file-drop">
-                  اختر ملف PDF
-                  <input
-                    type="file"
-                    required
-                    accept=".pdf,application/pdf"
-                    onChange={(e) => {
-                      setUploadFile(e.target.files?.[0] || null);
-                      if (e.target.files?.[0])
-                        setMeta({
-                          ...meta,
-                          title: e.target.files[0].name.replace(/\.pdf$/i, ""),
-                        });
-                    }}
-                  />
-                </label>
-                <label>
-                  العنوان
-                  <Input
-                    required
-                    value={meta.title}
-                    onChange={(e) =>
-                      setMeta({ ...meta, title: e.target.value })
-                    }
-                  />
-                </label>
-                <label>
-                  نوع المحتوى
-                  <NativeSelect
-                    aria-label="نوع المحتوى"
-                    value={meta.content_type}
-                    onChange={(e) => {
-                      const type = studyCatalog.content_types.find(
-                        (x) => x.id === e.target.value,
-                      )!;
-                      setMeta({
-                        ...meta,
-                        content_type: type.id,
-                        kind: type.kind,
-                      });
-                      setSolutionLayout("none");
-                      setSolutionFile(null);
-                      setPackageMatching(false);
-                    }}
-                  >
-                    {studyCatalog.content_types.map((x) => (
-                      <option key={x.id} value={x.id}>
-                        {x.label}
-                      </option>
-                    ))}
-                  </NativeSelect>
-                </label>
-                <div className="form-columns">
-                  <IdentityChoices
-                    catalogue={studyCatalog}
-                    value={meta}
-                    onChange={setMeta}
-                  />
-                </div>
-                {meta.content_type !== "textbook" && (
-                  <fieldset>
-                    <legend>الموضوع والحل في عملية رفع واحدة</legend>
-                    <label>
-                      تنسيق الملفات
-                      <NativeSelect
-                        aria-label="تنسيق الملفات"
-                        value={solutionLayout}
-                        onChange={(e) => {
-                          setSolutionLayout(e.target.value);
-                          setPackageMatching(false);
-                        }}
-                      >
-                        <option value="none">الموضوع فقط، دون حل</option>
-                        <option value="combined">
-                          الموضوع والحل في PDF واحد
-                        </option>
-                        <option value="separate">
-                          الموضوع والحل في ملفين منفصلين
-                        </option>
-                      </NativeSelect>
-                    </label>
-                    {solutionLayout === "separate" && (
-                      <label>
-                        ملف الحل PDF
-                        <input
-                          type="file"
-                          required
-                          accept=".pdf,application/pdf"
-                          onChange={(e) =>
-                            setSolutionFile(e.target.files?.[0] || null)
-                          }
-                        />
-                      </label>
-                    )}
-                    {solutionLayout === "combined" && (
-                      <div className="form-columns">
-                        {[
-                          ["primary_first", "أول صفحة للموضوع"],
-                          ["primary_last", "آخر صفحة للموضوع"],
-                          ["solution_first", "أول صفحة للحل"],
-                          ["solution_last", "آخر صفحة للحل"],
-                        ].map(([k, l]) => (
-                          <label key={k}>
-                            {l}
-                            <Input
-                              type="number"
-                              min="1"
-                              required
-                              value={(packageRanges as any)[k]}
-                              onChange={(e) =>
-                                setPackageRanges({
-                                  ...packageRanges,
-                                  [k]: Number(e.target.value),
-                                })
-                              }
-                            />
-                          </label>
-                        ))}
-                      </div>
-                    )}
-                    {solutionLayout !== "none" && (
-                      <>
-                        <label>
-                          <input
-                            type="checkbox"
-                            required
-                            checked={packageMatching}
-                            onChange={(e) =>
-                              setPackageMatching(e.target.checked)
-                            }
-                          />
-                          أؤكد أن الحل المرفق يخص هذا الموضوع ونفس الشعبة
-                          والمادة.
-                        </label>
-                        <p className="muted">
-                          سيُربطان في نسخة واحدة. يلزم فحص الحل وتوثيق مطابقته
-                          قبل النشر؛ لا يُصنّف رسميًا تلقائيًا.
-                        </p>
-                      </>
-                    )}
-                  </fieldset>
-                )}
-                {["exam", "exercise_collection"].includes(meta.kind) && (
-                  <div className="form-columns">
-                    {[
-                      ["year", "السنة"],
-                      ["session", "الدورة"],
-                      ["exam_type", "نوع الامتحان"],
-                      ["institution", "المؤسسة"],
-                    ].map(([k, label]) => (
-                      <label key={k}>
-                        {label}
-                        <Input
-                          value={(meta as any)[k]}
-                          onChange={(e) =>
-                            setMeta({ ...meta, [k]: e.target.value })
-                          }
-                        />
-                      </label>
-                    ))}
-                  </div>
-                )}
-                <p className="muted">
-                  الشعبة والمادة ونوع المحتوى خيارات محددة؛ راجعها قبل المعالجة.
-                </p>
-                <label>
-                  المصدر / المرجع
-                  <Input
-                    value={meta.source}
-                    onChange={(e) =>
-                      setMeta({ ...meta, source: e.target.value })
-                    }
-                  />
-                </label>
-                <Button
-                  variant="outline"
-                  className="primary"
-                  disabled={
-                    busy || !uploadFile || !meta.tracks.length || !meta.subject
-                  }
-                >
-                  رفع للمراجعة — ليس للنشر
-                </Button>
-              </form>
-              <div>
-                <div className="section-heading">
-                  <h2>مكتبة المحتوى</h2>
-                  <CountBadge>{ownerDocs.length} مستند</CountBadge>
-                </div>
-                {!ownerDocs.length && (
-                  <p className="muted">لم تُرفع مستندات بعد.</p>
-                )}
-                {ownerDocs.map((d) => (
-                  <div className="document-row" key={d.id}>
-                    <div>
-                      <h3>{d.title}</h3>
-                      <p className="muted">
-                        الشعب:{" "}
-                        {(d.tracks || [])
-                          .map(
-                            (id: string) =>
-                              studyCatalog.tracks.find((x) => x.id === id)
-                                ?.label || id,
-                          )
-                          .join("، ")}
-                      </p>
-                      <p className="muted">
-                        {d.status} ·{" "}
-                        {d.published_version ? "نسخة منشورة" : "مسودة فقط"}
-                      </p>
-                      {d.versions.map((v: any) => (
-                        <Button
-                          variant="outline"
-                          key={v.id}
-                          className="version-button"
-                          onClick={() =>
-                            action(async () => {
-                              setVersion(
-                                await api("/api/owner/versions/" + v.id),
-                              );
-                              setReviewPage(null);
-                            })
-                          }
-                        >
-                          نسخة {v.sequence} · {v.status}
-                        </Button>
-                      ))}
-                    </div>
-                    <Button
-                      variant="outline"
-                      onClick={() =>
-                        action(async () => {
-                          await api(
-                            "/api/owner/documents/" + d.id + "/status",
-                            "PATCH",
-                            {
-                              status:
-                                d.status === "ARCHIVED" ? "ACTIVE" : "ARCHIVED",
-                            },
-                          );
-                          await navigate("owner-library");
-                        })
-                      }
-                    >
-                      {d.status === "ARCHIVED" ? "استعادة" : "أرشفة"}
-                    </Button>
-                  </div>
-                ))}
-              </div>
-            </div>
-            {version && (
-              <Card className="panel version-panel">
-                <div className="section-heading">
-                  <h2>مراجعة النسخة {version.sequence}</h2>
-                  <span className="status">
-                    {version.extraction_status} · {version.status}
-                  </span>
-                </div>
-                <BundleEditor
-                  version={version}
-                  api={api}
-                  action={action}
-                  refresh={refreshVersion}
-                  onClone={setVersion}
-                />
-                <div className="actions">
-                  <Button
-                    variant="outline"
-                    disabled={
-                      busy ||
-                      ["REVIEWED", "PUBLISHED"].includes(version.status) ||
-                      version.files?.some(
-                        (f: any) => f.extraction_status === "PROCESSING",
-                      )
-                    }
-                    onClick={() =>
-                      action(async () => {
-                        await api(
-                          "/api/owner/versions/" + version.id + "/process",
-                          "POST",
-                          {},
-                        );
-                        setVersion(
-                          await api("/api/owner/versions/" + version.id),
-                        );
-                      })
-                    }
-                  >
-                    بدء المعالجة
-                  </Button>
-                  <Button
-                    variant="outline"
-                    disabled={
-                      busy ||
-                      ["REVIEWED", "PUBLISHED"].includes(version.status) ||
-                      version.files?.some(
-                        (f: any) => f.extraction_status === "PROCESSING",
-                      )
-                    }
-                    onClick={() =>
-                      action(async () => {
-                        const r = await api(
-                          "/api/owner/versions/" + version.id + "/retry/failed",
-                          "POST",
-                          {},
-                        );
-                        setNotice(
-                          "أُعيدت جدولة " + r.scheduled + " صفحة فاشلة فقط.",
-                        );
-                      })
-                    }
-                  >
-                    إعادة الفاشلة
-                  </Button>
-                  <Button
-                    variant="outline"
-                    disabled={
-                      busy ||
-                      ["REVIEWED", "PUBLISHED"].includes(version.status) ||
-                      version.files?.some(
-                        (f: any) => f.extraction_status === "PROCESSING",
-                      )
-                    }
-                    onClick={() =>
-                      action(async () => {
-                        const r = await api(
-                          "/api/owner/versions/" +
-                            version.id +
-                            "/retry/suspicious",
-                          "POST",
-                          {},
-                        );
-                        setNotice(
-                          "أُعيدت جدولة " +
-                            r.scheduled +
-                            " صفحة مشكوك فيها فقط.",
-                        );
-                      })
-                    }
-                  >
-                    إعادة المشكوك فيها
-                  </Button>
-                </div>
-                {version.files?.map((f: any) => (
-                  <div key={f.id}>
-                    <h3>
-                      {f.role === "primary" ? "صفحات المصدر" : "صفحات الحل"} ·{" "}
-                      {f.filename}
-                    </h3>
-                    <div className="page-list">
-                      {f.pages?.map((p: any) => (
-                        <Button
-                          variant="outline"
-                          key={p.pdf_page}
-                          disabled={busy}
-                          aria-pressed={
-                            reviewPage?.file_id === f.id &&
-                            reviewPage?.page === p.pdf_page
-                          }
-                          className={p.quality.length ? "needs-review" : ""}
-                          onClick={() =>
-                            action(async () =>
-                              setReviewPage({
-                                ...(await api(
-                                  "/api/owner/versions/" +
-                                    version.id +
-                                    "/page/" +
-                                    p.pdf_page +
-                                    "?file_id=" +
-                                    encodeURIComponent(f.id),
-                                )),
-                                file_id: f.id,
-                                role: f.role,
-                              }),
-                            )
-                          }
-                        >
-                          {f.role === "solution" ? "الحل · " : ""}ص {p.pdf_page}{" "}
-                          · {p.status}
-                        </Button>
-                      ))}
-                    </div>
-                  </div>
-                ))}
-                {reviewPage && (
-                  <>
-                    <div className="page-reextract-control">
-                      <div>
-                        <strong>الصفحة المحددة · ص {reviewPage.page}</strong>
-                        <p className="muted">
-                          {reviewPage.status === "PENDING"
-                            ? version.extraction_status === "UPLOADED"
-                              ? "ابدأ المعالجة الأولية أولًا؛ بعدها يمكن إعادة استخراج صفحة وحدها."
-                              : "في طابور الاستخراج…"
-                            : reviewPage.status === "PROCESSING"
-                              ? "جارٍ استخراج هذه الصفحة…"
-                              : "يمكن إعادة استخراج هذه الصفحة حتى لو نجحت سابقًا."}
-                        </p>
-                      </div>
-                      <Button
-                        variant="outline"
-                        disabled={
-                          busy ||
-                          version.files?.some(
-                            (f: any) => f.extraction_status === "PROCESSING",
-                          ) ||
-                          !["SUCCESS", "NEEDS_REVIEW", "FAILED"].includes(
-                            reviewPage.status,
-                          )
-                        }
-                        onClick={() => setReextractConfirm(true)}
-                      >
-                        <Icon name="retry" size={16} /> إعادة استخراج ص{" "}
-                        {reviewPage.page}
-                      </Button>
-                      {reextractConfirm && (
-                        <div
-                          className="page-reextract-confirm"
-                          role="group"
-                          aria-label="تأكيد إعادة استخراج الصفحة"
-                        >
-                          <p>
-                            سيُرسل أصل الصفحة المحددة مجددًا إلى نموذج الاستخراج
-                            المحفوظ حاليًا. هذا طلب جديد قد يستهلك رصيدًا، وليس
-                            مجرد إعادة عرض النص.
-                          </p>
-                          {["REVIEWED", "PUBLISHED"].includes(
-                            version.status,
-                          ) && (
-                            <p>
-                              سننشئ مسودة نسخة جديدة أولًا؛ تبقى النسخة المعتمدة
-                              والمنشورة دون تغيير.
-                            </p>
-                          )}
-                          <div className="actions">
-                            <Button
-                              variant="outline"
-                              disabled={busy}
-                              onClick={() => action(reextractSelectedPage)}
-                            >
-                              تأكيد إعادة استخراج ص {reviewPage.page}
-                            </Button>
-                            <Button
-                              variant="outline"
-                              type="button"
-                              disabled={busy}
-                              onClick={() => setReextractConfirm(false)}
-                            >
-                              إلغاء إعادة الاستخراج
-                            </Button>
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                    <div className="review-grid">
-                      <div>
-                        <h3>المصدر الأصلي · ص {reviewPage.page}</h3>
-                        <img
-                          className="source-page"
-                          src={
-                            "/api/owner/versions/" +
-                            version.id +
-                            "/page/" +
-                            reviewPage.page +
-                            "/image?file_id=" +
-                            encodeURIComponent(reviewPage.file_id)
-                          }
-                          alt="صفحة المصدر الأصلية"
-                        />
-                      </div>
-                      <div>
-                        <h3>النص المستخرج</h3>
-                        {reviewPage.quality.length > 0 && (
-                          <p className="warning">
-                            {reviewPage.quality.join(" · ")}
-                          </p>
-                        )}
-                        <pre tabIndex={0}>
-                          {reviewPage.content ||
-                            (["PENDING", "PROCESSING"].includes(
-                              reviewPage.status,
-                            )
-                              ? "في انتظار نتيجة الاستخراج؛ سيُحدّث النص هنا بعد اكتمال الصفحة."
-                              : reviewPage.status === "FAILED"
-                                ? "تعذّر استخراج الصفحة. يمكنك إعادة استخراجها بعد انتهاء المعالجة الحالية."
-                                : "لم تُعالج الصفحة بعد؛ يمكنك معاينة الصورة دون طلب Vision.")}
-                        </pre>
-                      </div>
-                    </div>
-                  </>
-                )}
-                <label className="check">
-                  <input
-                    type="checkbox"
-                    checked={ack}
-                    onChange={(e) => setAck(e.target.checked)}
-                  />
-                  راجعت المصدر وأقرّ بتحذيرات الجودة الظاهرة إن وجدت.
-                </label>
-                <label>
-                  ملاحظات المراجعة
-                  <Textarea
-                    value={reviewNotes}
-                    onChange={(e) => setReviewNotes(e.target.value)}
-                  />
-                </label>
-                <div className="actions">
-                  <Button
-                    variant="outline"
-                    disabled={
-                      busy ||
-                      !ack ||
-                      ["REVIEWED", "PUBLISHED"].includes(version.status) ||
-                      version.files?.some(
-                        (f: any) =>
-                          !f.extraction_status.startsWith("COMPLETED") ||
-                          (f.role === "solution" &&
-                            f.verification !== "owner_verified"),
-                      )
-                    }
-                    onClick={() =>
-                      action(async () => {
-                        await api(
-                          "/api/owner/versions/" + version.id + "/review",
-                          "POST",
-                          { acknowledge_issues: ack, notes: reviewNotes },
-                        );
-                        setVersion(
-                          await api("/api/owner/versions/" + version.id),
-                        );
-                      })
-                    }
-                  >
-                    اعتماد المراجعة
-                  </Button>
-                  <Button
-                    variant="outline"
-                    className="primary"
-                    disabled={busy || version.status !== "REVIEWED"}
-                    onClick={() =>
-                      action(async () => {
-                        await api(
-                          "/api/owner/versions/" + version.id + "/publish",
-                          "POST",
-                          {},
-                        );
-                        setVersion(
-                          await api("/api/owner/versions/" + version.id),
-                        );
-                        setNotice(
-                          "نُشرت النسخة المعتمدة وأصبحت متاحة للأدوات والطلاب.",
-                        );
-                        setOwnerDocs((await api("/api/owner/documents")).items);
-                      })
-                    }
-                  >
-                    تفعيل للوكيل
-                  </Button>
-                </div>
-              </Card>
-            )}
-          </section>
+          <OwnerLibrary api={api} catalogue={studyCatalog} notify={setNotice} render={text => <Md text={text} />} />
         )}
         {view === "usage" && (
           <section tabIndex={0} className="page-content">

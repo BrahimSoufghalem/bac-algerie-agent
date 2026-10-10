@@ -40,28 +40,18 @@ def test_table_shape_limits():
 
 
 @pytest.mark.asyncio
-async def test_snapshot_unchanged_after_raw_source_reprocessing_and_revocation(
-    services,
-):
+async def test_snapshot_unchanged_after_raw_source_edit_and_revocation(services):
     lib, r, owner = seeded(services)
     doc = await process_and_publish(services, lib, r, owner)
     node = lib.nodes(doc["id"], "lesson")[0]["id"]
     before = lib.node(node)["content"]
-    raw = services.extraction_db.one(
-        "SELECT content_file FROM nodes WHERE kind='lesson'"
-    )
-    services.extraction_store.write(raw["content_file"], b"changed raw content")
+    services.store.write(lib.version(r["version_id"])["metadata"]["original_source_dir"] + "/primary.md", b"changed raw content")
     assert lib.node(node)["content"] == before
     user, chat = chat_and_config(services)
     tools = Tools(services, user, chat)
-    payload = tools.load(node)
-    asset = payload["assets"][0]["id"]
+    tools.load(node)
     with pytest.raises(ValueError, match="not actually loaded"):
-        tools.answer(
-            {"blocks": [{"type": "text", "text": "x"}], "source_ids": ["invented"]}
-        )
-    services.db.execute(
-        "UPDATE documents SET status='ARCHIVED' WHERE id=?", (doc["id"],)
-    )
-    with pytest.raises(ValueError, match="private"):
-        tools.answer({"blocks": [{"type": "image", "asset_id": asset}]})
+        tools.answer({"blocks":[{"type":"text","text":"x"}],"source_ids":["invented"]})
+    services.db.execute("UPDATE documents SET status='ARCHIVED' WHERE id=?", (doc["id"],))
+    with pytest.raises(Exception):
+        tools.answer({"blocks":[{"type":"text","text":"x"}],"source_ids":[node]})

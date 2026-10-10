@@ -36,7 +36,7 @@ PRESETS = [
         "protocol": "openai",
         "model": "gpt-4.1-mini",
         "temperature": 0.2,
-        "slots": ["agent", "extraction", "selector"],
+        "slots": ["agent", "selector"],
     },
     {
         "id": "google",
@@ -45,7 +45,7 @@ PRESETS = [
         "protocol": "openai",
         "model": "gemini-3.5-flash-lite",
         "temperature": 1.0,
-        "slots": ["agent", "extraction", "selector"],
+        "slots": ["agent", "selector"],
     },
     {
         "id": "anthropic",
@@ -54,7 +54,7 @@ PRESETS = [
         "protocol": "anthropic",
         "model": "claude-sonnet-4-5",
         "temperature": 0.2,
-        "slots": ["agent", "extraction"],
+        "slots": ["agent"],
     },
     {
         "id": "vercel",
@@ -63,7 +63,7 @@ PRESETS = [
         "protocol": "openai",
         "model": "openai/gpt-4.1-mini",
         "temperature": 0.2,
-        "slots": ["agent", "extraction", "selector"],
+        "slots": ["agent", "selector"],
     },
     {
         "id": "openrouter",
@@ -72,7 +72,7 @@ PRESETS = [
         "protocol": "openai",
         "model": "openai/gpt-4.1-mini",
         "temperature": 0.2,
-        "slots": ["agent", "extraction", "selector"],
+        "slots": ["agent", "selector"],
     },
     {
         "id": "custom",
@@ -81,7 +81,7 @@ PRESETS = [
         "protocol": "openai",
         "model": "",
         "temperature": 0.2,
-        "slots": ["agent", "extraction", "selector"],
+        "slots": ["agent", "selector"],
     },
 ]
 

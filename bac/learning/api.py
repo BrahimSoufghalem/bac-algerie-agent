@@ -276,6 +276,8 @@ def router(s, current):
 
     @r.post("/owner/models/{slot}/test")
     async def test_model(slot: str, p: Confirm, user=Depends(current)):
+        if slot not in ("agent", "selector"):
+            raise HTTPException(422, "Invalid model slot")
         owner(user)
         if not p.confirm:
             raise HTTPException(422, "Explicit connection-test confirmation required")

@@ -38,9 +38,6 @@ from bac.agent.full_index import supported_router
 from bac.library.service import Library
 from bac.library.contracts import (
     DocumentMetadata,
-    SolutionMetadata,
-    PageRange,
-    SolutionVerification,
     UploadPackage,
 )
 from bac.vendor.bookforge.vision.provider import validate_base_url
@@ -93,14 +90,15 @@ class Review(Strict):
     notes: str = Field(default="", max_length=4000)
 
 
-class PageReextract(Strict):
-    file_id: str | None = Field(default=None, max_length=200)
-    confirm: bool = False
+class Removal(Strict):
+    subject: str
+    track: str | None = None
+    content_type: str | None = None
+    confirmation_token: str = ""
 
 
-class CombinedSolution(Strict):
-    metadata: SolutionMetadata
-    page_range: PageRange
+class DeleteConfirmation(Strict):
+    confirmation_token: str = Field(min_length=64, max_length=64)
 
 
 class StatusUpdate(Strict):
@@ -582,7 +580,7 @@ def create_app(services=None):
     @app.get("/api/owner/model-presets")
     def model_presets(slot: str = "agent", user=Depends(current)):
         owner(user)
-        if slot not in ("agent", "extraction", "selector"):
+        if slot not in ("agent", "selector"):
             raise HTTPException(422, "Invalid model slot")
         return {"items": presets(slot)}
 
@@ -621,7 +619,7 @@ def create_app(services=None):
                 [
                     public_config(r, r["slot"])
                     for r in s.db.rows(
-                        "SELECT m.* FROM active_models a JOIN model_configs m ON m.id=a.config_id"
+                        "SELECT m.* FROM active_models a JOIN model_configs m ON m.id=a.config_id WHERE a.slot='agent'"
                     )
                 ]
                 + ([public_config(selector, "selector")] if selector else [])
@@ -631,7 +629,7 @@ def create_app(services=None):
     @app.put("/api/owner/models/{slot}")
     async def model(slot: str, p: ConfigRequest, user=Depends(current)):
         owner(user)
-        if slot not in ("agent", "extraction", "selector"):
+        if slot not in ("agent", "selector"):
             raise HTTPException(422, "Invalid model slot")
         if slot == "selector" and p.config.selector_document_id:
             document = s.db.one(
@@ -703,12 +701,12 @@ def create_app(services=None):
                     **d,
                     "tracks": document_tracks(d),
                     "versions": s.db.rows(
-                        "SELECT id,sequence,status FROM versions WHERE document_id=? ORDER BY sequence DESC",
+                        "SELECT id,sequence,status FROM versions WHERE document_id=? AND status!='REMOVED' ORDER BY sequence DESC",
                         (d["id"],),
                     ),
                 }
                 for d in s.db.rows(
-                    "SELECT * FROM documents WHERE status!='DELETED' ORDER BY created_at DESC LIMIT 100"
+                    "SELECT * FROM documents WHERE status!='DELETED' ORDER BY created_at DESC"
                 )
             ]
         }
@@ -726,8 +724,8 @@ def create_app(services=None):
         temps = []
 
         async def save(incoming_file):
-            if not (incoming_file.filename or "").lower().endswith(".pdf"):
-                raise HTTPException(422, "PDF required")
+            if not (incoming_file.filename or "").lower().endswith(".md"):
+                raise HTTPException(422, "ارفع ملف Markdown بامتداد .md")
             incoming = s.store.path("incoming")
             incoming.mkdir(exist_ok=True)
             fd, name = tempfile.mkstemp(dir=incoming)
@@ -765,7 +763,7 @@ def create_app(services=None):
         except HTTPException:
             raise
         except (ValueError, __import__("subprocess").SubprocessError):
-            raise HTTPException(422, "Invalid metadata, package or PDF") from None
+            raise HTTPException(422, "بيانات أو حزمة Markdown غير صالحة") from None
         finally:
             for temp in temps:
                 temp.unlink(missing_ok=True)
@@ -773,17 +771,35 @@ def create_app(services=None):
             if solution_file:
                 await solution_file.close()
 
-    def selected_file(v, file_id, page=None):
-        f = (
-            next((f for f in v["files"] if f["id"] == file_id), None)
-            if file_id
-            else next(f for f in v["files"] if f["role"] == "primary")
-        )
-        if not f or (
-            page is not None and not f["first_page"] <= page <= f["last_page"]
-        ):
-            raise HTTPException(404, "Source file/page not found")
-        return f
+    @app.get("/api/owner/library/inventory")
+    def inventory(user=Depends(current)):
+        owner(user)
+        return library.inventory()
+
+    @app.post("/api/owner/library/remove-preview")
+    def removal_preview(p: Removal, user=Depends(current)):
+        owner(user)
+        return library.removal_preview(p.subject, p.track, p.content_type)
+
+    @app.post("/api/owner/library/remove")
+    def removal(p: Removal, user=Depends(current)):
+        owner(user)
+        return library.remove_content(p.subject, p.track, p.content_type, p.confirmation_token, user["id"])
+
+    @app.get("/api/owner/documents/{id}/delete-preview")
+    def document_removal_preview(id: str, user=Depends(current)):
+        owner(user)
+        return library.document_removal_preview(id)
+
+    @app.delete("/api/owner/documents/{id}")
+    def remove_document(id: str, p: DeleteConfirmation, user=Depends(current)):
+        owner(user)
+        return library.remove_document(id, p.confirmation_token, user["id"])
+
+    @app.get("/api/owner/versions/{id}")
+    def version(id: str, user=Depends(current)):
+        owner(user)
+        return library.version(id)
 
     @app.post("/api/owner/versions/{id}/clone")
     def clone(id: str, user=Depends(current)):
@@ -795,172 +811,10 @@ def create_app(services=None):
         owner(user)
         return library.update_metadata(id, p.model_dump(), user["id"])
 
-    @app.patch("/api/owner/versions/{id}/files/{file_id}/range")
-    def file_range(id: str, file_id: str, p: PageRange, user=Depends(current)):
+    @app.get("/api/owner/versions/{id}/preview")
+    def preview(id: str, user=Depends(current)):
         owner(user)
-        return library.set_range(id, file_id, p.model_dump(), user["id"])
-
-    @app.post("/api/owner/versions/{id}/solution/upload")
-    async def upload_solution(
-        id: str,
-        metadata: str = Form(...),
-        file: UploadFile = File(...),
-        user=Depends(current),
-    ):
-        owner(user)
-        temp = None
-        try:
-            p = SolutionMetadata.model_validate_json(metadata)
-            if not (file.filename or "").lower().endswith(".pdf"):
-                raise HTTPException(422, "PDF required")
-            incoming = s.store.path("incoming")
-            incoming.mkdir(exist_ok=True)
-            fd, name = tempfile.mkstemp(dir=incoming)
-            temp = Path(name)
-            length = 0
-            with os.fdopen(fd, "wb") as out:
-                while chunk := await file.read(1024 * 1024):
-                    length += len(chunk)
-                    if length > s.settings.max_upload_mb * 1024**2:
-                        raise HTTPException(413, "File too large")
-                    out.write(chunk)
-            return await asyncio.to_thread(
-                library.attach_solution,
-                id,
-                p.model_dump(),
-                user["id"],
-                temp,
-                file.filename,
-            )
-        except HTTPException:
-            raise
-        except (ValueError, __import__("subprocess").SubprocessError):
-            raise HTTPException(422, "Invalid solution metadata/PDF") from None
-        finally:
-            if temp:
-                temp.unlink(missing_ok=True)
-            await file.close()
-
-    @app.post("/api/owner/versions/{id}/solution/range")
-    def solution_range(id: str, p: CombinedSolution, user=Depends(current)):
-        owner(user)
-        return library.attach_solution(
-            id,
-            p.metadata.model_dump(),
-            user["id"],
-            page_range=p.page_range.model_dump(),
-        )
-
-    @app.post("/api/owner/versions/{id}/solution/verify")
-    def solution_verify(id: str, p: SolutionVerification, user=Depends(current)):
-        owner(user)
-        return library.verify_solution(id, p.model_dump(), user["id"])
-
-    @app.delete("/api/owner/versions/{id}/solution")
-    def solution_remove(id: str, user=Depends(current)):
-        owner(user)
-        return library.remove_solution(id, user["id"])
-
-    @app.get("/api/owner/versions/{id}")
-    def version(id: str, user=Depends(current)):
-        owner(user)
-        return library.version(id)
-
-    @app.post("/api/owner/versions/{id}/process")
-    def process(id: str, user=Depends(current)):
-        owner(user)
-        return library.process(id, user["id"])
-
-    @app.post("/api/owner/versions/{id}/retry/{status}")
-    def retry_pages(id: str, status: str, user=Depends(current)):
-        owner(user)
-        v = library.version(id)
-        if v["status"] in ("REVIEWED", "PUBLISHED"):
-            raise HTTPException(409, "Create a new version to change reviewed content")
-        try:
-            raw_status = {"failed": "FAILED", "suspicious": "NEEDS_REVIEW"}[status]
-            n = sum(
-                s.extraction_queue.retry_pages(bid, raw_status)
-                for bid in dict.fromkeys(f["bookforge_id"] for f in v["files"])
-            )
-        except (ValueError, KeyError):
-            raise HTTPException(409, "Invalid retry or extraction state") from None
-        return {"scheduled": n}
-
-    @app.post("/api/owner/versions/{id}/page/{page}/reextract")
-    def reextract_page(id: str, page: int, p: PageReextract, user=Depends(current)):
-        owner(user)
-        if not p.confirm:
-            raise HTTPException(
-                422, "Explicit confirmation required for a new extraction request"
-            )
-        return library.reextract_page(id, page, p.file_id, user["id"])
-
-    @app.get("/api/owner/versions/{id}/page/{page}")
-    def preview(id: str, page: int, file_id: str | None = None, user=Depends(current)):
-        owner(user)
-        v = library.version(id)
-        f = selected_file(v, file_id, page)
-        frozen = library.approved_page(v, f["id"], page)
-        if frozen is not None:
-            return {
-                "page": page,
-                "status": frozen["status"],
-                "quality": frozen["quality"],
-                "content": s.store.read(frozen["content_file"]).decode()
-                if frozen.get("content_file")
-                else None,
-                "json": json.loads(s.store.read(frozen["json_file"]))
-                if frozen.get("json_file")
-                else None,
-                "immutable_preview": True,
-            }
-        p = s.extraction_db.one(
-            "SELECT * FROM pages WHERE book_id=? AND pdf_page=?",
-            (f["bookforge_id"], page),
-        )
-        if not p:
-            raise HTTPException(404, "Page not found")
-        return {
-            "page": page,
-            "status": p["status"],
-            "quality": json.loads(p["quality"]),
-            "content": s.extraction_store.read(p["artifact_dir"] + "/page.md").decode()
-            if p["artifact_dir"]
-            else None,
-            "json": json.loads(
-                s.extraction_store.read(p["artifact_dir"] + "/page.json")
-            )
-            if p["artifact_dir"]
-            else None,
-        }
-
-    @app.get("/api/owner/versions/{id}/page/{page}/image")
-    async def preview_image(
-        id: str, page: int, file_id: str | None = None, user=Depends(current)
-    ):
-        owner(user)
-        v = library.version(id)
-        f = selected_file(v, file_id, page)
-        frozen = library.approved_page(v, f["id"], page)
-        if frozen is not None:
-            if not frozen["image_file"]:
-                raise HTTPException(404, "Approved source image unavailable")
-            return FileResponse(
-                s.store.path(frozen["image_file"]), media_type="image/png"
-            )
-        b = s.extraction_db.one("SELECT * FROM books WHERE id=?", (f["bookforge_id"],))
-        p = s.extraction_db.one(
-            "SELECT * FROM pages WHERE book_id=? AND pdf_page=?", (b["id"], page)
-        )
-        if not p:
-            raise HTTPException(404, "Page not found")
-        from bac.vendor.bookforge.library.uploads import ensure_rendered
-
-        rel = await asyncio.to_thread(
-            ensure_rendered, b, p, s.extraction_store, s.extraction_settings
-        )
-        return FileResponse(s.extraction_store.path(rel), media_type="image/png")
+        return library.preview(id)
 
     @app.post("/api/owner/versions/{id}/review")
     def review(id: str, p: Review, user=Depends(current)):

@@ -93,7 +93,7 @@ export function IdentityChoices({
       <fieldset className="source-tracks" disabled={disabled}>
         <legend>{labels[0]}</legend>
         <p className="muted">
-          يمكن اختيار أكثر من شعبة للملف نفسه؛ لن يُكرر الكتاب أو استخراجه.
+          يمكن اختيار أكثر من شعبة للملف نفسه؛ لن تُكرر نسخة المحتوى.
         </p>
         <div className="source-track-options">
           {catalogue.tracks.map((t, i) => (

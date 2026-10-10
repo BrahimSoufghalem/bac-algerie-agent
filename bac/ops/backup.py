@@ -6,9 +6,7 @@ from bac.ops.guard import DataGuard
 
 REQUIRED = {
     "platform.sqlite3",
-    "extraction/state.sqlite3",
     ".encryption.key",
-    "extraction/.encryption.key",
 }
 SKIP = {".runtime.lock", ".migration.lock", "platform.sqlite3.migration.lock"}
 
@@ -23,12 +21,14 @@ def digest(path):
 
 def integrity(root):
     if not all((root / p).is_file() for p in REQUIRED):
-        raise ValueError("Backup requires both databases and both encryption keys")
+        raise ValueError("Backup requires the platform database and encryption key")
     from cryptography.fernet import Fernet
 
     for p in (".encryption.key", "extraction/.encryption.key"):
+        if not (root / p).exists(): continue
         Fernet((root / p).read_bytes())
     for p in ("platform.sqlite3", "extraction/state.sqlite3"):
+        if not (root / p).exists(): continue
         with sqlite3.connect(f"file:{root / p}?mode=ro", uri=True) as c:
             if (
                 c.execute("PRAGMA integrity_check").fetchone()[0] != "ok"
@@ -48,6 +48,7 @@ def backup(root, output):
         integrity(root)
         # No active application process now. Merge WAL before enumerating files.
         for db in ("platform.sqlite3", "extraction/state.sqlite3"):
+            if not (root / db).exists(): continue
             with sqlite3.connect(root / db) as c:
                 if c.execute("PRAGMA wal_checkpoint(TRUNCATE)").fetchone()[0]:
                     raise RuntimeError("Database is busy; stop every data user")

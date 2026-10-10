@@ -11,21 +11,10 @@ from bac.core.services import Services
 from bac.core.auth import create_user
 from bac.core.db import js, uid
 from bac.agent.engine import AgentEngine
-from bac.vendor.bookforge.models.page import PageDocument
-from tests.fixture_book import golden_page
 from tests.grounding_fixture import publish_reference
 from bac.agent.provider import ModelError
 
 fixture_nodes = {}
-
-
-class FixtureVision:
-    async def extract(self, image, page, width, height):
-        await asyncio.sleep(0.1)
-        return PageDocument.model_validate(golden_page(page, width, height)), {
-            "prompt_tokens": 0,
-            "completion_tokens": 0,
-        }
 
 
 class FixtureChat:
@@ -108,14 +97,13 @@ class FixtureChat:
 
 
 s = Services(
-    vision_factory=lambda cfg, key: FixtureVision(),
     chat_factory=lambda cfg, key: FixtureChat(),
 )
 if not s.db.one("SELECT 1 FROM users WHERE role='owner'"):
     create_user(
         s.db, "owner@test.invalid", "Test-password-only-1", "المالك التجريبي", "owner"
     )
-for slot in ["agent", "extraction"]:
+for slot in ["agent"]:
     if not s.db.one("SELECT 1 FROM active_models WHERE slot=?", (slot,)):
         id = uid("cfg")
         s.db.execute(
@@ -139,25 +127,24 @@ app = create_app(s)
 
 @asynccontextmanager
 async def lifespan(app):
-    extraction_config = s.db.one(
-        "SELECT config_id FROM active_models WHERE slot='extraction'"
-    )["config_id"]
     fixture_nodes["arithmetic"] = await publish_reference(s, "arithmetic")
     fixture_nodes["projectile"] = await publish_reference(s, "projectile")
-    s.db.execute(
-        "UPDATE active_models SET config_id=? WHERE slot='extraction'",
-        (extraction_config,),
-    )
+    from bac.library.service import Library
+    from tests.test_library import SOURCE
+    lib = Library(s)
+    source = s.store.path("browser-heat.md"); source.write_text(SOURCE)
+    owner = s.db.one("SELECT id FROM users WHERE email='owner@test.invalid'")["id"]
+    result = lib.upload(source, "browser-heat.md", {"title":"الحرارة — مصدر محلي", "kind":"book", "subject":"physics", "track":"science"}, owner)
+    lib.review(result["version_id"], owner, True, "Synthetic fixture")
+    lib.publish(result["version_id"], owner)
     engine = AgentEngine(s)
     tasks = [
         asyncio.create_task(engine.run()),
-        asyncio.create_task(s.extraction_engine.run()),
     ]
     try:
         yield
     finally:
         engine.stop.set()
-        s.extraction_engine.stopping.set()
         await asyncio.gather(*tasks)
 
 
