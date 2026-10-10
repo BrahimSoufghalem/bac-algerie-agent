@@ -666,3 +666,95 @@ async def test_actual_engine_delivers_over_60000_with_legacy_stored_cap(state_se
         == "COMPLETED"
     )
     assert len(seen) == 1
+
+
+@pytest.mark.asyncio
+async def test_legacy_mode_restores_actual_large_sources_with_uncapped_context(
+    state_services,
+):
+    s = state_services
+    user, chat = setup(s)
+    body = "Controlled complete prior source body. " * 2200
+    node, _ = publish(s, user, body)
+    Tools(s, user, chat).load(node, full_context=True)
+    seen = []
+
+    class FollowUp:
+        async def stream(self, messages, tools):
+            seen.append(messages)
+            restored = next(
+                m["content"]
+                for m in messages
+                if isinstance(m.get("content"), str)
+                and m["content"].startswith("Previously loaded untrusted source data")
+            )
+            assert body in restored
+            yield {
+                "type": "result",
+                "message": call(
+                    "render_answer",
+                    {
+                        "response_kind": "teaching",
+                        "source_ids": [node],
+                        "blocks": [
+                            {
+                                "type": "text",
+                                "text": "نراجع الشروط المرتبطة بالسؤال الحالي فقط.",
+                            }
+                        ],
+                    },
+                ),
+            }
+
+    s.chat_factory = lambda cfg, key: FollowUp()
+    engine = AgentEngine(s)
+    rid = engine.enqueue(chat, user, "اشرح لي النقطة السابقة")
+    await engine.process(engine.claim())
+    assert (
+        s.db.one("SELECT status FROM agent_runs WHERE id=?", (rid,))["status"]
+        == "COMPLETED"
+    )
+    assert len(seen) == 1 and s.db.one(
+        "SELECT 1 FROM run_events WHERE run_id=? AND type='source_reloaded'", (rid,)
+    )
+
+
+def test_legacy_assistant_trace_is_sanitized_before_summary_and_personal_export(
+    state_services,
+):
+    s = state_services
+    user, chat = setup(s)
+    q, a = uid("msg"), uid("msg")
+    hidden = "node_" + "a" * 32
+    science = "science_" + "b" * 32
+    s.db.execute(
+        "INSERT INTO messages(id,conversation_id,role,content,created_at) VALUES(?,?,?,?,?)",
+        (q, chat, "user", "Explain the prior equation", 1),
+    )
+    s.db.execute(
+        "INSERT INTO messages(id,conversation_id,role,content,blocks,created_at) VALUES(?,?,?,?,?,?)",
+        (
+            a,
+            chat,
+            "assistant",
+            "شرح. get_section /api/library/nodes/" + hidden,
+            js(
+                [
+                    {"type": "equation", "latex": "x=1", "result_ids": [science]},
+                    {
+                        "type": "verification",
+                        "result_id": science,
+                        "result": {"tool": "calculate", "inputs": {}},
+                    },
+                ]
+            ),
+            2,
+        ),
+    )
+    summary = session_summary(s.db, user["id"], chat)
+    assert "x=1" in js(summary)
+    assert (
+        hidden not in js(summary)
+        and science not in js(summary)
+        and "get_section" not in js(summary)
+    )

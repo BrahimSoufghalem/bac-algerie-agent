@@ -254,7 +254,7 @@ class AgentEngine:
             try:
                 scope = row.get("scope", "full")
                 payload = tools.load(
-                    row.get("scope_id") or row["node_id"], remember=False, scope=scope
+                    row.get("scope_id") or row["node_id"], remember=False, scope=scope, full_context=True
                 )
             except (HTTPException, ValueError):
                 continue
@@ -262,7 +262,7 @@ class AgentEngine:
             # Never silently upgrade stale remembered evidence to a different publication.
             if payload.get("node", {}).get("version_id") != row["version_id"]:
                 continue
-            if "error" not in payload and len(text) < remaining // 2:
+            if "error" not in payload and len(text) < remaining / 2:
                 tools.remember(payload, scope, row.get("scope_id") or row["node_id"])
                 self.emit(run, "source_reloaded", {"scope": scope})
                 tools.delivered_sources.update(tools.sources)

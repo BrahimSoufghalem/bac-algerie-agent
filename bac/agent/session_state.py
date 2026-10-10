@@ -10,6 +10,7 @@ import re
 import time
 
 from bac.core.db import js
+from bac.core.presentation import public_message
 from bac.agent.memory import history_text
 
 MAX_SUMMARY_CHARS = 6000
@@ -23,6 +24,12 @@ def excerpt(text, size):
     if len(text) <= size:
         return text
     return text[:size].rsplit(" ", 1)[0] + " …"
+
+
+def public_answer_excerpt(row):
+    safe = public_message(row)
+    safe["blocks"] = js(safe["blocks"])
+    return excerpt(history_text(safe), 180)
 
 
 def message_digest(row):
@@ -83,7 +90,7 @@ def session_summary(db, user_id, chat, exclude_id=None, persist=True):
             "run_id": run["id"] if run else None,
             "status": run["status"] if run else "UNTRACKED",
             "question_excerpt": excerpt(question["content"], 220),
-            "answer_excerpt": excerpt(history_text(answer), 180) if answer else "",
+            "answer_excerpt": public_answer_excerpt(answer) if answer else "",
         }
         entries.append(entry)
         proofs.append(
