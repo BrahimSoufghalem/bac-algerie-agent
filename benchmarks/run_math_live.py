@@ -29,6 +29,7 @@ DATA = ROOT / "private" / "qa-data"
 ROOT.mkdir(parents=True, exist_ok=True, mode=0o700)
 RAW.mkdir(exist_ok=True, mode=0o700)
 PLAN = json.loads((REPO / "benchmarks/math_live/plan.json").read_text())
+SOURCE_PLAN = PLAN | PLAN.get("live_source", {})
 SECRET_VALUES = load_secret_values()
 CURRENT = contextvars.ContextVar("case", default={})
 LEDGER = []
@@ -438,9 +439,14 @@ def init():
         "مالك اختبار",
         "owner",
     )
-    p = ROOT / "private" / "transcription_livre_sciences_math_3AS.md"
+    filename = (
+        "transcription_livre_sciences_math_3AS_v2.md"
+        if SOURCE_PLAN.get("source_fixture") == "book-v2.md.gz.b64"
+        else "transcription_livre_sciences_math_3AS.md"
+    )
+    p = ROOT / "private" / filename
     p.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
-    p.write_bytes(load_fixture(REPO, PLAN))
+    p.write_bytes(load_fixture(REPO, SOURCE_PLAN))
     r = lib.upload(
         p,
         p.name,
@@ -457,7 +463,7 @@ def init():
         r["version_id"],
         owner,
         True,
-        "Isolated diagnostic test requested by owner; original Markdown unchanged.",
+        "Owner-approved isolated diagnostic test; selected source bytes unchanged.",
     )
     lib.publish(r["version_id"], owner)
     key = Path(os.environ["GEMINI_API_KEY_FILE"]).read_text().strip()
@@ -533,7 +539,10 @@ def init():
         "request_cap": CAP,
         "reported_input_soft_stop": INPUT_CAP,
         "python_runtime": "production Docker broker; fresh no-network container per call",
-        "source_preparation": "Original math Markdown byte-for-byte unchanged",
+        "source_preparation": SOURCE_PLAN.get(
+            "source_preparation", "Original math Markdown byte-for-byte unchanged"
+        ),
+        "source_fixture": SOURCE_PLAN.get("source_fixture", "book.md.gz.b64"),
         "source_sha256": hashlib.sha256(p.read_bytes()).hexdigest(),
     }
     write(ROOT / "configuration.json", config)

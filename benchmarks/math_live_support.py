@@ -58,7 +58,10 @@ def redact(value, secrets=()):
 
 
 def load_fixture(repo, plan):
-    encoded = (Path(repo) / "benchmarks/math_live/book.md.gz.b64").read_text()
+    name = plan.get("source_fixture", "book.md.gz.b64")
+    if name not in {"book.md.gz.b64", "book-v2.md.gz.b64"}:
+        raise ValueError("Unknown mathematics fixture")
+    encoded = (Path(repo) / "benchmarks/math_live" / name).read_text()
     compressed = base64.b64decode("".join(encoded.split()), validate=True)
     with gzip.GzipFile(fileobj=io.BytesIO(compressed)) as stream:
         data = stream.read(2_000_001)
@@ -67,7 +70,7 @@ def load_fixture(repo, plan):
         or len(data) != plan["source_bytes"]
         or hashlib.sha256(data).hexdigest() != plan["source_sha256"]
     ):
-        raise ValueError("Original fixture byte count/hash mismatch")
+        raise ValueError("Mathematics fixture byte count/hash mismatch")
     data.decode("utf-8")
     return data
 

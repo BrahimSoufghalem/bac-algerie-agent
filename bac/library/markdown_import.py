@@ -18,6 +18,7 @@ class Section:
     content: str
     first_line: int
     last_line: int
+    initial_page: int | None = None
 
 
 def _metadata(text, line):
@@ -127,6 +128,7 @@ def parse_markdown(raw, filename):
         )
     sections = []
     cursor = 0
+    current_page = None
     for a, b, meta in markers:
         body = "".join(lines[cursor:a])
         # Explicitly trailing metadata; never silently treat it as front matter.
@@ -137,7 +139,8 @@ def parse_markdown(raw, filename):
             raise HTTPException(
                 422, f"لا يوجد محتوى قبل ملخص {meta['title']}؛ الكتل تصف القسم السابق"
             )
-        sections.append(Section(meta, body, cursor + 1, a))
+        sections.append(Section(meta, body, cursor + 1, a, current_page))
+        current_page = last_source_page(body, current_page)
         cursor = b
     trailing = "".join(lines[cursor:])
     if trailing.strip() and re.sub(r"<!--.*?-->|\s|---", "", trailing, flags=re.S):
@@ -164,16 +167,66 @@ def parse_markdown(raw, filename):
     return text, sections, list(dict.fromkeys(warnings))
 
 
-def references(text):
-    pages = list(PAGE.finditer(text))
-    if not pages:
+def _page_markers(text):
+    """Only literal source headings establish page provenance, never YAML or code."""
+    offset, fence, comment = 0, None, False
+    for line in text.splitlines(keepends=True):
+        start = offset
+        offset += len(line)
+        if comment:
+            if "-->" in line:
+                comment = False
+            continue
+        if not fence and line.lstrip().startswith("<!--"):
+            comment = "-->" not in line
+            continue
+        candidate = FENCE.match(line.rstrip("\r\n"))
+        if candidate:
+            if (
+                fence
+                and candidate[1][0] == fence[0]
+                and len(candidate[1]) >= len(fence)
+                and not candidate[2].strip()
+            ):
+                fence = None
+            elif not fence:
+                fence = candidate[1]
+            continue
+        if fence:
+            continue
+        marker = PAGE.match(line)
+        if marker:
+            printed = re.search(r"صفحة الكتاب\s*(.*?)\s*/", marker[1])
+            yield start, int(marker[2]), printed[1].strip() if printed else None
+
+
+def last_source_page(text, default=None):
+    """Carry the last encountered page, not the greatest numeric page."""
+    current = default
+    for _, page, _ in _page_markers(text):
+        current = page
+    return current
+
+
+def _has_source_content(text):
+    text = re.sub(r"<!--.*?-->", "", text, flags=re.S)
+    return any(
+        line.strip() and not re.fullmatch(r"(?:-{3,}|\*{3,}|_{3,})", line.strip())
+        for line in text.splitlines()
+    )
+
+
+def references(text, initial_page=None):
+    pages = list(_page_markers(text))
+    ids = {page for _, page, _ in pages}
+    # A section/chunk may start midway through the preceding physical page.
+    prefix = text[: pages[0][0]] if pages else text
+    if initial_page is not None and _has_source_content(prefix):
+        ids.add(initial_page)
+    if not ids:
         return [1], {}, "markdown_section"
-    ids = sorted({int(p[2]) for p in pages})
-    printed = {}
-    for p in pages:
-        m = re.search(r"صفحة الكتاب\s*(.*?)\s*/", p[1])
-        printed[int(p[2])] = m[1].strip() if m else None
-    return ids, printed, "source_pdf_page"
+    printed = {page: label for _, page, label in pages}
+    return sorted(ids), printed, "source_pdf_page"
 
 
 def blocks(text):

@@ -145,5 +145,11 @@
     "automatic_retry": false,
     "reported_input_soft_stop": 2500000,
     "scope": "Benchmark guard, not a new application context cap; one in-flight request can exceed the soft token stop"
+  },
+  "live_source": {
+    "source_fixture": "book-v2.md.gz.b64",
+    "source_bytes": 1340252,
+    "source_sha256": "b701277cc87f61260d98163c9309b94658e42223756f30375e20378be2643a39",
+    "source_preparation": "User-supplied V2 Markdown byte-for-byte unchanged; original fixture retained separately"
   }
 }

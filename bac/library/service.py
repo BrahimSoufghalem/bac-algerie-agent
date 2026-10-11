@@ -18,7 +18,12 @@ from bac.core.study import (
     content_type,
 )
 from bac.library.contracts import DocumentMetadata, UploadPackage
-from bac.library.markdown_import import parse_markdown, references, groups
+from bac.library.markdown_import import (
+    parse_markdown,
+    references,
+    groups,
+    last_source_page,
+)
 from bac.library.retrieval import Reader
 
 
@@ -295,7 +300,7 @@ class Library(Reader):
             nid = vid + ":section:" + str(index + 1)
             path = prefix + "/nodes/" + str(index + 1) + ".md"
             self.s.store.write(path, section.content.encode())
-            spages, _, page_kind = references(section.content)
+            spages, _, page_kind = references(section.content, section.initial_page)
             data = section.metadata | {
                 "file_id": fid,
                 "source_format": "markdown",
@@ -322,17 +327,12 @@ class Library(Reader):
             manifest["nodes"].append(node)
             # Keep exam statements and solutions atomic; split only large textbook lessons.
             chunks = groups(section.content) if kind == "lesson" else [section.content]
-            current_page = min(spages)
+            current_page = section.initial_page
             for ci, chunk in enumerate(chunks):
                 cpath = prefix + "/parts/" + str(index + 1) + "-" + str(ci + 1) + ".md"
                 self.s.store.write(cpath, chunk.encode())
-                cpages, _, chunk_reference = references(chunk)
-                if (
-                    chunk_reference == "markdown_section"
-                    and page_kind == "source_pdf_page"
-                ):
-                    cpages = [current_page]
-                current_page = max(cpages)
+                cpages, _, _ = references(chunk, current_page)
+                current_page = last_source_page(chunk, current_page)
                 headings = re.findall(r"^#{1,6}\s+(?!\[)([^\n]+)", chunk, re.M)
                 title = headings[0].strip() if headings else section.metadata["title"]
                 from bac.library.part_metadata import local_part_metadata
