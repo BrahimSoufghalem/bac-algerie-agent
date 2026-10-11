@@ -1,0 +1,149 @@
+{
+  "status": "READY_FOR_MANUAL_GITHUB_ACTIONS_NOT_EXECUTED",
+  "model_router": "gemini-3.5-flash-lite",
+  "model_answer": "gemini-3.5-flash-lite",
+  "single_conversation": true,
+  "subject": "mathematics",
+  "turns": [
+    {
+      "number": 1,
+      "student_message": "عندي f(x)=x^3-3x. احسب المشتقة وادرس التغيرات والقيم الحدية، باستعمال الأدوات للتحقق. رقم الخطوات.",
+      "acceptance_check": "symbolic and numerical verification"
+    },
+    {
+      "number": 2,
+      "student_message": "ما فهمتش النقطة الثانية من جوابك. عاودها ببساطة على نفس الدالة، دون إعادة كل الدرس.",
+      "acceptance_check": "follow-up grounded in actual assistant answer"
+    },
+    {
+      "number": 3,
+      "student_message": "يعني كلما f'(a)=0 تكون عند a قيمة عظمى؟ صحح لي الفكرة بمثال مضاد.",
+      "acceptance_check": "critical point is not sufficient; x^3 is a counterexample"
+    },
+    {
+      "number": 4,
+      "student_message": "ارسم نفس f(x)=x^3-3x على [-2,2] برسم فعلي بمحاور واضحة، واربطه بالتغيرات.",
+      "acceptance_check": "actual server-backed plot"
+    },
+    {
+      "number": 5,
+      "student_message": "تحقق من قيمتي f(-1) وf(1)، وميز بين القيمة الحدية وقيمة x التي تتحقق عندها.",
+      "acceptance_check": "2 and -2; do not confuse coordinate and value"
+    },
+    {
+      "number": 6,
+      "student_message": "نبدل الدالة الآن: f(x)=(x+1)/(x-1). ما مجالها؟ وما مستقيماتها المقاربة؟",
+      "acceptance_check": "domain excludes 1; vertical x=1 and horizontal y=1"
+    },
+    {
+      "number": 7,
+      "student_message": "قلت يمكن نعوض x=1 ونلقى f(1)=2، هل هذا صحيح؟",
+      "acceptance_check": "division by zero, not 2"
+    },
+    {
+      "number": 8,
+      "student_message": "ارسم الدالة الكسرية الأخيرة على [-3,3]، ولا توصل فرعيها عبر x=1.",
+      "acceptance_check": "real domain and discontinuity handling"
+    },
+    {
+      "number": 9,
+      "student_message": "تصحيح: قصدي f(x)=(x-1)/(x+1)، وليس الدالة السابقة. صحح المجال والمقاربين فقط.",
+      "acceptance_check": "latest correction; domain excludes -1"
+    },
+    {
+      "number": 10,
+      "student_message": "في الدالة المصححة، احسب النهاية عند -1 من اليسار ومن اليمين واشرح الإشارة.",
+      "acceptance_check": "left +infinity; right -infinity"
+    },
+    {
+      "number": 11,
+      "student_message": "هل معنى المقارب الأفقي أن الدالة تبلغ قيمته بالضرورة؟ استعمل الدالة المصححة.",
+      "acceptance_check": "f=1-2/(x+1) never equals 1"
+    },
+    {
+      "number": 12,
+      "student_message": "موضوع جديد: g(x)=ln(x)/x. حدد المجال وسلوكها قرب 0 من اليمين وعند +infinity.",
+      "acceptance_check": "x>0, -infinity at 0+, 0 at infinity"
+    },
+    {
+      "number": 13,
+      "student_message": "احسب مشتقة g وموضع قيمتها العظمى وقيمتها، وتحقق حسابيا.",
+      "acceptance_check": "(1-ln x)/x^2; maximum at e, value 1/e"
+    },
+    {
+      "number": 14,
+      "student_message": "ارسم g فعليا على [0.1,6]، بمحاور صحيحة ومن دون رسم قيم في x<=0.",
+      "acceptance_check": "plot and domain restriction"
+    },
+    {
+      "number": 15,
+      "student_message": "ننتقل للاحتمالات: P(A)=0.4 وP(B|A)=0.8 وP(B|عدم A)=0.2. احسب 1) P(B) و2) P(A|B)، وحقق الأرقام.",
+      "acceptance_check": "0.44 and 8/11"
+    },
+    {
+      "number": 16,
+      "student_message": "النتيجة الثانية ما فهمتهاش. فسرها على نفس المثال ولا تبدل الأعداد.",
+      "acceptance_check": "inverse conditional probability follow-up"
+    },
+    {
+      "number": 17,
+      "student_message": "إذن P(A|B)=P(B|A) دائما؟",
+      "acceptance_check": "not generally; 8/11 differs from 0.8"
+    },
+    {
+      "number": 18,
+      "student_message": "بدل فقط P(A) إلى 0.5 واحتفظ بالاحتمالين الشرطيين. أعد الحسابين وتحقق.",
+      "acceptance_check": "0.5 and 0.8"
+    },
+    {
+      "number": 19,
+      "student_message": "والآن خذ P(B|A)=1.2. احسب بنفس الطريقة.",
+      "acceptance_check": "reject invalid probability rather than silently compute"
+    },
+    {
+      "number": 20,
+      "student_message": "صحيح، نرجع إلى 0.8، مع P(A)=0.5 والشرطي الآخر 0.2. احسب P(A وعدم B).",
+      "acceptance_check": "0.1, without retaining invalid input"
+    },
+    {
+      "number": 21,
+      "student_message": "نبدل إلى المتتاليات: u0=1 وu(n+1)=0.5*u(n)+1. احسب الحدود الثلاثة الأولى وادرس التزايد والنهاية.",
+      "acceptance_check": "u0=1,u1=1.5,u2=1.75; increasing to 2"
+    },
+    {
+      "number": 22,
+      "student_message": "بما أن النهاية 2، هل u2 يساوي 2؟ صحح الفرق بين الحد الثاني والنهاية.",
+      "acceptance_check": "u2=1.75; limit not a finite index"
+    },
+    {
+      "number": 23,
+      "student_message": "صحح لي الحل الذي في الصورة.",
+      "acceptance_check": "no image supplied; request missing image or text, never invent it"
+    },
+    {
+      "number": 24,
+      "student_message": "لخص الأخطاء التي وقعت فيها أنا خلال هذه المحادثة فقط، ثم اقترح تمرينا مشابها دون حله. لا تنسب لي أخطاء لم أقلها.",
+      "acceptance_check": "long-history recall, honest limits and instruction compliance"
+    }
+  ],
+  "source_sha256": "5369d565c65242bd9f224f14c7f2459d0e2296f45320362f947647b7e366bdb7",
+  "source_bytes": 1278353,
+  "mutations_allowed": "fresh disposable test database only; no deployment, application changes, or automatic fixes",
+  "audit_requirements": [
+    "exact router payload, selected and delivered references",
+    "actual assistant answer and follow-up referents",
+    "each tool invocation, result and error",
+    "all provider rounds and failed attempts",
+    "prompt/output/total/thinking/cached token fields; absent fields remain unknown; cached is subset",
+    "provider HTTP success distinct from accepted application answer",
+    "causes classified as demonstrated or hypothesis with supporting code locations",
+    "proposed fixes only, never implement"
+  ],
+  "cost_guard": {
+    "turns": 24,
+    "generation_requests_max": 128,
+    "automatic_retry": false,
+    "reported_input_soft_stop": 2500000,
+    "scope": "Benchmark guard, not a new application context cap; one in-flight request can exceed the soft token stop"
+  }
+}
