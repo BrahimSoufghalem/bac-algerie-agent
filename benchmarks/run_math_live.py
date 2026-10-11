@@ -8,6 +8,7 @@ from benchmarks.math_live_support import (
     redact,
     load_fixture,
     load_secret_values,
+    rate_limit_resume,
 )
 from bac.core.services import Services
 from bac.core.config import Settings
@@ -15,6 +16,7 @@ from bac.core.auth import create_user
 from bac.core.study import select_track, StudyScope
 from bac.core.db import uid, js
 from bac.agent.models import ModelConfig
+from bac.agent.provider_errors import provider_diagnostic
 from bac.agent.provider import OpenAIChat
 from bac.agent.engine import AgentEngine
 from bac.agent.full_index import build_catalog, FullIndexCoordinator
@@ -152,7 +154,16 @@ class Tee(httpx.AsyncByteStream):
                 self.parse(raw)
         else:
             try:
-                err = json.loads(raw).get("error", {})
+                payload = json.loads(raw)
+                err = payload.get("error", {})
+                diagnostic = provider_diagnostic(
+                    self.e["http_status"],
+                    payload,
+                    {},
+                    self.e.get("retry_after_seconds"),
+                )
+                if "retry_after_seconds" in diagnostic:
+                    self.e["retry_after_seconds"] = diagnostic["retry_after_seconds"]
                 self.e["error_status"] = err.get("status")
                 self.e["error_message"] = err.get("message", "")[:4000]
             except (ValueError, AttributeError):
@@ -279,6 +290,11 @@ class Recorder(httpx.AsyncBaseTransport):
                 http_status=response.status_code,
                 content_type=response.headers.get("content-type", ""),
             )
+            retry = provider_diagnostic(
+                response.status_code, {}, {}, response.headers.get("retry-after")
+            )
+            if "retry_after_seconds" in retry:
+                e["retry_after_seconds"] = retry["retry_after_seconds"]
             response.stream = Tee(response.stream, delegate, e)
             self.streams.append(response.stream)
             return response
@@ -537,7 +553,7 @@ def init():
     )
 
 
-async def run(limit):
+async def run(limit, resume_429=False):
     cfg = json.loads((ROOT / "configuration.json").read_text())
     LEDGER.extend(json.loads((RAW / "requests.json").read_text()))
     AUDITS.extend(
@@ -555,20 +571,50 @@ async def run(limit):
         if (RAW / "results.json").exists()
         else []
     )
+    resumed_case, previous = None, None
+    if resume_429:
+        resumed_case, delay = rate_limit_resume(results, LEDGER)
+        if resumed_case > limit:
+            raise ValueError("Resume case exceeds requested limit")
+        previous = results[-1]
+        # Explicit command authorizes exactly one retry, not an automatic provider retry.
+        # Keep earlier request ledger/unknown usage; the 128/2.5M total guards remain.
+        await asyncio.sleep(delay)
     s = services()
     s.selector_transport = REC
     engine = AgentEngine(s)
     user = s.db.one("SELECT * FROM users WHERE id=?", (cfg["user_id"],))
     try:
         for case in CASES:
-            if case["number"] <= len(results) or case["number"] > limit:
+            if (
+                case["number"] <= len(results) and case["number"] != resumed_case
+            ) or case["number"] > limit:
                 continue
             if (
                 len(LEDGER) >= CAP
                 or sum(e.get("input_tokens") or 0 for e in LEDGER) >= INPUT_CAP
             ):
                 break
-            rid = engine.enqueue(cfg["chat_id"], user, case["question"])
+            retry = case["number"] == resumed_case
+            if retry:
+                latest = s.db.one(
+                    "SELECT id,content FROM messages WHERE conversation_id=? AND role='user' AND active=1 ORDER BY created_at DESC LIMIT 1",
+                    (cfg["chat_id"],),
+                )
+                failed = s.db.one(
+                    "SELECT message_id FROM agent_runs WHERE id=? AND user_id=? AND conversation_id=?",
+                    (previous["run_id"], user["id"], cfg["chat_id"]),
+                )
+                if (
+                    not latest
+                    or not failed
+                    or latest["id"] != failed["message_id"]
+                    or latest["content"] != case["question"]
+                ):
+                    raise ValueError(
+                        "Resume requires the original latest active student request"
+                    )
+            rid = engine.enqueue(cfg["chat_id"], user, case["question"], retry=retry)
             job = engine.claim()
             assert job["id"] == rid
             CURRENT.set(
@@ -617,7 +663,11 @@ async def run(limit):
                 "events": events,
                 "notes": notes,
             }
-            results.append(out)
+            if retry:
+                out["previous_attempts"] = [previous]
+                results[-1] = out
+            else:
+                results.append(out)
             write(RAW / "results.json", results)
             requests = [e for e in LEDGER if e["run_id"] == rid]
             per_stage = {
@@ -739,10 +789,10 @@ if __name__ == "__main__":
         preflight()
     elif command == "init":
         init()
-    elif command == "run":
+    elif command in {"run", "resume-429"}:
         limit = int(sys.argv[2]) if len(sys.argv) > 2 else 24
         assert 1 <= limit <= 24
-        asyncio.run(run(limit))
+        asyncio.run(run(limit, resume_429=command == "resume-429"))
         results = (
             json.loads((RAW / "results.json").read_text())
             if (RAW / "results.json").exists()
@@ -751,4 +801,6 @@ if __name__ == "__main__":
         if len(results) < limit:
             raise SystemExit(2)
     else:
-        raise SystemExit("Use preflight, init, or run [1..24]")
+        raise SystemExit(
+            "Use preflight, init, run [1..24], or explicit one-time resume-429 [1..24]"
+        )

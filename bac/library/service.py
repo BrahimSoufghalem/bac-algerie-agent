@@ -335,15 +335,23 @@ class Library(Reader):
                 current_page = max(cpages)
                 headings = re.findall(r"^#{1,6}\s+(?!\[)([^\n]+)", chunk, re.M)
                 title = headings[0].strip() if headings else section.metadata["title"]
-                cmeta = data | {
-                    "title": title,
-                    "pages": cpages,
-                    "content_chars": len(chunk),
-                    "complete_lesson": len(chunks) == 1,
-                    "boundary": "complete_markdown_blocks",
-                    "start_order": node["start_order"] + ci,
-                    "end_order": node["start_order"] + ci,
-                }
+                from bac.library.part_metadata import local_part_metadata
+
+                local_meta = local_part_metadata(chunk, data) if len(chunks) > 1 else {}
+                title = local_meta.get("title", title)
+                cmeta = (
+                    data
+                    | local_meta
+                    | {
+                        "title": title,
+                        "pages": cpages,
+                        "content_chars": len(chunk),
+                        "complete_lesson": len(chunks) == 1,
+                        "boundary": "complete_markdown_blocks",
+                        "start_order": node["start_order"] + ci,
+                        "end_order": node["start_order"] + ci,
+                    }
+                )
                 manifest["parts"].append(
                     {
                         "id": nid + ":part:" + str(ci + 1),

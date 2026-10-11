@@ -28,6 +28,7 @@ HINTS = {
     "PROVIDER_CONTEXT_REJECTED",
     "MEDIA_INPUT_REJECTED",
     "REQUEST_INVALID_UNKNOWN",
+    "PROVIDER_RATE_LIMITED",
 }
 COUNT_FIELDS = {
     "declared_tool_count",
@@ -56,6 +57,9 @@ def safe_provider_diagnostic(value):
     for key in COUNT_FIELDS:
         count = value.get(key)
         result[key] = count if type(count) is int and 0 <= count <= 10000 else 0
+    delay = value.get("retry_after_seconds")
+    if type(delay) in {int, float} and 0 <= delay <= 3600:
+        result["retry_after_seconds"] = float(delay)
     result["error_message"] = safe_error_message(value.get("error_message"))
     fields = value.get("error_fields")
     result["error_fields"] = (
@@ -93,7 +97,7 @@ def request_topology(body, protocol="openai"):
     }
 
 
-def provider_diagnostic(code, payload, topology):
+def provider_diagnostic(code, payload, topology, retry_after=None):
     """Text is examined transiently to produce a hint, NOT a proved diagnosis."""
     if isinstance(payload, list) and len(payload) == 1:
         payload = payload[0]
@@ -166,8 +170,26 @@ def provider_diagnostic(code, payload, topology):
         x in text for x in ("image", "mime_type", "mime type", "inline_data", "media")
     ):
         hint = "MEDIA_INPUT_REJECTED"
-    fields = []
+    if code == 429:
+        hint = "PROVIDER_RATE_LIMITED"
+    delay = None
+    candidates = [retry_after]
     details = error.get("details") if isinstance(error, dict) else None
+    for item in details[:12] if isinstance(details, list) else []:
+        if isinstance(item, dict) and str(item.get("@type", "")).endswith(
+            "google.rpc.RetryInfo"
+        ):
+            candidates.append(item.get("retryDelay"))
+    # Text fallback extracts only a bounded number, never provider prose or key material.
+    match = re.search(r"retry\s+(?:in|after)\s+(\d+(?:\.\d+)?)\s*s", text)
+    if match:
+        candidates.append(match[1])
+    for candidate in candidates:
+        if isinstance(candidate, (int, float, str)) and not isinstance(candidate, bool):
+            m = re.fullmatch(r"(\d+(?:\.\d+)?)(?:s)?", str(candidate).strip())
+            if m and 0 <= float(m[1]) <= 3600:
+                delay = max(delay or 0, float(m[1]))
+    fields = []
     for detail in details[:12] if isinstance(details, list) else []:
         if not isinstance(detail, dict):
             continue
@@ -179,6 +201,7 @@ def provider_diagnostic(code, payload, topology):
         {
             **topology,
             "http_status": code,
+            "retry_after_seconds": delay,
             "status": status,
             "hint": hint,
             "error_message": safe_error_message(raw_text),

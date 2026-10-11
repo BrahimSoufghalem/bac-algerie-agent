@@ -30,6 +30,8 @@ class Note(Strict):
 
 class AgentNote(Note):
     id: str | None = Field(default=None, max_length=100)
+    evidence_message_id: str | None = Field(default=None, max_length=100)
+    evidence_quote: str | None = Field(default=None, min_length=8, max_length=400)
 
 
 class NoteId(Strict):

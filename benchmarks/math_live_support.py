@@ -111,3 +111,35 @@ def token_totals(rows):
 def read_json(path, default):
     p = Path(path)
     return json.loads(p.read_text()) if p.exists() else default
+
+
+def rate_limit_resume(results, requests):
+    """Explicit one-time resume of the LAST unpublished 429 case, never full rerun."""
+    if not results:
+        raise ValueError("No failed case to resume")
+    last = results[-1]
+    affected = [r for r in requests if r.get("run_id") == last.get("run_id")]
+    if (
+        last.get("status") != "FAILED"
+        or last.get("reply")
+        or last.get("previous_attempts")
+        or not affected
+        or not any(r.get("http_status") == 429 for r in affected)
+        or any(r.get("http_status") in {401, 403} for r in affected)
+    ):
+        raise ValueError(
+            "Resume requires a last unpublished 429 failure with no previous resume"
+        )
+    from bac.agent.provider_errors import provider_diagnostic
+
+    delays = [
+        provider_diagnostic(
+            429,
+            {"error": {"message": r.get("error_message", "")}},
+            {},
+            r.get("retry_after_seconds"),
+        ).get("retry_after_seconds", 60)
+        for r in affected
+        if r.get("http_status") == 429
+    ]
+    return last["number"], max(delays or [60])

@@ -16,6 +16,7 @@ from bac.core.presentation import INTERNAL, IMAGE, SourceTextGuard
 from io import BytesIO
 from PIL import Image
 from bac.agent.grounding import require_grounding, social_question
+from bac.agent.answer_quality import prepare_answer
 from bac.core.study import StudyScope
 
 
@@ -503,6 +504,7 @@ class Tools:
             and social_question(self.question)
         ):
             args = args | {"response_kind": "conversation"}
+        args = prepare_answer(args, self.question, self.scientific)
         answer = Answer.model_validate(args)
         if any(b.type == "image" for b in answer.blocks):
             raise ValueError(
