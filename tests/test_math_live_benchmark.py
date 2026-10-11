@@ -179,3 +179,23 @@ def test_portable_runner_imports_actual_backend_and_creates_only_test_data(
         assert services.db.rows("SELECT * FROM active_models") == []
     finally:
         services.close()
+
+
+def test_private_paths_initialized_at_runtime_not_invalid_job_context():
+    workflow = yaml.safe_load(
+        (REPO / ".github/workflows/math-live-benchmark.yml").read_text()
+    )
+    job = workflow["jobs"]["benchmark"]
+    assert all("runner." not in str(value) for value in job.get("env", {}).values())
+    initialize = job["steps"][0]
+    assert initialize["name"] == "Initialize private runtime paths"
+    assert "$RUNNER_TEMP" in initialize["run"]
+    assert "$GITHUB_ENV" in initialize["run"]
+    for name in (
+        "MASAR_BENCHMARK_ROOT",
+        "GEMINI_API_KEY_FILE",
+        "PYTHON_SANDBOX_TOKEN_FILE",
+    ):
+        assert name not in job.get("env", {})
+        assert name + "=" in initialize["run"]
+    assert "GEMINI_API_KEY" not in initialize.get("env", {})
