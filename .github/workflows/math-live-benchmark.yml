@@ -24,16 +24,20 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 85
     env:
-      MASAR_BENCHMARK_ROOT: ${{ runner.temp }}/masar-math-${{ github.run_id }}-${{ github.run_attempt }}
-      GEMINI_API_KEY_FILE: ${{ runner.temp }}/masar-gemini-key
       PYTHON_SANDBOX_URL: http://127.0.0.1:18871
-      PYTHON_SANDBOX_TOKEN_FILE: ${{ runner.temp }}/masar-python-token
       BENCH_BROKER: masar-math-broker-${{ github.run_id }}
       BENCH_AUTH_VOLUME: masar-math-auth-${{ github.run_id }}
     defaults:
       run:
         shell: bash
     steps:
+      - name: Initialize private runtime paths
+        run: |
+          {
+            printf 'MASAR_BENCHMARK_ROOT=%s/masar-math-%s-%s\n' "$RUNNER_TEMP" "$GITHUB_RUN_ID" "$GITHUB_RUN_ATTEMPT"
+            printf 'GEMINI_API_KEY_FILE=%s/masar-gemini-key\n' "$RUNNER_TEMP"
+            printf 'PYTHON_SANDBOX_TOKEN_FILE=%s/masar-python-token\n' "$RUNNER_TEMP"
+          } >> "$GITHUB_ENV"
       - name: Validate explicit manual approval
         env:
           MODE: ${{ inputs.mode }}
