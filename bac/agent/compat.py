@@ -89,7 +89,7 @@ def google_answer_tools(tools):
                 "type": {
                     "type": "string",
                     "enum": ["text", "equation", "table", "code", "graph"],
-                    "description": "Required discriminator on EVERY block; not a wrapper key.",
+                    "description": "Required type field on EVERY block; not a wrapper key.",
                 },
                 "text": string,
                 "latex": string,
