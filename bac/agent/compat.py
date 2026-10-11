@@ -86,13 +86,20 @@ def google_answer_tools(tools):
         block = {
             "type": "object",
             "properties": {
-                "type": {"type": "string", "enum": ["text", "equation", "table", "code", "graph"]},
+                "type": {
+                    "type": "string",
+                    "enum": ["text", "equation", "table", "code", "graph"],
+                    "description": "Required discriminator on EVERY block; not a wrapper key.",
+                },
                 "text": string,
                 "latex": string,
                 "headers": strings,
                 "rows": {"type": "array", "items": strings},
                 "language": string,
-                "result_id": string,
+                "result_id": {
+                    "type": "string",
+                    "description": "For a graph, the actual current-run computed result_id; never chart data or a graph object.",
+                },
                 "result_ids": strings,
             },
             "required": ["type"],
@@ -101,9 +108,22 @@ def google_answer_tools(tools):
             "type": "object",
             "properties": {
                 "blocks": {"type": "array", "items": block},
-                "source_ids": strings,
+                "source_ids": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "Only actual relevant read IDs as strings, not source objects.",
+                },
                 "warnings": strings,
-                "response_kind": {"type": "string", "enum": ["teaching", "calculation", "conversation", "clarification", "refusal"]},
+                "response_kind": {
+                    "type": "string",
+                    "enum": [
+                        "teaching",
+                        "calculation",
+                        "conversation",
+                        "clarification",
+                        "refusal",
+                    ],
+                },
             },
             "required": ["blocks"],
         }

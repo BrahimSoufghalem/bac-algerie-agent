@@ -2,7 +2,13 @@ from abc import ABC, abstractmethod
 import json
 import httpx
 from bac.vendor.bookforge.vision.provider import validate_base_url
-from bac.agent.compat import answer_tools, google_answer_tools, google_openai, model_identity
+from bac.agent.rate_limit import reserve_input
+from bac.agent.compat import (
+    answer_tools,
+    google_answer_tools,
+    google_openai,
+    model_identity,
+)
 from bac.agent.provider_errors import (
     read_error_payload,
     provider_diagnostic,
@@ -134,6 +140,7 @@ class OpenAIChat(ChatProvider):
         if tool_choice is not None:
             body["tool_choice"] = tool_choice
 
+        pacer, reservation = await reserve_input(cfg, self.key, body, self.transport)
         topology = request_topology(body)
         content = ""
         calls = {}
@@ -160,7 +167,10 @@ class OpenAIChat(ChatProvider):
                         raise ModelError(
                             "HTTP_" + str(response.status_code),
                             provider_diagnostic(
-                                response.status_code, payload, topology
+                                response.status_code,
+                                payload,
+                                topology,
+                                response.headers.get("retry-after"),
                             ),
                         )
                     if "text/event-stream" not in response.headers.get(
@@ -266,9 +276,14 @@ class OpenAIChat(ChatProvider):
                     }
                 ),
             }
-        except ModelError:
+        except ModelError as exc:
+            if pacer and str(exc) == "HTTP_429":
+                pacer.rate_limited((exc.diagnostic or {}).get("retry_after_seconds"))
             raise
         except (httpx.TimeoutException, httpx.NetworkError):
             raise ModelError("NETWORK_OR_TIMEOUT") from None
         except (ValueError, KeyError, TypeError, httpx.HTTPError):
             raise ModelError("INVALID_MODEL_RESPONSE") from None
+        finally:
+            if pacer:
+                pacer.settle(reservation, usage.get("prompt_tokens"))

@@ -214,7 +214,7 @@ class Learning:
         id = values.get("id")
         with self.db.tx() as c:
             r = c.execute(
-                "SELECT message_id FROM agent_runs WHERE id=? AND user_id=? AND status='RUNNING' AND cancel_requested=0",
+                "SELECT message_id,conversation_id FROM agent_runs WHERE id=? AND user_id=? AND status='RUNNING' AND cancel_requested=0",
                 (run, user["id"]),
             ).fetchone()
             if (
@@ -238,6 +238,41 @@ class Learning:
                 )
                 self.scrub_note_snapshots(c, user["id"], id)
                 return {"ok": True}
+            evidence = None
+            message_id = r["message_id"]
+            if p.category == "mastered" or p.evidence_message_id or p.evidence_quote:
+                if not p.evidence_message_id or not p.evidence_quote:
+                    raise ValueError(
+                        "Mastery requires evidence_message_id and an exact student solution/explanation quote, not an assistant answer"
+                    )
+                evidence = c.execute(
+                    """SELECT m.id,m.content FROM messages m JOIN conversations q ON q.id=m.conversation_id
+                       JOIN messages current ON current.id=?
+                       WHERE m.id=? AND m.conversation_id=? AND q.user_id=? AND m.role='user'
+                         AND m.active=1 AND (m.created_at<current.created_at OR (m.created_at=current.created_at AND m.rowid<=current.rowid))""",
+                    (
+                        r["message_id"],
+                        p.evidence_message_id,
+                        r["conversation_id"],
+                        user["id"],
+                    ),
+                ).fetchone()
+                if not evidence or p.evidence_quote not in evidence["content"]:
+                    raise ValueError(
+                        "Evidence must be an exact quote from an active own-chat student message available to this run"
+                    )
+                # A confusion statement by itself cannot support a mastery assertion.
+                if p.category == "mastered":
+                    import re
+
+                    if re.search(
+                        r"(?:ما\s*فهمت|لم\s*أفهم|لم\s*افهم|مش\s*فاهم|ماني\s*فاهم|don['’]?t\s+understand|did\s+not\s+understand|didn['’]?t\s+understand|je\s+ne\s+comprends\s+pas|j['’]?ai\s+pas\s+compris)",
+                        p.evidence_quote.casefold(),
+                    ):
+                        raise ValueError(
+                            "Reported confusion is not mastery evidence; record a tentative weakness or ask for a student attempt"
+                        )
+                message_id = evidence["id"]
             if not id:
                 if (
                     c.execute(
@@ -256,7 +291,7 @@ class Learning:
                         p.category,
                         p.content,
                         "approved",
-                        r["message_id"],
+                        message_id,
                         time.time(),
                         time.time(),
                         "agent",
@@ -268,13 +303,37 @@ class Learning:
                     (
                         p.category,
                         p.content,
-                        r["message_id"],
+                        message_id,
                         time.time(),
                         id,
                         user["id"],
                     ),
                 )
                 self.scrub_note_snapshots(c, user["id"], id)
+            if evidence:
+                import hashlib
+
+                c.execute(
+                    "INSERT INTO audit(actor_id,action,target,details,created_at) VALUES(?,?,?,?,?)",
+                    (
+                        user["id"],
+                        "learning_note_evidence",
+                        id,
+                        js(
+                            {
+                                "run_id": run,
+                                "message_id": message_id,
+                                "quote_sha256": hashlib.sha256(
+                                    p.evidence_quote.encode()
+                                ).hexdigest(),
+                                "message_sha256": hashlib.sha256(
+                                    evidence["content"].encode()
+                                ).hexdigest(),
+                            }
+                        ),
+                        time.time(),
+                    ),
+                )
         return {"id": id, "status": "saved"}
 
     def delete_note(self, user, id):
@@ -398,8 +457,11 @@ class Learning:
                 413, "Export too large; export individual conversations first"
             )
         from bac.agent.session_state import session_summary
+
         for chat in chats:
-            chat["session_summary"] = session_summary(self.db, user["id"], chat["id"], persist=False)
+            chat["session_summary"] = session_summary(
+                self.db, user["id"], chat["id"], persist=False
+            )
             chat["messages"] = self.db.rows(
                 "SELECT id,role,content,blocks,sources,active,created_at FROM messages WHERE conversation_id=? ORDER BY created_at",
                 (chat["id"],),

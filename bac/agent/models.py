@@ -115,8 +115,16 @@ class ModelConfig(Strict):
         "custom", "openai", "google", "anthropic", "vercel", "openrouter"
     ] = "custom"
     protocol: Literal["openai", "anthropic", "google"] = "openai"
+    input_tokens_per_minute: int | None = Field(
+        default=None,
+        ge=0,
+        le=100000000,
+        description="Process-local input pacing budget; None uses conservative Google default, 0 disables. Not billing or a context cap.",
+    )
     max_context_chars: int | None = Field(
-        default=None, ge=10000, le=4000000,
+        default=None,
+        ge=10000,
+        le=4000000,
         description="Legacy stored configuration only; application character caps are retired.",
     )
     main_max_rounds: int = Field(default=4, ge=2, le=8)
@@ -133,4 +141,3 @@ class ModelConfig(Strict):
     output_price_per_million: float | None = Field(default=None, ge=0)
     cached_price_per_million: float | None = Field(default=None, ge=0)
     output_mode: Literal["json_object", "json_schema", "none"] = "json_object"
-

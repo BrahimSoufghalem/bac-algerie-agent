@@ -41,34 +41,38 @@ def make_evidence(root):
     }
     per_turn = []
     for row in results:
-        req = [r for r in requests if r.get("run_id") == row["run_id"]]
+        run_ids = {row["run_id"]} | {
+            a["run_id"] for a in row.get("previous_attempts", [])
+        }
+        req = [r for r in requests if r.get("run_id") in run_ids]
         attempts = [
-            t
-            for t in tools
-            if t.get("run_id") == row["run_id"] and t["name"] == "run_python"
+            t for t in tools if t.get("run_id") in run_ids and t["name"] == "run_python"
         ]
         reply = row.get("reply") or {}
         blocks = json.loads(reply.get("blocks") or "[]")
         text = reply.get("content", "")
         graph = [b for b in blocks if b.get("type") == "graph"]
-        checks = [
-            c for a in attempts for c in (a.get("result") or {}).get("checks", [])
-        ]
+
+        def execution(t):
+            result = t.get("result") or {}
+            return result.get("output", result) if isinstance(result, dict) else {}
+
+        checks = [c for a in attempts for c in execution(a).get("checks", [])]
         per_turn.append(
             {
                 "id": row["id"],
                 "status": row["status"],
                 "reply_published": bool(reply),
+                "attempt_count": len(run_ids),
                 "known_usage": token_totals(req),
                 "python_attempts": len(attempts),
                 "python_computed": sum(
-                    (t.get("result") or {}).get("status") == "computed"
-                    for t in attempts
+                    execution(t).get("status") == "computed" for t in attempts
                 ),
                 "python_errors": [
-                    (t.get("result") or {}).get("error") or t.get("exception")
+                    execution(t).get("error") or t.get("exception")
                     for t in attempts
-                    if (t.get("result") or {}).get("error") or t.get("exception")
+                    if execution(t).get("error") or t.get("exception")
                 ],
                 "check_statuses": {
                     s: sum(c.get("status") == s for c in checks)
