@@ -1,0 +1,382 @@
+{
+  "provenance": {
+    "run_url": "https://github.com/BrahimSoufghalem/bac-algerie-agent/actions/runs/38313349606",
+    "tested_commit": "1fdbaa5ab3e3888df19ad81fdfb9de92bc0daed0",
+    "scope": "Only scripted benchmark tool contracts; no reference bodies, keys, actual student IDs or model reasoning."
+  },
+  "assessments": [
+    {
+      "case_id": "M01",
+      "request_number": 3,
+      "args": {
+        "coverage": [
+          {
+            "goal": "حساب المشتقة ودراسة اتجاه تغير الدالة والقيم الحدية استنادا إلى إشارة المشتقة",
+            "requirement_ids": [
+              "req_deriv",
+              "req_monotonicity",
+              "req_extremum"
+            ],
+            "evidence_id": "R1:E1",
+            "source_id": "R1",
+            "role": "current_goal"
+          }
+        ],
+        "source_ids": [
+          "R1"
+        ],
+        "requirements": [
+          {
+            "kind": "rule",
+            "description": "قواعد حساب المشتقة للدوال القابلة للاشتقاق وعلاقتها باتجاه التغير (متزايدة إذا كانت المشتقة موجبة ومتناقصة إذا كانت سالبة)",
+            "id": "req_deriv"
+          },
+          {
+            "description": "مبرهنة اتجاه تغير دالة بناءً على إشارة مشتقتها على مجال",
+            "id": "req_monotonicity",
+            "kind": "rule"
+          },
+          {
+            "kind": "rule",
+            "description": "تعريف ومبرهنة القيم الحدية المحلية عند انعدام المشتقة وتغير إشارتها",
+            "id": "req_extremum"
+          }
+        ],
+        "decision": "sufficient"
+      }
+    },
+    {
+      "case_id": "M02",
+      "request_number": 6,
+      "args": {
+        "requirements": [
+          {
+            "description": "مبرهنة اتجاه تغير دالة باستعمال إشارة المشتقة الأولى",
+            "kind": "rule",
+            "id": "monotonicity_rule"
+          },
+          {
+            "kind": "rule",
+            "description": "تعريف ومبرهنة القيم الحدية المحلية وانعدام المشتقة مع تغير الإشارة",
+            "id": "local_extremum_rule"
+          }
+        ],
+        "source_ids": [
+          "R1"
+        ],
+        "decision": "sufficient",
+        "coverage": [
+          {
+            "evidence_id": "R1:E1",
+            "requirement_ids": [
+              "monotonicity_rule"
+            ],
+            "goal": "شرح اتجاه تغير دالة باستعمال المشتقة للدالة f(x) = x^3 - 3x",
+            "role": "current_goal",
+            "source_id": "R1"
+          },
+          {
+            "source_id": "R1",
+            "requirement_ids": [
+              "local_extremum_rule"
+            ],
+            "evidence_id": "R1:E1",
+            "goal": "تعريف وقواعد القيم الحدية المحلية للدالة f",
+            "role": "current_goal"
+          }
+        ]
+      }
+    },
+    {
+      "case_id": "M06",
+      "request_number": 18,
+      "args": {
+        "decision": "sufficient",
+        "requirements": [
+          {
+            "kind": "rule",
+            "description": "الدالة الناطقة معرفة بقسمة كثير حدود على كثير حدود، وشرط تعريفها هو أن يكون المقام غير معدوم",
+            "id": "rational_domain"
+          },
+          {
+            "kind": "rule",
+            "description": "حساب نهاية دالة ناطقة أو كسرية عند الأعداد التي تعدم المقام (مثل x=1) ومعرفة المستقيم المقارب العمودي (الرأسي) إذا كانت النهاية عند عدد حقيقي هي مالا نهاية",
+            "id": "vertical_asymptote"
+          },
+          {
+            "kind": "rule",
+            "description": "نهاية دالة ناطقة عند $+\\\\infty$ أو $-\\\\infty$ هي نهاية حاصل قسمة الحدين الأعلى درجة، ومعرفة المستقيم المقارب الأفقي أو المائل",
+            "id": "rational_limits_infinity"
+          }
+        ],
+        "gaps": [],
+        "source_ids": [
+          "R1",
+          "R3",
+          "R2",
+          "R3",
+          "R1",
+          "R3",
+          "R3",
+          "R1",
+          "R2",
+          "R3",
+          "R2",
+          "R2"
+        ]
+      }
+    },
+    {
+      "case_id": "M07",
+      "request_number": 21,
+      "args": {
+        "requirements": [
+          {
+            "description": "تعريف دالة وسلوكها عند عدد حقيقي وقيمتها الحسابية في التمارين المحلولة",
+            "id": "req_f1",
+            "kind": "goal"
+          }
+        ],
+        "source_ids": [
+          "R1"
+        ],
+        "coverage": [
+          {
+            "evidence_id": "R1:E3",
+            "goal": "دراسة سلوك الدالة f عند 1 وحساب قيمتها عند 1 في التمرين المحلول 1",
+            "requirement_ids": [
+              "req_f1"
+            ],
+            "role": "current_goal",
+            "source_id": "R1"
+          }
+        ],
+        "decision": "sufficient"
+      }
+    },
+    {
+      "case_id": "M13",
+      "request_number": 37,
+      "args": {
+        "coverage": [
+          {
+            "source_id": "R1",
+            "goal": "تعريف المشتقة والدالة اللوغاريتمية النيبيرية",
+            "role": "current_goal",
+            "evidence_id": "R1:E1",
+            "requirement_ids": [
+              "req_ln_deriv"
+            ]
+          },
+          {
+            "source_id": "R1",
+            "requirement_ids": [
+              "req_ln_deriv"
+            ],
+            "goal": "حساب المشتقة للدالة اللوغاريتمية النيبيرية",
+            "role": "current_goal",
+            "evidence_id": "R1:E4"
+          }
+        ],
+        "decision": "sufficient",
+        "requirements": [
+          {
+            "id": "req_ln_deriv",
+            "kind": "rule",
+            "description": "حساب مشتقة الدالة اللوغاريتمية النيبيرية ومضاعفاتها باستخدام القواعد المدرسية"
+          }
+        ],
+        "source_ids": [
+          "R1"
+        ]
+      }
+    },
+    {
+      "case_id": "M14",
+      "request_number": 40,
+      "args": {
+        "decision": "sufficient",
+        "coverage": [
+          {
+            "source_id": "R1",
+            "requirement_ids": [
+              "ln_domain"
+            ],
+            "evidence_id": "R1:E1",
+            "goal": "الدالة اللوغاريتمية النيبيرية وتعريفها واتجاه تغيرها",
+            "role": "current_goal"
+          },
+          {
+            "goal": "الاشتقاق وقواعد الاشتقاق للدالة اللوغاريتمية",
+            "requirement_ids": [
+              "ln_derivative"
+            ],
+            "evidence_id": "R1:E4",
+            "role": "current_goal",
+            "source_id": "R1"
+          },
+          {
+            "role": "current_goal",
+            "evidence_id": "R2:E1",
+            "requirement_ids": [
+              "ln_growth"
+            ],
+            "source_id": "R2",
+            "goal": "التزايد المقارن للدالتين ln(x) و x"
+          }
+        ],
+        "source_ids": [
+          "R1",
+          "R2"
+        ],
+        "requirements": [
+          {
+            "kind": "condition",
+            "description": "تعريف ومجال الدالة ln(x)",
+            "id": "ln_domain"
+          },
+          {
+            "description": "مشتقة الدالة اللوغاريتمية وحساب مشتقة g(x)",
+            "kind": "rule",
+            "id": "ln_derivative"
+          },
+          {
+            "description": "نهايات التزايد المقارن لـ ln(x)",
+            "id": "ln_growth",
+            "kind": "rule"
+          }
+        ]
+      }
+    },
+    {
+      "case_id": "M15",
+      "request_number": 45,
+      "args": {
+        "source_ids": [
+          "R1"
+        ],
+        "decision": "sufficient",
+        "coverage": [
+          {
+            "requirement_ids": [
+              "req1",
+              "req2",
+              "req3"
+            ],
+            "role": "current_goal",
+            "evidence_id": "R1:E1",
+            "source_id": "R1",
+            "goal": "احتمال الشرط ودستور الاحتمالات الكلية لحساب P(B) و P(A|B) باستخدام P(A) و P(B|A) و P(B|عدم A)"
+          }
+        ],
+        "requirements": [
+          {
+            "kind": "rule",
+            "id": "req1",
+            "description": "تعريف الاحتمال الشرطي P_A(B) أو P(B|A) = P(A ناصع B) / P(A)"
+          },
+          {
+            "description": "دستور الاحتمالات الكلية لحساب P(B) باستخدام تجزئة (مثل A و عدم A)",
+            "id": "req2",
+            "kind": "rule"
+          },
+          {
+            "kind": "rule",
+            "description": "حساب الاحتمال العكسي P(A|B) (باستخدام تعريف الاحتمال الشرطي وقاعدة الضرب)",
+            "id": "req3"
+          }
+        ]
+      }
+    },
+    {
+      "case_id": "M21",
+      "request_number": 63,
+      "args": {
+        "requirements": [
+          {
+            "kind": "goal",
+            "description": "تعريف وحساب حدود المتتالية التراجعية واتجاه تغيرها ونهايتها",
+            "id": "req_seq_def"
+          },
+          {
+            "description": "دراسة تقارب ونهاية متتالية تراجعية ارتباطاً بالدالة المرفقة وخط التقاطع y=x",
+            "id": "req_seq_limit",
+            "kind": "rule"
+          }
+        ],
+        "coverage": [
+          {
+            "requirement_ids": [
+              "req_seq_def",
+              "req_seq_limit"
+            ],
+            "role": "current_goal",
+            "goal": "دراسة متتالية تراجعية من الشكل u_{n+1}=au_n+b",
+            "evidence_id": "R2:E1",
+            "source_id": "R2"
+          }
+        ],
+        "source_ids": [
+          "R2"
+        ],
+        "decision": "sufficient"
+      }
+    },
+    {
+      "case_id": "M22",
+      "request_number": 68,
+      "args": {
+        "coverage": [
+          {
+            "requirement_ids": [
+              "req1"
+            ],
+            "goal": "التحقق من قيمة الحد الثاني u2 والفرق بينه وبين النهاية في المتتالية التراجعية",
+            "role": "current_goal",
+            "source_id": "R1",
+            "evidence_id": "R1:E1"
+          }
+        ],
+        "decision": "sufficient",
+        "requirements": [
+          {
+            "kind": "goal",
+            "description": "حساب الحدود الأولى للمتتالية التراجعية ومعرفة نهايتها أو قيمتها مقارنة بالحدود",
+            "id": "req1"
+          }
+        ],
+        "source_ids": [
+          "R1"
+        ]
+      }
+    },
+    {
+      "case_id": "M24",
+      "request_number": 71,
+      "args": {
+        "requirements": [
+          {
+            "description": "وجود متتالية تراجعية من الشكل u_{n+1}=f(u_n) أو au_n+b لاقتراح تمرين مشابه",
+            "kind": "rule",
+            "id": "req_seq"
+          }
+        ],
+        "source_ids": [
+          "R1"
+        ],
+        "decision": "sufficient",
+        "coverage": [
+          {
+            "goal": "الاطلاع على نمط دراسة المتتالية التراجعية لاقتراح تمرين مشابه صحيح رياضياً",
+            "role": "current_goal",
+            "requirement_ids": [
+              "req_seq"
+            ],
+            "evidence_id": "R1:E1",
+            "source_id": "R1"
+          }
+        ]
+      }
+    }
+  ]
+}

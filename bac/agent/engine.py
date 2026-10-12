@@ -35,6 +35,7 @@ from bac.agent.assessment_evidence import prepare_body_choices
 from bac.agent.context_decision import (
     ASSESS_SYSTEM,
     ContextDecision,
+    AssessmentContractError,
     assessment_tool,
     parse_assessment,
     delivered as credit_delivered,
@@ -389,6 +390,46 @@ class AgentEngine:
         )
 
     async def assess_context(self, run, tools, provider, cfg, messages, stage="initial"):
+        """Repair formatting once per run, within the existing THREE assessment calls."""
+        feedback = None
+        while True:
+            if getattr(tools, "assessment_count", 0) >= 3:
+                tools.coverage_validated = tools.references_ready = False
+                tools.covered_sources.clear()
+                self.db.audit(tools.user["id"], "context_assessment_budget_exhausted",
+                              run["id"], {"stage": stage})
+                decision = ContextDecision(decision="uncertain", source_ids=[])
+                tools.last_assessment = decision
+                return decision
+            try:
+                decision = await self._assess_context_once(
+                    run, tools, provider, cfg, messages, stage, feedback
+                )
+                errors = getattr(tools, "assessment_contract_errors", [])
+            except AssessmentContractError as exc:
+                errors = exc.reason_codes
+                decision = ContextDecision(decision="uncertain", source_ids=[])
+            if not errors:
+                tools.last_assessment = decision
+                return decision
+            if (getattr(tools, "assessment_contract_repaired", False)
+                    or tools.assessment_count >= 3):
+                tools.last_assessment = decision
+                return decision
+            tools.assessment_contract_repaired = True
+            self.db.audit(tools.user["id"], "context_contract_repair", run["id"],
+                          {"reason_codes": errors, "stage": stage})
+            feedback = {
+                "reason_codes": errors,
+                "instruction": "Repair only the structured contract once: requirements "
+                "has goals/rules/conditions/prerequisites arrays with unique IDs. For "
+                "sufficient include nonempty goals and rules, link every item to "
+                "actual passages, select unique allowlisted source aliases. Never "
+                "invent support or turn missing content into sufficient.",
+            }
+
+    async def _assess_context_once(self, run, tools, provider, cfg, messages,
+                                   stage="initial", contract_feedback=None):
         """One bounded private decision call, separate from existing working rounds."""
         check_budget(self.s, run["user_id"])
         active = self.db.one(
@@ -419,6 +460,7 @@ class AgentEngine:
                 "inventory_is_not_pixels": True,
                 "required_current_scope": requirements(tools),
                 "task_state": tools.task_state,
+                "assessment_contract_feedback": contract_feedback,
             })},
         ]
         # Owner-only cache topology observability: fixed prefix hash/counts, no dialogue,
@@ -971,6 +1013,23 @@ class AgentEngine:
                         }
                     else:
                         result = await asyncio.to_thread(tools.execute, name, args)
+                    if (name == "run_python" and "error" not in result
+                            and tools.coordinated
+                            and tools.task_state.get("goal_kind") in {"calculation", "plot"}
+                            and not any(c.get("evidence") for c in
+                                        result.get("output", {}).get("checks", []))):
+                        # Execution stays successful; warn about the answer contract BEFORE
+                        # the last round, rather than calling print() a verification.
+                        result["answer_contract_feedback"] = (
+                            "Code executed, but no comparison evidence was emitted. "
+                            "Before a computational answer, bundle all necessary genuine "
+                            "comparisons in one run_python call using check(..., "
+                            "evidence={observed,expected,relation,tolerance}), then bind "
+                            "each exact public claim/check label in checked_claims. "
+                            "Do not repeat exploratory printing; reserve a round for "
+                            "render_answer. If unable to verify, state the limitation "
+                            "without claiming the result checked."
+                        )
                     if "error" in result:
                         feedback = tool_feedback(
                             name, ValueError(result.get("message", result["error"]))
