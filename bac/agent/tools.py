@@ -15,7 +15,7 @@ from bac.learning.contracts import AgentNote, NoteId, SourceImage, Material, Pri
 from bac.core.presentation import INTERNAL, IMAGE, SourceTextGuard
 from io import BytesIO
 from PIL import Image
-from bac.agent.grounding import require_grounding, social_question
+from bac.agent.grounding import require_grounding, social_question, GENERAL_POLICY
 from bac.agent.answer_quality import prepare_answer
 from bac.core.study import StudyScope
 
@@ -85,6 +85,9 @@ class Tools:
         self.coordinated = False
         self.references_ready = False
         self.context_decision = None
+        self.coverage_validated = False
+        self.covered_sources = set()
+        self.source_evidence = {}
 
     def definitions(self):
         entries = [
@@ -140,7 +143,7 @@ class Tools:
             ),
             (
                 "render_answer",
-                "Finish the answer as the ONLY call in this model turn, after receiving required tool results in an earlier turn. Never batch this terminal call with reads, calculations or saves. response_kind=teaching REQUIRES relevant source_ids actually read in this run (restored context counts; search/TOC does not). Never teach from model memory without a read reference. calculation requires real computed results and cannot bypass lesson grounding. conversation is only a short greeting/thanks; clarification asks for missing information in one short text block; refusal is a short non-teaching refusal. Never expose private files/scans/titles/IDs/URLs/source passages or tool traces. No image blocks. For generated graph blocks use actual result_id only.",
+                "Finish the answer as the ONLY call in this model turn, after receiving required tool results in an earlier turn. Never batch this terminal call with reads, calculations or saves. response_kind=teaching REQUIRES relevant source_ids actually read in this run (restored context counts; search/TOC does not). Never teach from model memory without a read reference. calculation requires real computed results and cannot bypass lesson grounding. conversation follows the server exact general_allowed allowlist; clarification asks for missing information in one short text block; refusal is a short non-teaching refusal. Never expose private files/scans/titles/IDs/URLs/source passages or tool traces. No image blocks. For generated graph blocks use actual result_id only. " + GENERAL_POLICY,
                 PresentedAnswer,
             ),
             (
@@ -209,6 +212,18 @@ class Tools:
         for source in payload.get("sources", []):
             sid = source.get("source_id", source["node_id"])
             self.sources[sid] = source
+            local = self.library._node(source["node_id"])
+            # Full body cache is internal and authorized; parts never inherit a parent body/coverage.
+            body = payload.get("content", "")
+            if payload.get("solution") and source.get("role") == "solution":
+                body = payload["solution"].get("content", "")
+            local_metadata = payload.get("part", {}) if scope == "part" else local["metadata"]
+            self.source_evidence[sid] = {
+                "body": body,
+                "local_metadata": js({"title": local_metadata.get("title", payload["node"]["title"]),
+                                      "covers": local_metadata.get("covers", []),
+                                      "parent_id": local.get("parent_id")}),
+            }
             self.source_assets[sid] = {a["id"] for a in payload.get("assets", [])}
             from bac.agent.context_decision import ledger
 
@@ -309,6 +324,7 @@ class Tools:
         source = payload["source"]
         self.private.row(self.user, source["node_id"], self.chat)
         self.sources[source["source_id"]] = source
+        self.source_evidence[source["source_id"]] = {"body": payload.get("content", ""), "local_metadata": ""}
         from bac.agent.context_decision import ledger
         ledger(self, source["source_id"], source["node_id"], source.get("version_id") or source["node_id"], "private", source["source_id"], selected=True, loaded=True)
         if payload.get("asset_id"):

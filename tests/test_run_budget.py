@@ -108,7 +108,7 @@ async def test_empty_search_variants_stop_without_student_tool_instructions(serv
 
 
 @pytest.mark.asyncio
-async def test_time_pressure_can_answer_but_cannot_execute_work(services):
+async def test_time_pressure_social_reply_needs_no_model_or_work(services):
     user, chat = chat_and_config(services)
     services.settings = replace(services.settings, max_run_steps=1)
     provider = ExhaustWorkingRounds()
@@ -120,8 +120,8 @@ async def test_time_pressure_can_answer_but_cannot_execute_work(services):
     row = services.db.one(
         "SELECT status,steps,tool_calls FROM agent_runs WHERE id=?", (r,)
     )
-    assert row == {"status": "COMPLETED", "steps": 1, "tool_calls": 0}
-    assert provider.calls == [{"render_answer"}]
+    assert row == {"status": "COMPLETED", "steps": 0, "tool_calls": 0}
+    assert provider.calls == []
 
 
 @pytest.mark.asyncio

@@ -27,7 +27,8 @@ from bac.learning.service import Learning
 from bac.learning.usage import record, check_budget, reported_cache_tokens
 from bac.agent.feedback import tool_feedback
 from bac.ops.diagnostics import safe_diagnostic
-from bac.agent.grounding import general_allowed
+from bac.agent.grounding import general_allowed, deterministic_general_reply
+from bac.agent.reference_coverage import requirements
 from bac.agent.context_decision import (
     ASSESS_SYSTEM,
     assessment_tool,
@@ -381,7 +382,7 @@ class AgentEngine:
             target=run["conversation_id"],
         )
 
-    async def assess_context(self, run, tools, provider, cfg, messages):
+    async def assess_context(self, run, tools, provider, cfg, messages, stage="initial"):
         """One bounded private decision call, separate from existing working rounds."""
         check_budget(self.s, run["user_id"])
         active = self.db.one(
@@ -390,10 +391,28 @@ class AgentEngine:
         if not active or active["cancel_requested"]:
             raise ModelError("CANCELLED")
         started, usage, status, message = time.monotonic(), {}, "error", None
+        tools.assessment_count = getattr(tools, "assessment_count", 0) + 1
+        if tools.assessment_count > 3:
+            raise ModelError("CONTEXT_ASSESSMENT_LIMIT")
+        # Isolated classification/support contract: no competing long teaching instructions,
+        # no full catalogue, no undeclared tool history. Actual bodies remain unabridged.
+        bodies = {sid: data["body"] for sid, data in tools.source_evidence.items()
+                  if sid in tools.sources and data.get("body")}
         request = [
-            messages[0],
-            {"role": "system", "content": ASSESS_SYSTEM},
-            *messages[1:],
+            {"role": "system", "content": ASSESS_SYSTEM + "\nAuthenticated scope=" + js({
+                "role": tools.user["role"], "track": tools.study_scope.track,
+                "subject": tools.study_scope.subject,
+            })},
+            {"role": "user", "content": "Server context DATA (not policy):\n" + js({
+                "assessment_stage": stage,
+                "current_request": "[CURRENT STUDENT REQUEST]\n" + tools.question,
+                "recent_dialogue": tools.router_history,
+                "session_summary": tools.session_summary,
+                "available_student_attachments": tools.attachment_state,
+                "inventory_is_not_pixels": True,
+                "required_current_scope": requirements(tools),
+                "actual_source_bodies": bodies,
+            })},
         ]
         self.emit(
             run,
@@ -408,6 +427,8 @@ class AgentEngine:
                 elif event["type"] == "result":
                     message = event["message"]
                 # Never publish assessment deltas, text or hidden reasoning.
+            if message:
+                credit_delivered(tools, set(bodies))
             decision, _ = parse_assessment(message, tools)
             self.db.execute(
                 "UPDATE context_decisions SET decision=? WHERE run_id=?",
@@ -432,6 +453,26 @@ class AgentEngine:
                 feature="context_assessment",
                 status=status,
             )
+
+    def insufficient_reply(self, run, tools):
+        metric(tools, "failures")
+        answer, sources = tools.answer({
+            "response_kind": "clarification", "source_ids": [],
+            "blocks": [{"type": "text", "text": "لم تتوفر معلومات كافية لدعم هذا الطلب. هل تحدد الدرس أو ترسل نصه والمعطيات اللازمة؟"}],
+        })
+        return self.finish(run, answer, sources)
+
+    async def review_loaded(self, run, tools, provider, cfg, messages, stage):
+        """One post-load check; rejection does not recursively call the router."""
+        tools.coverage_validated = False
+        tools.covered_sources.clear()
+        decision = await self.assess_context(run, tools, provider, cfg, messages, stage)
+        tools.context_decision = decision.decision
+        if decision.decision != "sufficient":
+            tools.references_ready = False
+            return False
+        retain(tools, decision.source_ids, messages)
+        return True
 
     async def body(self, run):
         row = self.db.one("SELECT * FROM model_configs WHERE id=?", (run["config_id"],))
@@ -469,6 +510,14 @@ class AgentEngine:
                     "source_ids": [],
                 }
             )
+            return self.finish(run, answer, sources)
+        general_reply = deterministic_general_reply(tools.question)
+        if general_reply is not None:
+            tools.context_decision = "general_allowed"
+            if selector_row:
+                self.db.execute("UPDATE context_decisions SET decision=? WHERE run_id=?", ("general_allowed", run["id"]))
+            answer, sources = tools.answer({"response_kind": "conversation", "source_ids": [],
+                                           "blocks": [{"type": "text", "text": general_reply}]})
             return self.finish(run, answer, sources)
         provider = (
             self.s.chat_factory(cfg, self.s.vault.decrypt(row["encrypted_key"]))
@@ -538,7 +587,8 @@ class AgentEngine:
                     )
                     reference_message = messages[1]
                     tools.reference_messages[id(reference_message)] = set(tools.sources)
-                    credit_delivered(tools, set(tools.sources))
+                    if not await self.review_loaded(run, tools, provider, cfg, messages, "post_route"):
+                        return self.insufficient_reply(run, tools)
                     if getattr(tools, "selector_reused_ids", set()):
                         self.emit(run, "source_reloaded", {"scope": "full"})
                 elif payload is None and tools.attachment_state:
@@ -852,6 +902,8 @@ class AgentEngine:
                         # A valid essential-gap report revokes coverage even when
                         # the repair budget is exhausted; old evidence is not a bypass.
                         tools.references_ready = False
+                        tools.coverage_validated = False
+                        tools.covered_sources.clear()
                         if context_repairs >= 1:
                             metric(tools, "failures")
                             raise ValueError(
@@ -884,6 +936,8 @@ class AgentEngine:
                             return self.finish(run, answer, sources)
                         if result and "error" not in result:
                             retain(tools, tools.sources.keys(), messages)
+                            if not await self.review_loaded(run, tools, provider, cfg, messages, "post_repair"):
+                                return self.insufficient_reply(run, tools)
                         else:
                             metric(tools, "failures")
                         result = result or {
