@@ -331,7 +331,9 @@ async def test_24_turn_cost_path_reuses_body_and_preserves_wire_prefix(services)
     ]
     working = [b for b in teacher_calls if b not in assessments]
     assert len(assessments) == 25 and len(working) == 24
-    assert all(b["tools"] == assessments[0]["tools"] for b in assessments)
+    # Isolated choice enum changes only when actual authorized bodies change.
+    assert all(b["tools"] == assessments[1]["tools"] for b in assessments[1:])
+    assert assessments[0]["tools"] != assessments[1]["tools"]
     assert all(b["tools"] == working[0]["tools"] for b in working)
     assert all("complete_book_index" not in js(b["messages"]) for b in assessments)
     # No invented cache hit measurements when the mocked provider did not report them.
