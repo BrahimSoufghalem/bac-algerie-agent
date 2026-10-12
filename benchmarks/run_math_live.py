@@ -226,6 +226,8 @@ class Recorder(httpx.AsyncBaseTransport):
             if names == ["route_sections"]
             else "verifier"
             if names == ["verify_sections"]
+            else "assessment"
+            if names == ["assess_context"]
             else "teacher"
         )
         e = {

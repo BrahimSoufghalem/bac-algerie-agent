@@ -92,6 +92,10 @@ class ChatProvider(ABC):
     async def stream(self, messages, tools):
         yield {}
 
+    async def decision_stream(self, messages, tools):
+        async for item in self.stream(messages, tools):
+            yield item
+
     async def final_stream(self, messages, tools):
         """Compatibility default: adapters may force the advertised final tool."""
         async for item in self.stream(messages, tools):
@@ -115,6 +119,10 @@ class OpenAIChat(ChatProvider):
             tools,
             tool_choice={"type": "function", "function": {"name": "render_answer"}},
         ):
+            yield item
+
+    async def decision_stream(self, messages, tools):
+        async for item in self._stream(messages, tools, tool_choice={"type": "function", "function": {"name": "assess_context"}}):
             yield item
 
     async def _stream(self, messages, tools, tool_choice=None):

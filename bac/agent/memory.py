@@ -106,5 +106,7 @@ def reusable_references(s, tools, mapping):
                 "id": alias,
                 "title": node["title"],
                 "kind": node["kind"],
+                "active": bool(row.get("active", 1)),
+                "delivered_in_current_context": node["id"] in tools.delivered_sources,
             }
     return reusable
