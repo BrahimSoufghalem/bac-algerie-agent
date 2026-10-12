@@ -635,3 +635,24 @@ async def test_sufficient_cannot_restore_stale_or_unauthorized_publication(
     assert state["status"] == "FAILED" and state["error"] == "INVALID_CONTEXT_DECISION"
     assert not routes and not tutor.work
     assert not s.db.rows("SELECT * FROM messages WHERE role='assistant'")
+
+
+@pytest.mark.asyncio
+async def test_upgrade_keeps_legacy_read_ids_dormant_without_reloading_all(services):
+    from bac.core.db import DB
+    s=services;n,_,u,c,_=await setup(s)
+    tools=Tools(s,u,c);tools.load(n)
+    original=s.db.one("SELECT node_id,version_id,scope,scope_id FROM loaded_context WHERE conversation_id=?",(c,))
+    # Reconstruct the exact pre-012 schema in this disposable database.
+    with s.db.tx() as conn:
+        conn.execute("DROP TABLE context_decisions")
+        conn.execute("DROP TABLE run_reference_state")
+        conn.execute("ALTER TABLE loaded_context DROP COLUMN active")
+        conn.execute("DELETE FROM migrations WHERE version=12")
+    DB(s.db.path)
+    old=s.db.one("SELECT * FROM loaded_context WHERE conversation_id=?",(c,))
+    assert old["active"]==0
+    assert {k:old[k] for k in original}==original
+    # The full read ID can still be reloaded/reselected after scope/version validation.
+    tools.load(n)
+    assert s.db.one("SELECT active FROM loaded_context WHERE node_id=?",(n,))["active"]==1

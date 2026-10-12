@@ -1,5 +1,8 @@
 -- Reference bodies remain in the library, never in this ID-only ledger.
 ALTER TABLE loaded_context ADD COLUMN active INTEGER NOT NULL DEFAULT 1 CHECK(active IN (0,1));
+-- The old read ledger cannot establish an active set. Preserve its IDs as dormant
+-- and reselect once on upgrade instead of loading the entire historical library.
+UPDATE loaded_context SET active=0;
 CREATE TABLE run_reference_state(
  run_id TEXT NOT NULL REFERENCES agent_runs(id) ON DELETE CASCADE,
  source_id TEXT NOT NULL,node_id TEXT NOT NULL,version_id TEXT NOT NULL,

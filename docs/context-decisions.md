@@ -7,7 +7,7 @@ The existing queue, run snapshot, publication/scope validation, tools, final ren
 - `general_allowed`: deterministic server whitelist of greetings/thanks/basic Masar help only; no educational explanation. Other generic requests are not silently allowed.
 - `wrong_subject` / `out_of_scope`: short server refusal/redirection without a second tutor call.
 
-All selected bodies must load and match the authorized published version before active state changes. Loaded IDs remain in `loaded_context` when dormant; `run_reference_state` distinguishes selected, loaded, actually delivered, active and explicitly cited IDs. Delivery means sent in actual model context, not inferred semantic reading. `used` means validated final citation, not proof of entailment. Ledger and metrics contain no student/source bodies. Legacy chats without a selector keep their existing path.
+All selected bodies must load and match the authorized published version before active state changes. On upgrade, pre-ledger historical reads start dormant because their active status is unknown; one initial re-selection reconstructs a trusted current set, without deleting any read record or reloading the entire historical library. New actual reads can become active normally. Loaded IDs remain in `loaded_context` when dormant; `run_reference_state` distinguishes selected, loaded, actually delivered, active and explicitly cited IDs. Delivery means sent in actual model context, not inferred semantic reading. `used` means validated final citation, not proof of entailment. Ledger and metrics contain no student/source bodies. Legacy chats without a selector keep their existing path.
 
 ## Bounds and failure
 
