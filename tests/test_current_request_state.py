@@ -631,8 +631,12 @@ async def test_actual_engine_delivers_over_60000_with_legacy_stored_cap(state_se
 
     class Teacher:
         async def decision_stream(self, messages, tools):
-            from tests.test_context_decisions import call as decision_call
-            yield {"type":"result","message":decision_call("assess_context",{"decision":"missing_reference","source_ids":[]})}
+            from tests.test_context_decisions import call as decision_call, supported_decision
+            state = json.loads(messages[-1]["content"].split("\n", 1)[1])
+            args = ({"decision": "missing_reference", "source_ids": []}
+                    if state["assessment_stage"] == "initial"
+                    else supported_decision(list(state["actual_source_bodies"]), messages))
+            yield {"type": "result", "message": decision_call("assess_context", args)}
         async def stream(self, messages, tools):
             seen.append(messages)
             assert len(js(messages)) > 60000

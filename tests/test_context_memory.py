@@ -233,7 +233,7 @@ async def test_24_turn_cost_path_reuses_body_and_preserves_wire_prefix(services)
             body.get("tool_choice", {}).get("function", {}).get("name")
             == "assess_context"
         ):
-            from tests.test_context_decisions import call
+            from tests.test_context_decisions import call, supported_decision
 
             references = [node] if len(router_calls) else []
             return httpx.Response(
@@ -243,12 +243,8 @@ async def test_24_turn_cost_path_reuses_body_and_preserves_wire_prefix(services)
                         {
                             "message": call(
                                 "assess_context",
-                                {
-                                    "decision": "sufficient"
-                                    if references
-                                    else "missing_reference",
-                                    "source_ids": references,
-                                },
+                                supported_decision(references, body["messages"])
+                                if references else {"decision": "missing_reference", "source_ids": []},
                             ),
                             "finish_reason": "tool_calls",
                         }
@@ -324,17 +320,17 @@ async def test_24_turn_cost_path_reuses_body_and_preserves_wire_prefix(services)
     names = [name for name, _, _ in router_calls]
     assert names.count("route_sections") == 1
     assert names.count("verify_sections") == 0
-    assert len(teacher_calls) == 48
+    assert len(teacher_calls) == 49
     assert (
-        len(services.db.rows("SELECT * FROM model_usage")) == 49
-    )  # baseline: 24 router + 24 tutor calls; new: 1 router + 24 assessments + 24 tutor calls
+        len(services.db.rows("SELECT * FROM model_usage")) == 50
+    )  # baseline: 24 router + 24 tutor calls; new: 1 router + 25 assessments (one post-load) + 24 tutor calls
     assessments = [
         b
         for b in teacher_calls
         if b.get("tool_choice", {}).get("function", {}).get("name") == "assess_context"
     ]
     working = [b for b in teacher_calls if b not in assessments]
-    assert len(assessments) == len(working) == 24
+    assert len(assessments) == 25 and len(working) == 24
     assert all(b["tools"] == assessments[0]["tools"] for b in assessments)
     assert all(b["tools"] == working[0]["tools"] for b in working)
     assert all("complete_book_index" not in js(b["messages"]) for b in assessments)
@@ -557,14 +553,18 @@ async def test_essential_repair_keeps_original_current_question_in_router_contex
             self.steps = 0
 
         async def decision_stream(self, messages, tools):
-            self.steps += 1
-            from tests.test_context_decisions import call as decision_call
-
+            from tests.test_context_decisions import call as decision_call, supported_decision
+            state = json.loads(messages[-1]["content"].split("\n", 1)[1])
+            if state["assessment_stage"] == "initial":
+                self.steps += 1
+            args = ({"decision": "missing_reference", "source_ids": []}
+                    if state["assessment_stage"] == "initial"
+                    else supported_decision(list(state["actual_source_bodies"]), messages))
             yield {
                 "type": "result",
                 "message": decision_call(
                     "assess_context",
-                    {"decision": "missing_reference", "source_ids": []},
+                    args,
                 ),
             }
 

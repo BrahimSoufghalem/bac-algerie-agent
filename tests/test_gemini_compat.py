@@ -251,7 +251,7 @@ async def test_engine_forwards_real_received_signature_on_subsequent_tool_round_
 
 
 @pytest.mark.asyncio
-async def test_plain_greeting_without_optional_mode_finishes_in_one_real_tool_round(
+async def test_plain_greeting_finishes_without_provider_or_optional_mode(
     services,
 ):
     user, chat = chat_and_config(services)
@@ -276,7 +276,7 @@ async def test_plain_greeting_without_optional_mode_finishes_in_one_real_tool_ro
         services.db.one("SELECT status FROM agent_runs WHERE id=?", (rid,))["status"]
         == "COMPLETED"
     )
-    assert len(requests) == 1 and not services.db.rows(
+    assert not requests and not services.db.rows(
         "SELECT 1 FROM run_events WHERE type='answer_rejected'"
     )
 

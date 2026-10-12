@@ -1,30 +1,90 @@
-# Tutor-driven reference selection
+# Tutor-driven reference selection and actual-body coverage
 
-The existing queue, run snapshot, publication/scope validation, tools, final renderer and provider configuration are unchanged. With a captured selector configuration, each message first restores **active actual immutable source bodies** and sends one forced `assess_context` tool call to the same tutor model. Assessment is an isolated forced-tool request; only the validated enum/IDs reach the normal working request as server state. No assessment call or thought signature is injected into a different working tool manifest. The tutor sees current request, marked historical turns, traced session summary and actual attachment inventory, but no catalogue. It returns a validated enum and actual source IDs only, never a reasoning transcript.
+The queue, immutable publication/scope validation, model/provider names and prices,
+full library catalogue, Python isolation and final renderer remain in place.
 
-- `sufficient`: keep the smallest actually delivered set; no router call. Title similarity is not evidence.
-- `missing_reference` / `uncertain`: the existing metadata router receives the entire unchanged scoped catalogue and marked active/dormant read IDs. Existing `read` selects the whole required set (retained + new); omitted references become dormant. Reading only old IDs represents sufficient/no new reference. `no_new` without usable evidence fails closed with clarification, not an educational answer.
-- `general_allowed`: deterministic server whitelist of greetings/thanks/basic Masar help only; no educational explanation. Other generic requests are not silently allowed.
-- `wrong_subject` / `out_of_scope`: short server refusal/redirection without a second tutor call.
+## Policy and execution
 
-All selected bodies must load and match the authorized published version before active state changes. On upgrade, pre-ledger historical reads start dormant because their active status is unknown; one initial re-selection reconstructs a trusted current set, without deleting any read record or reloading the entire historical library. New actual reads can become active normally. Loaded IDs remain in `loaded_context` when dormant; `run_reference_state` distinguishes selected, loaded, actually delivered, active and explicitly cited IDs. Delivery means sent in actual model context, not inferred semantic reading. `used` means validated final citation, not proof of entailment. Ledger and metrics contain no student/source bodies. Legacy chats without a selector keep their existing path.
+1. Restore authorized active immutable bodies and identify the current request,
+   historical dialogue, traced session summary and actual own-chat attachment inventory.
+   Inventory does not mean pixels were read.
+2. The server's **closed allowlist** answers short greetings/thanks and the existing
+   basic Masar-help questions deterministically, without any model/router request.
+   `GENERAL_POLICY` is shared with assessment and `render_answer`. Numbers/operators,
+   appended educational tasks and unlisted product-help wording do not pass this gate.
+3. Other requests get an **isolated forced `assess_context` call**, using the same tutor
+   provider/model. It receives the fixed authorized scope, current request, recent
+   dialogue/session summary and complete actual source bodies, **not the full index or
+   the competing long teaching system prompt**. No assessment function/thought signature
+   is inserted into the separate working tool history.
+4. `sufficient` now requires actual delivered IDs plus structured `coverage` records:
+   current goals, prerequisites and necessary conditions, each with a short claim and
+   verbatim body quote; `gaps` must be empty. The server separates ID validity from topic
+   relevance and body-support checks. It rejects nonexistent quotes, unsupported selected
+   IDs, absent current-goal support, obvious topic/body/quote mismatches and the missing
+   bound hypothesis in monotone-sequence convergence requests. The tutor must inspect all
+   other relevant conditions/domain/dependencies against the actual body, not memory.
+5. A well-formed but inappropriate `general_allowed` becomes `uncertain`, with an
+   owner-only reason code, rather than `INVALID_CONTEXT_DECISION`. Missing/uncertain
+   coverage invokes the existing router **once**. Wrong-subject/out-of-scope requests
+   retain short server redirection/refusal. Malformed wire contracts and invented IDs
+   remain invalid; they are not granted read credit.
+6. The router still receives the entire unchanged scoped catalogue and active/dormant
+   ID state. Its existing read contract selects retained plus new references. Every
+   selected authorized body must load successfully at its published version. A successful
+   load is followed by **one actual-body assessment**, before teaching. Rejection finishes
+   with a safe clarification, not recursive rerouting or a memory-based answer. Router
+   clarifications finish directly without a teaching call.
+7. Sufficient follow-ups skip the router. The normal scientific/private/learning tools
+   and final checks remain. `essential_context` revokes coverage, uses the existing single
+   repair allowance and rechecks a successful load once before allowing teaching. A second
+   gap report revokes coverage even when another repair is refused. Final teaching and
+   calculation must cite delivered **coverage-approved** IDs, not arbitrary active sources.
 
-## Bounds and failure
+Local `covers`/title and hierarchy IDs can reveal obvious mismatch; broad parent metadata
+never certifies a child/part body. Actual body evidence is held transiently in the authorized
+Tools instance, not in the catalogue, metrics, or owner audit. Each next message revalidates
+actual active bodies. Atomic statement/solution groups cannot be partly dropped. Dormant
+records remain traceable; stale/foreign/archived publications and expired/other-user uploads
+remain inaccessible. Authorized private page/pixel delivery keeps its existing actual-read
+path: inventory alone never authorizes teaching, and text quotes cannot pretend to describe
+an unread image. Delivery is evidence of sending data, not proof of semantic understanding.
 
-One assessment call per message plus the existing configured tutor working-round ceiling (default 4, last round render-only). At most two router requests: initial missing/uncertain + one `essential_context` repair; sufficient starts at zero and may repair once. Repair requests include current request separately from historical dialogue. If essential coverage fails, retained older sources do not authorize teaching. A second valid essential-gap request revokes coverage even when its repair is rejected because the one-repair budget is exhausted; subsequent teaching/calculation must fail closed. Basic platform-help classification rejects embedded numeric requests rather than silently treating them as general conversation. Clarification is returned directly when the router asks it. Invalid decision/IDs, provider failures or changed/unloadable publications take the existing FAILED path, not a grounded-looking answer. Missing student attachments are rejected before any model call. When no catalogue source matches but actual own-chat uploads exist, the tutor may read a private page/image; teaching remains blocked until actual private content/pixels arrive in a subsequent model response. Inventory alone never authorizes teaching. Atomic statement/solution groups cannot be partially dropped. Existing Python isolation, private read/image credit, scientific result IDs and renderer checks remain in force.
+## Bounds and failures
 
-The enum does **not** prove semantic sufficiency or correctness. The real tutor must still request the single essential repair for newly discovered gaps; the server records such reversals. Multiple dropped references cannot be secretly cited; private sources still require actual authorized page delivery.
+- At most 3 tutor assessment calls per message: initial, successful initial route review,
+  and successful essential-repair review. Usually a sufficient follow-up needs only 1.
+- At most 2 router requests: initial + one essential repair. A sufficient follow-up starts
+  at zero and can repair once. Post-load rejection never calls the router recursively.
+- Existing working-round ceiling (default 4, final round render-only), wall-clock budget,
+  request quotas, cancellation and result/asset IDs remain enforced.
+- No usable body, post-load support failure, or router `no_new` without actual evidence
+  gives a safe clarification. Unloadable/changed IDs and provider errors keep their existing
+  safe error paths. Missing required student attachment stops before model calls.
 
-## Measurement
+Owner-only `context_support_rejected` audits store enum reason codes and source IDs only,
+not student text, body quotes, support claims, gap text or hidden reasoning. Provider-reported
+usage remains separately tagged `context_assessment`, `source_selection`, and teaching.
+Existing message/router/reuse/repair/gap/failure/duration metrics remain available. Missing
+provider counts/prices stay unknown rather than being fabricated.
 
-`model_usage.feature=context_assessment` records provider-reported tutor tokens/cost separately from teaching and source_selection. Missing counts/prices remain null, not zero. `context_decisions` records message count, router requests, repairs, reused-current ratio, sufficiency reversals, reference failures and end-to-end duration; run status records failures/cancellations. Usage report exposes these counters. A router request is an attempted selection, distinct from paid provider calls when the catalogue is empty.
+## Evidence and limitations
 
-This change adds one small-contract tutor assessment request per message. It removes large-index router requests on sufficient follow-ups, but does not claim net financial savings without measured provider usage and current configured prices. Working rounds still use actual full source texts. Automated scripted tests establish call paths and safety, not live-model pedagogical quality or perfect semantic classifications.
+PR #33's M17/M18/M20/M22 had valid, actually loaded logarithm IDs, but probability/sequence
+questions: ID-only validation accepted them. A recorded actual-body fixture now rejects all
+four, even when the false sufficient decision contains a genuine logarithm quotation.
+Deterministic tests also cover topic-appropriate actual text, absent theorem hypotheses,
+nonverbatim quotes, reported gaps, changed topics, retained prerequisites, no matching
+reference, post-route mismatch, follow-ups, private pixels and bounded repairs.
 
-## Verified scripted comparison
+These are **negative guards and an explicit model support contract**, not a universal
+formal semantic-entailment or mathematical-correctness proof. Unknown phrasing/concepts,
+quote interpretation and conditions outside the explicit guards still depend on the tutor's
+actual-body judgment; uncertain cases must fail closed. Live model answers require a separate
+content review. CI success is not evidence that every answer is correct.
 
-The 24-message fixture previously made 24 router calls + 24 tutor working calls. It now makes 1 router call + 24 tutor assessment calls + 24 working calls. Thus this trace removes 23 large-index router calls, but total calls are 49 rather than 48. The fixture reports deliberately synthetic token counts; these are not actual Gemini billing or financial savings. Real-run benchmark transport now tags `assessment` separately from `teacher` and `router`.
-
-## Code trace
-
-`AgentEngine.enqueue → claim/process → body → context` creates the authorized current request and restores actual active publications. `body → assess_context → ChatProvider.decision_stream` validates the tutor decision. Only missing/uncertain goes to `FullIndexCoordinator.prepare → build_catalog → decision/call_router_llm → parse_route → Tools.load → Library` before activation. Sufficient skips that chain. Working `provider.stream → Tools.execute` retains Python, private reading, images and learning permissions; `essential_context` uses the same coordinator once. Final `Tools.answer → require_grounding/prepare_answer → scientific/asset/source-ID validation → AgentEngine.finish` is unchanged apart from the extra coordinated coverage gate. `bac/science/python_contract.py` was inspected but not modified.
+The scripted 24-turn reuse trace is now 1 router + 25 assessments (one post-load) + 24 working
+calls = 50 calls, versus PR #33's 49. It still avoids 23 repeated full-index router calls,
+while adding a body review to new retrieval. Exact social/help requests now cost zero model
+calls. Synthetic test token counts are not real billing; no net financial saving is claimed
+without real provider usage and configured current prices.
