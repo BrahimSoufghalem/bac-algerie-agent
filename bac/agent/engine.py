@@ -849,7 +849,11 @@ class AgentEngine:
                         )
                     if selector and name == "essential_context":
                         request = EssentialContext.model_validate(args)
+                        # A valid essential-gap report revokes coverage even when
+                        # the repair budget is exhausted; old evidence is not a bypass.
+                        tools.references_ready = False
                         if context_repairs >= 1:
+                            metric(tools, "failures")
                             raise ValueError(
                                 "Essential context addition already attempted; finish with available evidence or ask a clarification"
                             )
@@ -858,7 +862,6 @@ class AgentEngine:
                         metric(tools, "router_requests")
                         if tools.context_decision == "sufficient":
                             metric(tools, "sufficiency_gap")
-                        tools.references_ready = False
                         result = await selector.prepare(
                             run,
                             tools,

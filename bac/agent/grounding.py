@@ -55,6 +55,7 @@ def social_question(question):
 def general_allowed(question):
     return social_question(question) or (
         len(question) <= 100
+        and not re.search(r"\d|[=+*/^<>]", question)
         and normalized(question)
         in {
             "ما هو مسار",

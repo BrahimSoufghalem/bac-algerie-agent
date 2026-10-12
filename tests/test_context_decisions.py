@@ -677,3 +677,25 @@ async def test_partial_selection_failure_records_loaded_but_not_delivered_or_act
     assert row["selected"]==row["loaded"]==1
     assert row["delivered"]==row["active"]==row["used"]==0
     assert s.db.one("SELECT active FROM loaded_context WHERE node_id=?",(failed,))["active"]==1
+
+
+@pytest.mark.parametrize("question",["ما هو مسار؟ 2+3", "كيف أستخدم مسار؟ ١+٢"])
+def test_platform_help_whitelist_cannot_hide_numeric_educational_request(services,question):
+    u,c=chat_and_config(services);tools=Tools(services,u,c);tools.question=question
+    with pytest.raises(ModelError,match="INVALID_CONTEXT_DECISION"):
+        parse_assessment(call("assess_context",{"decision":"general_allowed","source_ids":[]}),tools)
+
+
+@pytest.mark.asyncio
+async def test_exhausted_repair_revokes_coverage_instead_of_teaching_from_old_reference(services):
+    s=services;n,_,u,c,aliases=await setup(s);Tools(s,u,c).load(n)
+    routes=router(s,aliases,[[n]])
+    request=call("essential_context",{"importance":"essential","query":"شرط ناقص","reason":"An essential condition is still absent"})
+    tutor=Tutor([("sufficient",[n])],[request,request,answer([n]),answer([],"هل تكتب الشرط الذي تحتاجه؟","clarification")])
+    s.chat_factory=lambda cfg,key:tutor
+    state=await run(s,u,c,"اشرح شروط الدرس")
+    assert state["status"]=="COMPLETED",state
+    assert len(routes)==1 and len(tutor.work)==4
+    assert s.db.rows("SELECT * FROM run_events WHERE run_id=? AND type='answer_rejected'",(state["id"],))
+    published=s.db.one("SELECT content,sources FROM messages WHERE role='assistant'")
+    assert json.loads(published["sources"])==[] and "هل" in published["content"]
