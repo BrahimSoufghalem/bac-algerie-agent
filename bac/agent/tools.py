@@ -309,6 +309,8 @@ class Tools:
         source = payload["source"]
         self.private.row(self.user, source["node_id"], self.chat)
         self.sources[source["source_id"]] = source
+        from bac.agent.context_decision import ledger
+        ledger(self, source["source_id"], source["node_id"], source.get("version_id") or source["node_id"], "private", source["source_id"], selected=True, loaded=True)
         if payload.get("asset_id"):
             self.assets.add(payload["asset_id"])
             self.private_assets[payload["asset_id"]] = source

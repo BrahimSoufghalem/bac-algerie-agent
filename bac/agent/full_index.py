@@ -576,6 +576,10 @@ class FullIndexCoordinator:
                 raise ModelError("SELECTED_SOURCE_CHANGED")
             if not has_source_body(result.get("content")):
                 raise ModelError("SELECTED_SOURCE_HAS_NO_BODY")
+            # Record an authorized real load even if a later complementary load
+            # fails. Activation/delivery still wait for the complete valid set.
+            for source in result["sources"]:
+                ledger(tools, source.get("source_id", source["node_id"]), source["node_id"], source["version_id"], scope, node["id"], selected=True, loaded=True)
             results[alias] = result
         final = chosen
         payloads = [results[alias] for alias in final]

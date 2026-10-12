@@ -656,3 +656,24 @@ async def test_upgrade_keeps_legacy_read_ids_dormant_without_reloading_all(servi
     # The full read ID can still be reloaded/reselected after scope/version validation.
     tools.load(n)
     assert s.db.one("SELECT active FROM loaded_context WHERE node_id=?",(n,))["active"]==1
+
+
+@pytest.mark.asyncio
+async def test_partial_selection_failure_records_loaded_but_not_delivered_or_active(services,monkeypatch):
+    s=services;n,other,u,c,aliases=await setup(s,second=True)
+    ordered=sorted([n,other],key=lambda node:int(aliases[node][1:]))
+    first,failed=ordered
+    Tools(s,u,c).load(failed) # Previous active set must survive failed replacement.
+    router(s,aliases,[ordered])
+    tutor=Tutor([("missing_reference",[])],[]);s.chat_factory=lambda cfg,key:tutor
+    original=Tools.load
+    def load(self,id_,*args,**kwargs):
+        if id_==failed:return {"error":"MISSING_COMPLEMENTARY_CONTENT"}
+        return original(self,id_,*args,**kwargs)
+    monkeypatch.setattr(Tools,"load",load)
+    state=await run(s,u,c,"أحتاج المفهومين معا")
+    assert state["status"]=="COMPLETED" and not tutor.work
+    row=s.db.one("SELECT * FROM run_reference_state WHERE run_id=? AND source_id=?",(state["id"],first))
+    assert row["selected"]==row["loaded"]==1
+    assert row["delivered"]==row["active"]==row["used"]==0
+    assert s.db.one("SELECT active FROM loaded_context WHERE node_id=?",(failed,))["active"]==1
