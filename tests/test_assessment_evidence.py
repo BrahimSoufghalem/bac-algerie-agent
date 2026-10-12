@@ -22,6 +22,7 @@ def choice(alias="R1", eid="R1:E1", role="current_goal"):
         "evidence_id": eid,
         "goal": "applicable rule and hypotheses",
         "role": role,
+        "requirement_ids": ["goal", "rule"],
     }
 
 
@@ -30,6 +31,7 @@ def decision(ids=None, coverage=None, kind="sufficient", gaps=None):
         "assess_context",
         {
             "decision": kind,
+            "requirements": [{"id":"goal", "kind":"goal", "description":"current goal"}, {"id":"rule", "kind":"rule", "description":"applicable rule"}] if kind == "sufficient" else [],
             "source_ids": ["R1"] if ids is None else ids,
             "coverage": [choice()] if coverage is None else coverage,
             "gaps": gaps or [],
@@ -45,7 +47,7 @@ def test_body_spans_preserve_every_character_in_order():
     assert all(spans[i][1] == spans[i + 1][0] for i in range(len(spans) - 1))
 
 
-def test_live_schema_choices_are_closed_and_legacy_quote_not_exposed(services):
+def test_live_schema_is_stable_and_server_choices_are_closed(services):
     t = actual_tools(
         services,
         "اشرح الاحتمال",
@@ -56,10 +58,8 @@ def test_live_schema_choices_are_closed_and_legacy_quote_not_exposed(services):
     payload = prepare_body_choices(t)
     schema = assessment_tool(t)["function"]["parameters"]
     assert payload["reference_choices"] == {"R1": "long-source-id"}
-    assert schema["properties"]["source_ids"]["items"]["enum"] == ["R1"]
-    assert schema["$defs"]["BodySupport"]["properties"]["evidence_id"]["enum"] == [
-        "R1:E1"
-    ]
+    assert "enum" not in schema["properties"]["source_ids"]["items"]
+    assert "enum" not in schema["$defs"]["BodySupport"]["properties"]["evidence_id"]
     assert "quote" not in schema["$defs"]["BodySupport"]["properties"]
     d, _ = parse_assessment(decision(), t)
     assert d.decision == "sufficient" and d.source_ids == ["long-source-id"]

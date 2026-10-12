@@ -41,14 +41,21 @@ def answer(ids, text="نشرح الفكرة الحالية مع شروطها خ�
     )
 
 
+def assessment_state(messages):
+    state = {}
+    for message in messages[1:]:
+        state.update(json.loads(message["content"].split("\n", 1)[1]))
+    return state
+
+
 def supported_decision(ids, messages):
     """Explicit synthetic support, not an LLM semantic benchmark."""
-    state = json.loads(messages[-1]["content"].split("\n", 1)[1])
+    state = assessment_state(messages)
     bodies = state["actual_source_bodies"]
     aliases = {sid: alias for alias, sid in state["reference_choices"].items()}
-    return {"decision": "sufficient", "source_ids": [aliases[sid] for sid in ids], "gaps": [],
+    return {"requirements": [{"id":"goal", "kind":"goal", "description":"synthetic current goal"}, {"id":"rule", "kind":"rule", "description":"synthetic applicable rule"}], "decision": "sufficient", "source_ids": [aliases[sid] for sid in ids], "gaps": [],
             "coverage": [{"source_id": aliases[sid], "goal": "synthetic current task support",
-                          "role": "current_goal", "evidence_id": aliases[sid] + ":E1"}
+                          "role": "current_goal", "requirement_ids":["goal", "rule"], "evidence_id": aliases[sid] + ":E1"}
                          for sid in ids if sid in bodies]}
 
 
@@ -63,7 +70,7 @@ class Tutor:
     async def decision_stream(self, messages, tools):
         assert [t["function"]["name"] for t in tools] == ["assess_context"]
         self.assessments.append(messages)
-        state = json.loads(messages[-1]["content"].split("\n", 1)[1])
+        state = assessment_state(messages)
         if state["assessment_stage"] != "initial":
             decision, ids = "sufficient", list(state["actual_source_bodies"])
         else:
@@ -411,11 +418,18 @@ async def test_python_result_ids_and_grounded_final_renderer_still_enforced(
         lambda self, args: {
             "status": "computed",
             "outputs": {"sum": 5},
-            "checks": [],
+            "checks": [{"label":"النتيجة المحسوبة خمسة.", "status":"passed", "evidence":{"observed":5,"expected":5,"relation":"equal","tolerance":0}}],
             "stdout": "",
         },
     )
-    tutor = Tutor(
+    class CheckedTutor(Tutor):
+        async def stream(self, messages, tools):
+            async for event in super().stream(messages,tools):
+                if event["type"] == "result" and "نشرح الفكرة" in js(event):
+                    rid = next(json.loads(m["content"])["result_id"] for m in reversed(messages) if m["role"] == "tool" and "result_id" in json.loads(m["content"]))
+                    event["message"] = call("render_answer", {"response_kind":"teaching", "source_ids":[n], "blocks":[{"type":"text", "text":"النتيجة المحسوبة خمسة."}], "checked_claims":[{"block_index":0,"claim":"النتيجة المحسوبة خمسة.","result_id":rid,"check_index":0}]})
+                yield event
+    tutor = CheckedTutor(
         [("sufficient", [n])],
         [
             call("run_python", {"code": "emit('sum', 2+3)"}),
@@ -651,7 +665,7 @@ async def test_sufficient_cannot_restore_stale_or_unauthorized_publication(
     assert state["status"] == "COMPLETED"
     assert len(routes) <= 1 and not tutor.work
     # Recovery may ask the router once, never restore an unauthorized/stale body on model authority.
-    assert n not in json.loads(tutor.assessments[0][-1]["content"].split("\n", 1)[1])["actual_source_bodies"]
+    assert n not in assessment_state(tutor.assessments[0])["actual_source_bodies"]
 
 
 

@@ -30,7 +30,7 @@ def recent_dialogue(rows, current_id, max_chars=6000, max_messages=4):
     for row in rows:
         if row["id"] == current_id:
             continue
-        message = {"role": row["role"], "content": history_text(row)}
+        message = {"message_id": row["id"], "role": row["role"], "content": history_text(row)}
         size = len(js(message))
         if len(selected) >= max_messages or used + size > max_chars:
             break

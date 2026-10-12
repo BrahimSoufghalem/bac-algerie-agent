@@ -62,7 +62,12 @@ def prepare_answer(args, question, scientific):
         elif set(block) == {"graph"} and isinstance(block["graph"], str):
             blocks[i] = block = {"type": "graph", "result_id": block["graph"]}
         if block.get("type") == "equation" and isinstance(block.get("latex"), str):
-            block["latex"] = normalize_latex(block["latex"])
+            latex = block["latex"].strip()
+            for opening, closing in (("$$", "$$"), (r"\[", r"\]"), (r"\(", r"\)"), ("$", "$")):
+                if latex.startswith(opening) and latex.endswith(closing) and len(latex) > len(opening) + len(closing):
+                    latex = latex[len(opening):-len(closing)].strip()
+                    break
+            block["latex"] = normalize_latex(latex)
         elif block.get("type") == "text" and isinstance(block.get("text"), str):
             block["text"] = normalize_math_text(block["text"])
         elif block.get("type") == "table":

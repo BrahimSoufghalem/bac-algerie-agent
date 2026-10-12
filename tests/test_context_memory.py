@@ -333,7 +333,9 @@ async def test_24_turn_cost_path_reuses_body_and_preserves_wire_prefix(services)
     assert len(assessments) == 25 and len(working) == 24
     # Isolated choice enum changes only when actual authorized bodies change.
     assert all(b["tools"] == assessments[1]["tools"] for b in assessments[1:])
-    assert assessments[0]["tools"] != assessments[1]["tools"]
+    assert assessments[0]["tools"] == assessments[1]["tools"]
+    assert all(b["messages"][:2] == assessments[1]["messages"][:2] for b in assessments[2:])
+    assert all(b["messages"][:3] == working[0]["messages"][:3] for b in working[1:])
     assert all(b["tools"] == working[0]["tools"] for b in working)
     assert all("complete_book_index" not in js(b["messages"]) for b in assessments)
     # No invented cache hit measurements when the mocked provider did not report them.
@@ -555,8 +557,8 @@ async def test_essential_repair_keeps_original_current_question_in_router_contex
             self.steps = 0
 
         async def decision_stream(self, messages, tools):
-            from tests.test_context_decisions import call as decision_call, supported_decision
-            state = json.loads(messages[-1]["content"].split("\n", 1)[1])
+            from tests.test_context_decisions import assessment_state, call as decision_call, supported_decision
+            state = assessment_state(messages)
             if state["assessment_stage"] == "initial":
                 self.steps += 1
             args = ({"decision": "missing_reference", "source_ids": []}

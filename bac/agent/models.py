@@ -89,12 +89,27 @@ Block = Annotated[
 ]
 
 
+class CheckedClaim(Strict):
+    block_index: int = Field(ge=0, le=29)
+    claim: str = Field(min_length=1, max_length=160)
+    result_id: str = Field(min_length=1, max_length=100)
+    check_index: int = Field(ge=0, le=31)
+
+
+class HistoryEvidence(Strict):
+    block_index: int = Field(ge=0, le=29)
+    message_id: str = Field(min_length=1, max_length=100)
+    quote: str = Field(min_length=8, max_length=400)
+
+
 class Answer(Strict):
     blocks: list[Block] = Field(min_length=1, max_length=30)
     source_ids: list[str] = Field(default_factory=list, max_length=30)
     warnings: list[str] = Field(default_factory=list, max_length=20)
+    checked_claims: list[CheckedClaim] = Field(default_factory=list, max_length=32)
+    history_evidence: list[HistoryEvidence] = Field(default_factory=list, max_length=24)
     response_kind: Literal[
-        "teaching", "calculation", "conversation", "clarification", "refusal"
+        "teaching", "calculation", "conversation", "clarification", "refusal", "history_summary"
     ] = "teaching"
 
 

@@ -20,6 +20,12 @@ from bac.agent.answer_quality import prepare_answer
 from bac.core.study import StudyScope
 
 
+class HistoryArgs(Strict):
+    before_message_id: str | None = Field(default=None, max_length=100)
+    limit: int = Field(default=24, ge=1, le=24)
+    student_only: bool = True
+
+
 class EmptyArgs(Strict):
     pass
 
@@ -76,6 +82,12 @@ class Tools:
         self.router_history = []
         self.attachment_state = []
         self.session_summary = {}
+        self.task_state = {}
+        self.history_summary_request = False
+        self.history_summary_requested = False
+        self.history_evidence = {}
+        self.history_read = False
+        self.history_complete = False
         self.history_messages = []
         self.current_message = None
         self.delivered_sources = set()
@@ -143,7 +155,7 @@ class Tools:
             ),
             (
                 "render_answer",
-                "Finish the answer as the ONLY call in this model turn, after receiving required tool results in an earlier turn. Never batch this terminal call with reads, calculations or saves. response_kind=teaching REQUIRES relevant source_ids actually read in this run (restored context counts; search/TOC does not). Never teach from model memory without a read reference. calculation requires real computed results and cannot bypass lesson grounding. conversation follows the server exact general_allowed allowlist; clarification asks for missing information in one short text block; refusal is a short non-teaching refusal. Never expose private files/scans/titles/IDs/URLs/source passages or tool traces. No image blocks. For generated graph blocks use actual result_id only. " + GENERAL_POLICY,
+                "Finish the answer as the ONLY call in this model turn, after receiving required tool results in an earlier turn. Never batch this terminal call with reads, calculations or saves. response_kind=teaching REQUIRES relevant source_ids actually read in this run (restored context counts; search/TOC does not). Never teach from model memory without a read reference. calculation requires real computed results and cannot bypass lesson grounding. conversation follows the server exact general_allowed allowlist; clarification asks for missing information in one short text block; refusal is a short non-teaching refusal. Never expose private files/scans/titles/IDs/URLs/source passages or tool traces. No image blocks. For generated graph blocks use actual result_id only. checked_claims binds each computational assertion to block_index, exact claim/check label, current result_id and check_index with a passed emitted comparison; never call the whole answer verified. history_summary is only a requested summary of own dialogue: read_conversation_history first, cite exact active STUDENT message evidence privately with history_evidence; no new teaching and no book examples as student history. " + GENERAL_POLICY,
                 PresentedAnswer,
             ),
             (
@@ -152,6 +164,7 @@ class Tools:
                 SourceImage,
             ),
         ]
+        entries.append(("read_conversation_history", "Read only active PUBLIC messages in this authenticated conversation, with real message IDs and pagination. Use for a requested history/mistake summary; bounded summary alone is not the full history. Student statements differ from assistant examples; neither is verified mastery. No other chat or private source text is accessible.", HistoryArgs))
         entries.append(("run_python", DESCRIPTION, PythonCode))
         entries.extend(
             [
@@ -410,6 +423,12 @@ class Tools:
         return result
 
     def execute(self, name, args):
+        if name == "read_conversation_history":
+            live = self.s.db.one("SELECT active FROM users WHERE id=?", (self.user["id"],))
+            if not live or not live["active"]:
+                raise ValueError("Account disabled")
+            from bac.agent.session_state import read_history
+            return read_history(self, **HistoryArgs.model_validate(args).model_dump())
         if name == "inspect_source_image":
             p = SourceImage.model_validate(args)
             if p.asset_id not in self.assets:
@@ -574,6 +593,8 @@ class Tools:
             else:
                 self.library._node(source["node_id"])
         if self.run_id:
+            from bac.agent.claim_checks import validate_claims
+            validate_claims(answer, self)
             require_grounding(answer, self)
         blocks = []
         for block in answer.blocks:
@@ -632,7 +653,7 @@ class Tools:
             raise ValueError(
                 "Resolved scientific answer exceeds output budget; use fewer result blocks/points"
             )
-        if not answer.source_ids:
+        if not answer.source_ids and answer.response_kind != "history_summary":
             answer.warnings.append("هذا شرح تعليمي، وليس حلًا رسميًا معتمدًا.")
         answer.warnings = list(dict.fromkeys(answer.warnings))[-20:]
         if len(answer.model_dump_json()) > 50000:

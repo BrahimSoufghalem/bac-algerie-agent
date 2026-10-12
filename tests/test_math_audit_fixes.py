@@ -551,10 +551,10 @@ def test_policy_current_claim_domain_graph_and_student_proof():
 
     prompt = yaml.safe_load(Path("config/agent.yaml").read_text())["system"]
     for required in [
-        "CURRENT expression",
-        "counterexample",
-        "independence alone",
-        "differentiability",
+        "Current corrections override old givens",
+        "all required rules/conditions/dependencies",
+        "multi-subject platform",
+        "checked_claims",
         "preserve its actual result_id",
         "exact evidence_quote",
         "STUDENT solution",
