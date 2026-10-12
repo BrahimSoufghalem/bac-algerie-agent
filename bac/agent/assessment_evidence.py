@@ -25,7 +25,7 @@ def prepare_body_choices(tools):
     tools.assessment_spans = {}
     tools.assessment_body_hashes = {}
     bodies = {}
-    for sid, data in tools.source_evidence.items():
+    for sid, data in sorted(tools.source_evidence.items()):
         if sid not in tools.sources or not data.get("body"):
             continue
         alias = f"R{len(tools.assessment_aliases) + 1}"

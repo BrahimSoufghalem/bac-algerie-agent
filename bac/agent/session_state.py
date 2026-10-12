@@ -12,6 +12,7 @@ import time
 from bac.core.db import js
 from bac.core.presentation import public_message
 from bac.agent.memory import history_text
+from bac.agent.grounding import normalized
 
 MAX_SUMMARY_CHARS = 6000
 MAX_SUMMARY_ENTRIES = 12
@@ -101,12 +102,30 @@ def session_summary(db, user_id, chat, exclude_id=None, persist=True):
                 "answer_sha256": message_digest(answer) if answer else None,
             }
         )
-    entries, proofs = entries[-MAX_SUMMARY_ENTRIES:], proofs[-MAX_SUMMARY_ENTRIES:]
+    total = len(entries)
+    early = [
+        i
+        for i, e in enumerate(entries[:-8])
+        if re.search(
+            r"خطا|اخطاء|لم افهم|ما فهمتش|مفهمتش|اعتقد|اظن|mistake|confus|wrong|erreur",
+            normalized(e["question_excerpt"]),
+        )
+    ][:4]
+    indices = sorted(
+        set(
+            early
+            + list(range(max(0, total - (MAX_SUMMARY_ENTRIES - len(early))), total))
+        )
+    )
+    entries, proofs = [entries[i] for i in indices], [proofs[i] for i in indices]
     summary = {
         "kind": "partial_extractive_history",
         "not_read_evidence": True,
         "not_pending_tasks": True,
         "entries": entries,
+        "complete": False,
+        "retrieval_tool": "read_conversation_history",
+        "observed_exchanges_in_window": total,
     }
     while len(js(summary)) > MAX_SUMMARY_CHARS and entries:
         entries.pop(0)
@@ -120,6 +139,74 @@ def session_summary(db, user_id, chat, exclude_id=None, persist=True):
             (chat, payload, time.time()),
         )
     return summary
+
+
+def read_history(tools, before_message_id=None, limit=24, student_only=True):
+    db = tools.s.db
+    if not db.one(
+        "SELECT 1 FROM conversations WHERE id=? AND user_id=?",
+        (tools.chat, tools.user["id"]),
+    ):
+        raise ValueError("History unavailable")
+    cursor = None
+    if before_message_id:
+        row = db.one(
+            "SELECT rowid AS seq FROM messages WHERE id=? AND conversation_id=? AND active=1",
+            (before_message_id, tools.chat),
+        )
+        if not row:
+            raise ValueError("History cursor unavailable")
+        cursor = row["seq"]
+    sql = "SELECT id,role,content,blocks,rowid AS seq FROM messages WHERE conversation_id=? AND active=1"
+    params = [tools.chat]
+    if student_only:
+        sql += " AND role='user'"
+    if cursor is not None:
+        sql += " AND rowid<?"
+        params.append(cursor)
+    rows = db.rows(sql + " ORDER BY rowid DESC LIMIT ?", (*params, limit + 1))
+    more = len(rows) > limit
+    rows = rows[:limit]
+    items = []
+    for row in reversed(rows):
+        safe = public_message(row)
+        safe["blocks"] = js(safe["blocks"])
+        content = history_text(safe)
+        tools.history_evidence[row["id"]] = message_digest(row)
+        items.append(
+            {
+                "message_id": row["id"],
+                "role": row["role"],
+                "content": content[:2400],
+                "truncated": len(content) > 2400,
+            }
+        )
+    tools.history_read = True
+    # Paging must begin at the latest page and proceed without skipping to claim full coverage.
+    if not before_message_id:
+        tools.history_scan_mode = student_only
+        tools.history_truncated = False
+        tools.history_scan_next = rows[-1]["id"] if more else None
+        tools.history_complete = not more and not any(i["truncated"] for i in items)
+    elif before_message_id == getattr(
+        tools, "history_scan_next", None
+    ) and student_only == getattr(tools, "history_scan_mode", None):
+        tools.history_scan_next = rows[-1]["id"] if more else None
+        tools.history_complete = (
+            not more
+            and not any(i["truncated"] for i in items)
+            and not getattr(tools, "history_truncated", False)
+        )
+    tools.history_truncated = getattr(tools, "history_truncated", False) or any(
+        i["truncated"] for i in items
+    )
+    return {
+        "items": items,
+        "next_before_message_id": rows[-1]["id"] if more else None,
+        "complete": tools.history_complete,
+        "not_read_reference_evidence": True,
+        "not_verified_mastery": True,
+    }
 
 
 def available_attachments(s, user, chat, run_id):

@@ -92,6 +92,12 @@ def deterministic_general_reply(question):
 def require_grounding(answer, tools):
     """Only called for an actual agent run; locators never grant source credit."""
     kind = answer.response_kind
+    if kind == "history_summary":
+        if not getattr(tools, "history_summary_request", False) or not tools.history_read or not answer.history_evidence:
+            raise ValueError("HISTORY_READ_AND_PROVENANCE_REQUIRED")
+        if answer.source_ids or any(b.type not in {"text", "table"} for b in answer.blocks):
+            raise ValueError("History summary must be own dialogue only, not new teaching or computation")
+        return
     if kind in ("clarification", "refusal", "conversation"):
         if (
             len(answer.blocks) != 1
@@ -114,7 +120,7 @@ def require_grounding(answer, tools):
     if getattr(tools, "coordinated", False):
         if (
             getattr(tools, "context_decision", None)
-            in {"general_allowed", "out_of_scope", "wrong_subject"}
+            in {"general_allowed", "out_of_scope", "wrong_subject", "history_summary"}
             or not tools.references_ready
             or not getattr(tools, "coverage_validated", False)
         ):

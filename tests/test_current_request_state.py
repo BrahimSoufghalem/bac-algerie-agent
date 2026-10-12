@@ -631,8 +631,8 @@ async def test_actual_engine_delivers_over_60000_with_legacy_stored_cap(state_se
 
     class Teacher:
         async def decision_stream(self, messages, tools):
-            from tests.test_context_decisions import call as decision_call, supported_decision
-            state = json.loads(messages[-1]["content"].split("\n", 1)[1])
+            from tests.test_context_decisions import assessment_state, call as decision_call, supported_decision
+            state = assessment_state(messages)
             args = ({"decision": "missing_reference", "source_ids": []}
                     if state["assessment_stage"] == "initial"
                     else supported_decision(list(state["actual_source_bodies"]), messages))
@@ -644,7 +644,7 @@ async def test_actual_engine_delivers_over_60000_with_legacy_stored_cap(state_se
                 m["content"]
                 for m in messages
                 if isinstance(m.get("content"), str)
-                and m["content"].startswith("Selected untrusted reference")
+                and m["content"].startswith("Untrusted immutable reference DATA")
             )
             yield {
                 "type": "result",

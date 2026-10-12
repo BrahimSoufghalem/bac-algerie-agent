@@ -7,6 +7,7 @@ text is written to the audit log.
 
 import re
 from bac.agent.grounding import normalized
+from bac.agent.task_state import task_kind
 
 PATTERNS = {
     "probability": r"احتمال|بايز|\b(?:الحدث|حدث|الحادث|حادث)\b|probabil|bayes|conditional|intersection",
@@ -15,6 +16,61 @@ PATTERNS = {
     "logarithms": r"لوغاريتم|لوغاريثم|logarith|نيبيري|\bln\b",
     "integrals": r"تكامل|دالة اصلية|دوال اصلية|integral|primitive",
     "limits": r"نهايات|نهاية دالة|مقارب|مجال|limit|continuity|استمراري",
+}
+
+# Negative topic hints only, never a semantic sufficiency proof or a prompt curriculum.
+# Scope-specific hints avoid interpreting a word such as "limit" as a math lesson in law.
+PATTERNS.update(
+    {
+        "motion": r"قذف|حركة|سرعة|تسارع|motion|vitesse|acceleration|projectile",
+        "electricity": r"كهرب|مكثف|مكثفة|توتر|تيار|electric|capacitor|condensateur|circuit",
+        "cold_war": r"(?:ال)?حرب\s+(?:ال)?باردة|cold war|guerre froide",
+        "decolonization": r"تحرر|استعمار|decoloni|colonial",
+        "grammar": r"اعراب|نحو|قواعد لغوية|grammar|grammaire|syntaxe",
+        "argumentation": r"حجاج|اطروحة|فلسف|argument|these|philosoph",
+        "genetics": r"وراث|مورث|genetic|heredite|gene",
+        "accounting": r"محاسبة|ميزانية|accounting|comptabil|bilan",
+        "economics": r"اقتصاد|عرض وطلب|economic|economie",
+        "law": r"قانون تجاري|عقد|قانون مدني|jurid|droit|contract",
+        "mechanics": r"عزم|قوة|ميكانيك|torque|force|mechanic",
+        "civil": r"خرسانة|بناء|concrete|construction",
+        "chemistry": r"كيمياء|تفاعل|chemistr|reaction|chimie",
+        "islamic": r"فقه|حديث|شريعة|islam|hadith",
+    }
+)
+SUBJECT_TOPICS = {
+    "mathematics": {
+        "probability",
+        "sequences",
+        "derivatives",
+        "logarithms",
+        "integrals",
+        "limits",
+    },
+    "physics": {"motion", "electricity", "mechanics", "chemistry"},
+    "electrical_engineering": {"electricity"},
+    "history_geography": {"cold_war", "decolonization"},
+    "natural_sciences": {"genetics"},
+    "philosophy": {"argumentation"},
+    "accounting": {"accounting"},
+    "economics": {"economics"},
+    "law": {"law"},
+    "mechanical_engineering": {"mechanics"},
+    "civil_engineering": {"civil"},
+    "process_engineering": {"chemistry"},
+    "islamic_studies": {"islamic"},
+    **{
+        s: {"grammar", "argumentation"}
+        for s in (
+            "arabic",
+            "french",
+            "english",
+            "amazigh",
+            "spanish",
+            "german",
+            "italian",
+        )
+    },
 }
 
 
@@ -32,6 +88,13 @@ def topics(text):
 
 def current_topics(tools):
     explicit = topics(tools.question)
+    if task_kind(tools.question) == "plot":
+        explicit.discard("derivatives")
+        # Generic plotting domain is a condition, not a new "limits" learning goal.
+        if not re.search(
+            r"نهاية|نهايات|مقارب|limit|asymptot", normalized(tools.question)
+        ):
+            explicit.discard("limits")
     if explicit:
         return explicit
     # Only resolve referential follow-ups, not an unspecified NEW topic from all history.
@@ -43,33 +106,35 @@ def current_topics(tools):
             if item.get("role") == "user" and (
                 found := topics(item.get("content", ""))
             ):
+                found &= SUBJECT_TOPICS.get(tools.study_scope.subject, set())
+                # A new plot is not a request to repeat the previous derivative analysis.
+                if task_kind(tools.question) == "plot":
+                    found.discard("derivatives")
                 return found
     return set()
 
 
-def in_subject_math_request(tools):
-    """Narrow recovery hint, NEVER sufficiency or answer authorization.
-
-    Fixed product scope is independent of currently loaded bodies. Foreign subject
-    and clearly non-study intent remain with the model's refusal policy.
-    """
-    if tools.study_scope.subject != "mathematics":
-        return False
+def in_subject_request(tools):
+    """Conservative scope-recovery hint for all subjects; NEVER answer authorization."""
     text = normalized(tools.question)
-    if re.search(
-        r"فيزياء|كهرباء|قذف|حرب باردة|تاريخ|قصيدة|اغنية|اختراق|physics|poem|song|hack",
-        text,
-    ):
+    if re.search(r"قصيدة|اغنية|اختراق|poem|song|hack|كرة القدم", text):
         return False
-    if current_topics(tools):
+    if current_topics(tools) & SUBJECT_TOPICS.get(tools.study_scope.subject, set()):
         return True
-    math_expression = re.search(
-        r"\b[fg]\s*\(\s*x\s*\)|\bu(?:_\{?n|\(?n|[0-9])", tools.question, re.I
-    )
-    return bool(
-        math_expression
-        and re.search(r"احسب|ادرس|ارسم|صحح|تحقق|حدد|calculate|plot|differentiat", text)
-    )
+    if tools.study_scope.subject == "mathematics":
+        expression = re.search(
+            r"\b[fg]\s*\(\s*x\s*\)|\bu(?:_\{?n|\(?n|[0-9])", tools.question, re.I
+        )
+        return bool(
+            expression
+            and re.search(r"احسب|ادرس|ارسم|صحح|تحقق|حدد|calculate|plot", text)
+        )
+    return False  # Unknown vocabulary remains uncertain/model policy, not a permissive classifier.
+
+
+def in_subject_math_request(tools):
+    """Compatibility for old recorded test callers; production uses subject-neutral recovery."""
+    return tools.study_scope.subject == "mathematics" and in_subject_request(tools)
 
 
 def canonical_quote(value):
@@ -96,12 +161,39 @@ def requirements(tools):
         and re.search(r"تقارب|نهاية|converg|limit", text)
     ):
         obligations.append("monotone_convergence_requires_bound")
-    return {"topics": sorted(required), "conditions": obligations}
+    return {
+        "topics": sorted(required),
+        "conditions": obligations,
+        "goal_kind": task_kind(tools.question),
+        "all_required_dependencies_need_actual_passages": True,
+    }
 
 
 def coverage_reasons(decision, tools):
     """Return reason codes only. ID validity is checked separately by the caller."""
     reasons = set()
+    if hasattr(tools, "assessment_aliases"):
+        reqs = {r.id: r for r in decision.requirements}
+        if not reqs or len(reqs) != len(decision.requirements):
+            reasons.add("MISSING_OR_DUPLICATE_REQUIREMENTS")
+        if not any(r.kind == "goal" for r in reqs.values()):
+            reasons.add("MISSING_CURRENT_GOAL_REQUIREMENT")
+        if not any(r.kind == "rule" for r in reqs.values()):
+            reasons.add("MISSING_APPLICABLE_RULE_REQUIREMENT")
+        linked = set()
+        for support in decision.coverage:
+            if (
+                not support.requirement_ids
+                or set(support.requirement_ids) - reqs.keys()
+            ):
+                reasons.add("UNKNOWN_OR_MISSING_REQUIREMENT_LINK")
+            linked.update(support.requirement_ids)
+            if support.role != "current_goal" and any(
+                reqs.get(i) and reqs[i].kind == "goal" for i in support.requirement_ids
+            ):
+                reasons.add("GOAL_LINK_REQUIRES_CURRENT_SUPPORT")
+        if reqs.keys() - linked:
+            reasons.add("UNSUPPORTED_REQUIREMENT")
     needs = requirements(tools)
     required = set(needs["topics"])
     evidence = getattr(tools, "source_evidence", {})

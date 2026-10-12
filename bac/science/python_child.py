@@ -36,7 +36,7 @@ def compute(request):
         ):
             raise ValueError("Output limit; return smaller arrays/fewer results")
 
-    def check(label, condition, details=""):
+    def check(label, condition, details="", evidence=None):
         if condition is not True and condition is not False and condition is not None:
             raise ValueError(
                 "check condition must be bool or None; explicitly convert library booleans"
@@ -58,6 +58,7 @@ def compute(request):
                 if condition
                 else "failed",
                 "details": details,
+                **({"evidence": evidence} if evidence is not None else {}),
             }
         )
 
