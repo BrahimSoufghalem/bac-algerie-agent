@@ -88,3 +88,42 @@ calls = 50 calls, versus PR #33's 49. It still avoids 23 repeated full-index rou
 while adding a body review to new retrieval. Exact social/help requests now cost zero model
 calls. Synthetic test token counts are not real billing; no net financial saving is claimed
 without real provider usage and configured current prices.
+
+## PR34 live-contract follow-up
+
+Platform scope and current reference coverage are separate. An in-subject mathematics
+request is not `out_of_scope` merely because no matching body has been loaded. The
+server's narrow mathematics recovery hint converts obvious scope/coverage confusion
+to `uncertain`; it never certifies sufficiency or expands `general_allowed`. Explicit
+foreign subjects/non-study intent remain outside this hint. Darija follow-ups resolve
+only to recent user study context; a current explicit topic takes precedence.
+
+The isolated assessment now uses ephemeral `R1`/`R2` choices and exact server passage
+IDs (`R1:E1`). Complete original bodies are annotated once, without trimming or
+changing the library/full router index. The server owns original character spans and
+body hashes, checks alias and passage membership, same-source association, actual
+permissions/delivery and body stability, then resolves back to immutable source IDs.
+Persistent ledgers and final `render_answer` citations do NOT use these aliases.
+Live models select passages rather than copying TeX. Unknown IDs, mismatched passages,
+changed bodies or model-supplied quotes cannot authorize teaching. Legacy recorded
+quotes retain only closed-list TeX escape compatibility, not paraphrase acceptance.
+
+Partial coverage accompanying a non-sufficient decision is discarded and audited as
+reason codes; it never grants read/teaching credit. Unknown or incorrect sufficient
+choices become `uncertain`, using the existing bounded router/failure path rather than
+unconditionally failing the conversation. Malformed wire contracts still fail closed.
+
+Sources must support the applicable curriculum rules and necessary conditions, not
+contain the student's exact numbers/function or a computed example. New calculations,
+counterexamples and drawings still go through existing Python isolation, result and
+asset validation and final rendering guards. Passage presence/topic compatibility are
+negative checks, NOT a general semantic entailment or mathematical accuracy proof.
+The main model must assess every goal/hypothesis; ambiguity or missing conditions
+still stops teaching. This change does not promise all lessons/exercises are covered.
+
+Bounds are unchanged: at most three assessments, initial route plus one essential
+repair (two router calls total), no recursive router after a rejected post-load
+assessment, and existing working-round/private-file constraints. Isolated tool enums
+can change with the authorized active body set; the answering tool manifest remains
+stable. Metrics record normalized decisions, calls, provider usage and owner-only
+rejection codes; no new raw student/reference text is put in metric/audit logs.

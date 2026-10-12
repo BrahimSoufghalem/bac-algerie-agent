@@ -45,10 +45,12 @@ def supported_decision(ids, messages):
     """Explicit synthetic support, not an LLM semantic benchmark."""
     state = json.loads(messages[-1]["content"].split("\n", 1)[1])
     bodies = state["actual_source_bodies"]
-    return {"decision": "sufficient", "source_ids": ids, "gaps": [],
-            "coverage": [{"source_id": sid, "goal": "synthetic current task support",
-                          "role": "current_goal", "quote": bodies[sid][:1500]}
-                         for sid in ids]}
+    aliases = {sid: alias for alias, sid in state["reference_choices"].items()}
+    return {"decision": "sufficient", "source_ids": [aliases[sid] for sid in ids], "gaps": [],
+            "coverage": [{"source_id": aliases[sid], "goal": "synthetic current task support",
+                          "role": "current_goal", "evidence_id": aliases[sid] + ":E1"}
+                         for sid in ids if sid in bodies]}
+
 
 
 class Tutor:
@@ -642,13 +644,15 @@ async def test_sufficient_cannot_restore_stale_or_unauthorized_publication(
         s.db.execute("UPDATE documents SET subject='mathematics'")
     else:
         s.db.execute("UPDATE documents SET status='ARCHIVED'")
-    routes = router(s, aliases, [])
+    routes = router(s, aliases, [{"status": "clarify", "goals": [], "question": "هل تحدد المرجع الصحيح؟"}])
     tutor = Tutor([("sufficient", [n])], [])
     s.chat_factory = lambda cfg, key: tutor
     state = await run(s, u, c, "اشرح القذف")
-    assert state["status"] == "FAILED" and state["error"] == "INVALID_CONTEXT_DECISION"
-    assert not routes and not tutor.work
-    assert not s.db.rows("SELECT * FROM messages WHERE role='assistant'")
+    assert state["status"] == "COMPLETED"
+    assert len(routes) <= 1 and not tutor.work
+    # Recovery may ask the router once, never restore an unauthorized/stale body on model authority.
+    assert n not in json.loads(tutor.assessments[0][-1]["content"].split("\n", 1)[1])["actual_source_bodies"]
+
 
 
 @pytest.mark.asyncio

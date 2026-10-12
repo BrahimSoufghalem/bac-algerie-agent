@@ -29,6 +29,7 @@ from bac.agent.feedback import tool_feedback
 from bac.ops.diagnostics import safe_diagnostic
 from bac.agent.grounding import general_allowed, deterministic_general_reply
 from bac.agent.reference_coverage import requirements
+from bac.agent.assessment_evidence import prepare_body_choices
 from bac.agent.context_decision import (
     ASSESS_SYSTEM,
     assessment_tool,
@@ -396,8 +397,8 @@ class AgentEngine:
             raise ModelError("CONTEXT_ASSESSMENT_LIMIT")
         # Isolated classification/support contract: no competing long teaching instructions,
         # no full catalogue, no undeclared tool history. Actual bodies remain unabridged.
-        bodies = {sid: data["body"] for sid, data in tools.source_evidence.items()
-                  if sid in tools.sources and data.get("body")}
+        choices = prepare_body_choices(tools)
+        bodies = choices["actual_source_bodies"]
         request = [
             {"role": "system", "content": ASSESS_SYSTEM + "\nAuthenticated scope=" + js({
                 "role": tools.user["role"], "track": tools.study_scope.track,
@@ -411,7 +412,7 @@ class AgentEngine:
                 "available_student_attachments": tools.attachment_state,
                 "inventory_is_not_pixels": True,
                 "required_current_scope": requirements(tools),
-                "actual_source_bodies": bodies,
+                **choices,
             })},
         ]
         self.emit(
@@ -421,7 +422,7 @@ class AgentEngine:
         )
         try:
             stream = getattr(provider, "decision_stream", provider.stream)
-            async for event in stream(request, [assessment_tool()]):
+            async for event in stream(request, [assessment_tool(tools)]):
                 if event["type"] == "usage":
                     usage = event["data"]
                 elif event["type"] == "result":
