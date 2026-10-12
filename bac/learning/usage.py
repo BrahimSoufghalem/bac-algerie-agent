@@ -131,6 +131,18 @@ def report(s, user=None, days=30):
         + where,
         args,
     )
+    metric_where = "started_at>?" + (" AND user_id=?" if user else "")
+    context_stats = s.db.one(
+        "SELECT count(*) messages,sum(router_requests) router_requests,sum(essential_requests) essential_requests,sum(reused_current) reused_current,sum(sufficiency_gap) sufficiency_gaps,sum(failures) reference_failures,sum(status!='completed') incomplete,avg(duration_ms) latency_ms FROM context_decisions WHERE "
+        + metric_where,
+        args,
+    )
+    context_stats["reuse_ratio"] = (
+        (context_stats["reused_current"] or 0) / context_stats["messages"]
+        if context_stats["messages"]
+        else None
+    )
+    out["context_decisions"] = context_stats
     if user:
         u = s.db.one("SELECT * FROM users WHERE id=?", (user["id"],))
         out["limits"] = {

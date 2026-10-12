@@ -79,6 +79,12 @@ class Tools:
         self.history_messages = []
         self.current_message = None
         self.delivered_sources = set()
+        self.reference_messages = {}
+        self.source_assets = {}
+        self.atomic_reference_groups = []
+        self.coordinated = False
+        self.references_ready = False
+        self.context_decision = None
 
     def definitions(self):
         entries = [
@@ -201,13 +207,28 @@ class Tools:
         n = payload["node"]
         self.library._node(n["id"])
         for source in payload.get("sources", []):
-            self.sources[source.get("source_id", source["node_id"])] = source
+            sid = source.get("source_id", source["node_id"])
+            self.sources[sid] = source
+            self.source_assets[sid] = {a["id"] for a in payload.get("assets", [])}
+            from bac.agent.context_decision import ledger
+
+            ledger(
+                self,
+                sid,
+                source["node_id"],
+                source["version_id"],
+                scope,
+                scope_id,
+                loaded=True,
+            )
+        if payload.get("atomic_bundle"):
+            self.atomic_reference_groups.append({s.get("source_id", s["node_id"]) for s in payload.get("sources", [])})
         self.assets.update(a["id"] for a in payload.get("assets", []))
         self.source_text_guard.remember(payload.get("content", ""))
         if payload.get("solution"):
             self.source_text_guard.remember(payload["solution"].get("content", ""))
         self.s.db.execute(
-            "INSERT OR REPLACE INTO loaded_context(conversation_id,node_id,version_id,loaded_at,scope,scope_id) VALUES(?,?,?,?,?,?)",
+            "INSERT INTO loaded_context(conversation_id,node_id,version_id,loaded_at,scope,scope_id) VALUES(?,?,?,?,?,?) ON CONFLICT(conversation_id,node_id) DO UPDATE SET version_id=excluded.version_id,loaded_at=excluded.loaded_at,scope=excluded.scope,scope_id=excluded.scope_id,active=1",
             (
                 self.chat,
                 n["id"],
@@ -262,11 +283,7 @@ class Tools:
             else:
                 p = self.library.node(id)
         result = self._compact(p)
-        limit = (
-            float("inf")
-            if full_context
-            else self.s.settings.max_tool_chars
-        )
+        limit = float("inf") if full_context else self.s.settings.max_tool_chars
         if len(js(result)) > limit:
             error = {
                 "error": "ATOMIC_BUNDLE_EXCEEDS_TOOL_BUDGET"

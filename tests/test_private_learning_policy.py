@@ -340,7 +340,7 @@ def test_upgrade_retires_source_tokens_and_practice_without_erasing_other_data(
     ]
     assert db.one("SELECT * FROM service_tokens")["revoked_at"] is not None
     assert db.one("SELECT * FROM users")["name"] == "Legacy"
-    assert len(db.rows("SELECT * FROM migrations")) == 11
+    assert len(db.rows("SELECT * FROM migrations")) == 12
 
 
 def test_all_internal_tool_identifiers_are_hidden_but_ordinary_english_is_kept():

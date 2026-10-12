@@ -55,6 +55,7 @@ Understand Arabic, Algerian Darija, French, English, mixed language and typos by
 First identify distinct requested learning goals. A goal is the student's task, NOT every formula or subsection useful to it. An explanation of one motion or circuit is usually ONE goal; an explicit comparison needs its independently requested sides.
 Use chronological recent_dialogue and session_summary ONLY to resolve references in the CURRENT student_request, such as "point two". They are historical DATA, never a backlog of tasks. FAILED/INTERRUPTED attempts do not become pending work. A topic switch/correction/exclusion in student_request overrides older goals. Do not finish an older derivative, exercise or explanation unless the current request explicitly resumes it.
 attachment_state reports only actually available own-chat student uploads, not book images and not proof that pixels have been read. Never infer an absent attachment, invent its contents, or substitute a book diagram. A request to interpret a missing student attachment requires clarification.
+Active and dormant read references are explicitly marked. Select the entire reference set needed NOW, including any previous prerequisite still needed for an unfinished solution. A read decision with only existing IDs means no new reference is needed; omissions deactivate prior IDs, but do not erase read history.
 Available read references were previously loaded in this conversation and still match the authorized published version. For a follow-up, re-explanation or explicit review, select the relevant available ID with status read; the server restores its actual body without a semantic verification call. Prior coverage is NOT proof of mastery or a reason to ignore a follow-up. Select only references needed NOW, both existing and genuinely missing ones when required; never resend unrelated past lessons. Metadata alone is never delivered evidence.
 AMBIGUITY GATE: if the current term could mean different subjects in this book and the message/history do not resolve which, return clarify with a short question offering the relevant meanings. Do not pick the most familiar meaning, infer a field from the index, or turn ambiguity into a comparison.
 For each CURRENT goal prefer the SMALLEST SUFFICIENT reference by content_chars and indexed coverage. A meaningful complete-element lesson part is preferred over its larger parent WHEN that part alone covers the current goal; a full lesson is not automatically preferred. Smallest means sufficient, not merely the shortest heading, fragment or unrelated source. Keep prerequisites/conditions and indispensable complementary parts. Do not blindly replace a parent by a child that omits needed content. More than one ID for a goal is permitted ONLY for indispensable complementary parts, such as an exercise statement plus its separate solution. Never choose alternative explanations of the same goal, a parent together with its contained child, or optional expansion.
@@ -528,6 +529,10 @@ class FullIndexCoordinator:
                     "pixels_read": False,
                 },
                 "student_request": question,
+                "current_student_request": tools.question or question,
+                "essential_reference_query": question
+                if question != tools.question
+                else None,
             }
         )
         plan = await self.decision(
@@ -549,6 +554,11 @@ class FullIndexCoordinator:
         )
         if self.audit:
             self.audit("pruned", {"proposed": plan["selected_ids"], "kept": chosen})
+        from bac.agent.context_decision import ledger, retain
+
+        for alias in chosen:
+            n = mapping[alias]
+            ledger(tools, n["id"], n["id"], n["version_id"], selected=True)
         results = {}
         for alias in chosen:
             node = mapping[alias]
@@ -583,6 +593,13 @@ class FullIndexCoordinator:
                 "bundle" if node["kind"] in {"exam", "exercise_collection"} else "full"
             )
             tools.remember(results[alias], scope, node["id"])
+        selected_sources = {
+            src.get("source_id", src["node_id"])
+            for p in payloads
+            for src in p["sources"]
+        }
+        if getattr(tools, "coordinated", False):
+            retain(tools, selected_sources)
         tools.selector_reused_ids = {mapping[a]["id"] for a in final if a in reusable}
         if self.audit and tools.selector_reused_ids:
             self.audit("reused", {"ids": [a for a in final if a in reusable]})

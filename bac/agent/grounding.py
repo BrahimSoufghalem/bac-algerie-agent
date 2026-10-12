@@ -52,6 +52,21 @@ def social_question(question):
     )
 
 
+def general_allowed(question):
+    return social_question(question) or (
+        len(question) <= 100
+        and normalized(question)
+        in {
+            "ما هو مسار",
+            "كيف استخدم مسار",
+            "كيف استعمل مسار",
+            "كيف افتح محادثة",
+            "how do i use masar",
+            "what is masar",
+        }
+    )
+
+
 def require_grounding(answer, tools):
     """Only called for an actual agent run; locators never grant source credit."""
     kind = answer.response_kind
@@ -67,7 +82,7 @@ def require_grounding(answer, tools):
             raise ValueError(
                 "Non-teaching replies must be one short plain-text block, without math, sources or extra warnings"
             )
-        if kind == "conversation" and not social_question(tools.question):
+        if kind == "conversation" and not general_allowed(tools.question):
             raise ValueError(
                 "Conversation mode is only for a simple greeting/thanks, not teaching"
             )
@@ -76,6 +91,22 @@ def require_grounding(answer, tools):
                 "Clarification must ask for the missing topic, source passage or data"
             )
         return
+    if getattr(tools, "coordinated", False):
+        if (
+            getattr(tools, "context_decision", None)
+            in {"general_allowed", "out_of_scope", "wrong_subject"}
+            or not tools.references_ready
+        ):
+            raise ValueError(
+                "REFERENCE_ASSESSMENT_REQUIRED: Do not teach until essential reference coverage is available; ask a clarification instead"
+            )
+        # Coordinated calculation cannot bypass the actual-reference gate.
+        if not answer.source_ids or any(
+            s not in tools.delivered_sources for s in answer.source_ids
+        ):
+            raise ValueError(
+                "REFERENCE_READ_REQUIRED: Educational calculation needs actual delivered references"
+            )
     if kind == "calculation":
         if not tools.scientific:
             raise ValueError(

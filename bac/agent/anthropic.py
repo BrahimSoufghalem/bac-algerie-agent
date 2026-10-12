@@ -86,6 +86,10 @@ class AnthropicChat(ChatProvider):
         async for x in self._stream(messages, tools, True):
             yield x
 
+    async def decision_stream(self, messages, tools):
+        async for item in self._stream(messages, tools, "assess_context"):
+            yield item
+
     async def _stream(self, messages, tools, final=False):
         cfg = self.config
         if self.transport is None:

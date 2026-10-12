@@ -176,6 +176,9 @@ async def test_clarification_finishes_without_teacher_call(services,with_alterna
     services.selector_transport=httpx.MockTransport(lambda req:response(
         "route_sections",{"status":"clarify","goals":goals,"question":question}))
     class NeverTeacher:
+        async def decision_stream(self, messages, tools):
+            from tests.test_context_decisions import call
+            yield {"type":"result","message":call("assess_context",{"decision":"uncertain","source_ids":[]})}
         async def stream(self,*args):
             raise AssertionError("Teacher must not run on clarification")
             yield
@@ -186,7 +189,7 @@ async def test_clarification_finishes_without_teacher_call(services,with_alterna
     answer=services.db.one("SELECT content,sources FROM messages WHERE role='assistant'")
     assert answer["content"]==question and json.loads(answer["sources"])==[]
     assert not services.db.rows("SELECT * FROM loaded_context")
-    assert len(services.db.rows("SELECT * FROM model_usage"))==1
+    assert len(services.db.rows("SELECT * FROM model_usage"))==2
 
 
 def test_retired_stored_router_never_enqueues_or_decrypts_key(services):
