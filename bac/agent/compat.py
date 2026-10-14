@@ -77,56 +77,70 @@ def google_answer_tools(tools):
     strict server-owned validator; no source, graph or field guard is relaxed.
     """
     result = answer_tools(tools)
-    string = {"type": "string"}
-    strings = {"type": "array", "items": string}
     for tool in result:
         fn = tool.get("function", {})
         if fn.get("name") != "render_answer":
             continue
+        schema = fn["parameters"]
+        definitions = schema.pop("$defs", {})
+
+        def inline(value):
+            if isinstance(value, list):
+                return [inline(item) for item in value]
+            if not isinstance(value, dict):
+                return value
+            if "$ref" in value:
+                name = value["$ref"].removeprefix("#/$defs/")
+                return inline(definitions[name] | {
+                    k: v for k, v in value.items() if k != "$ref"
+                })
+            return {key: inline(item) for key, item in value.items()}
+
+        # Only flatten the visible block union that Google cannot accept.
+        # All top-level fields, bounds and provenance subcontracts come from
+        # PresentedAnswer; a second hand-written schema must never drift again.
+        variants = [
+            inline(item)
+            for item in schema["properties"]["blocks"]["items"]["oneOf"]
+        ]
+        properties, kinds = {}, []
+        for variant in variants:
+            kinds.append(variant["properties"]["type"]["const"])
+            for name, field in variant["properties"].items():
+                if name != "type":
+                    if name in properties and properties[name] != field:
+                        previous = properties[name]
+                        if previous.get("type") != field.get("type"):
+                            raise ValueError("Conflicting answer block field")
+                        # A shared text field has different per-kind size caps.
+                        # Admit either variant; the server enforces the chosen
+                        # block kind's exact constraints.
+                        merged = {
+                            k: v for k, v in previous.items() if field.get(k) == v
+                        }
+                        for bound, combine in (
+                            ("maxLength", max), ("maxItems", max),
+                            ("minLength", min), ("minItems", min),
+                        ):
+                            if bound in previous and bound in field:
+                                merged[bound] = combine(previous[bound], field[bound])
+                        properties[name] = merged
+                    else:
+                        properties[name] = field
         block = {
             "type": "object",
-            "properties": {
+            "additionalProperties": False,
+            "properties": properties | {
                 "type": {
                     "type": "string",
-                    "enum": ["text", "equation", "table", "code", "graph"],
+                    "enum": kinds,
                     "description": "Required type field on EVERY block; not a wrapper key.",
                 },
-                "text": string,
-                "latex": string,
-                "headers": strings,
-                "rows": {"type": "array", "items": strings},
-                "language": string,
-                "result_id": {
-                    "type": "string",
-                    "description": "For a graph, the actual current-run computed result_id; never chart data or a graph object.",
-                },
-                "result_ids": strings,
             },
             "required": ["type"],
         }
-        fn["parameters"] = {
-            "type": "object",
-            "properties": {
-                "blocks": {"type": "array", "items": block},
-                "source_ids": {
-                    "type": "array",
-                    "items": {"type": "string"},
-                    "description": "Only actual relevant read IDs as strings, not source objects.",
-                },
-                "warnings": strings,
-                "response_kind": {
-                    "type": "string",
-                    "enum": [
-                        "teaching",
-                        "calculation",
-                        "conversation",
-                        "clarification",
-                        "refusal",
-                    ],
-                },
-            },
-            "required": ["blocks"],
-        }
+        schema["properties"]["blocks"]["items"] = block
+        fn["parameters"] = inline(schema)
         fn["description"] += (
             " Block fields: text requires text; equation requires latex; table requires headers and rows; "
             "code requires text and optional language; graph requires a real returned result_id. "

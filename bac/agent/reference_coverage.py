@@ -194,6 +194,15 @@ def coverage_reasons(decision, tools):
                 reasons.add("GOAL_LINK_REQUIRES_CURRENT_SUPPORT")
         if reqs.keys() - linked:
             reasons.add("UNSUPPORTED_REQUIREMENT")
+            # Recorded cross-link format often declares objectives but links
+            # only rules. Give that wire omission ONE format repair, without
+            # treating explicit empty nested support or a declared gap as format.
+            if (
+                not getattr(tools, "assessment_nested_support", False)
+                and decision.coverage and not decision.gaps
+                and any(reqs[i].kind == "goal" for i in reqs.keys() - linked)
+            ):
+                reasons.add("MISSING_CURRENT_GOAL_SUPPORT_LINK")
     needs = requirements(tools)
     required = set(needs["topics"])
     evidence = getattr(tools, "source_evidence", {})

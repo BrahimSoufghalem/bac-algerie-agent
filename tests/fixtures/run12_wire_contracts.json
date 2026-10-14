@@ -1,0 +1,88 @@
+{
+  "origin": "Run12: 38611837906, pinned main 4d85c66; sanitized contracts, not model-quality certification",
+  "assessments": [
+    {
+      "case_id": "M01",
+      "args": {
+        "gaps": [],
+        "source_ids": [
+          "R1"
+        ],
+        "decision": "sufficient",
+        "requirements": {
+          "conditions": [
+            {
+              "description": "الدالة قابلة للاشتقاق على مجال الدراسة I من R",
+              "id": "cond_differentiable"
+            }
+          ],
+          "prerequisites": [],
+          "rules": [
+            {
+              "description": "إذا كان f'(x) > 0 (ما عدا عددا محدودا من القيم التي تنعدم عندها f') على مجال I، فإن الدالة متزايدة على I؛ وإذا كان f'(x) < 0 فهي متناقصة",
+              "id": "rule_deriv_variation"
+            },
+            {
+              "id": "rule_local_extrema",
+              "description": "إذا انعدمت المشتقة f' عند x0 وتغيرت إشارتها عنده، فإن f(x0) قيمة حدية محلية للدالة f"
+            }
+          ],
+          "goals": [
+            {
+              "id": "goal_calc_variations",
+              "description": "حساب المشتقة ودرس اتجاه التغير والقيم الحدية للدالة f(x) = x^3 - 3x مع ترقيم الخطوات"
+            }
+          ]
+        },
+        "coverage": [
+          {
+            "requirement_ids": [
+              "rule_deriv_variation",
+              "rule_local_extrema"
+            ],
+            "source_id": "R1",
+            "role": "current_goal",
+            "evidence_id": "R1:E1",
+            "goal": "حساب المشتقة ودرس اتجاه التغير والقيم الحدية للدالة f(x) = x^3 - 3x"
+          },
+          {
+            "source_id": "R1",
+            "requirement_ids": [
+              "rule_deriv_variation",
+              "rule_local_extrema"
+            ],
+            "role": "prerequisite",
+            "evidence_id": "R1:E1",
+            "goal": "استعمال المبرهنات المتعلقة بالمشتقة واتجاه التغير والقيم الحدية المحلية"
+          }
+        ]
+      }
+    }
+  ],
+  "bad_clarification": {
+    "status": "clarify",
+    "question": "",
+    "goals": [
+      {
+        "ids": [
+          "S104"
+        ],
+        "goal": "Explain why a conditional probability P(B|A)=1.2 is impossible and violates probability axioms"
+      }
+    ]
+  },
+  "old_google_top_fields": [
+    "blocks",
+    "response_kind",
+    "source_ids",
+    "warnings"
+  ],
+  "old_google_response_kinds": [
+    "teaching",
+    "calculation",
+    "conversation",
+    "clarification",
+    "refusal"
+  ],
+  "M03_false_rule": "يجب أن تتغير إشارة المشتقة"
+}
