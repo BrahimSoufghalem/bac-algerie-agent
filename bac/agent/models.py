@@ -104,10 +104,19 @@ class HistoryEvidence(Strict):
 
 class Answer(Strict):
     blocks: list[Block] = Field(min_length=1, max_length=30)
-    source_ids: list[str] = Field(default_factory=list, max_length=30)
+    source_ids: list[str] = Field(
+        default_factory=list, max_length=30,
+        description="Only actual relevant read IDs as strings, not source objects; private provenance, never public citations.",
+    )
     warnings: list[str] = Field(default_factory=list, max_length=20)
-    checked_claims: list[CheckedClaim] = Field(default_factory=list, max_length=32)
-    history_evidence: list[HistoryEvidence] = Field(default_factory=list, max_length=24)
+    checked_claims: list[CheckedClaim] = Field(
+        default_factory=list, max_length=32,
+        description="Bind only specific computational claims to exact passed current-run comparisons; not whole-answer verification.",
+    )
+    history_evidence: list[HistoryEvidence] = Field(
+        default_factory=list, max_length=24,
+        description="For requested dialogue summaries (pure or mixed), bind observations to active STUDENT messages actually read; never book examples.",
+    )
     response_kind: Literal[
         "teaching", "calculation", "conversation", "clarification", "refusal", "history_summary"
     ] = "teaching"

@@ -59,8 +59,10 @@ def test_live_schema_is_stable_and_server_choices_are_closed(services):
     schema = assessment_tool(t)["function"]["parameters"]
     assert payload["reference_choices"] == {"R1": "long-source-id"}
     assert "enum" not in schema["properties"]["source_ids"]["items"]
-    assert "enum" not in schema["$defs"]["BodySupport"]["properties"]["evidence_id"]
-    assert "quote" not in schema["$defs"]["BodySupport"]["properties"]
+    assert "enum" not in schema["$defs"]["RequirementSupport"]["properties"]["evidence_id"]
+    assert "quote" not in schema["$defs"]["RequirementSupport"]["properties"]
+    assert "coverage" not in schema["properties"]
+    assert "supports" in schema["$defs"]["NamedRequirement"]["required"]
     d, _ = parse_assessment(decision(), t)
     assert d.decision == "sufficient" and d.source_ids == ["long-source-id"]
     assert t.covered_sources == {"long-source-id"}

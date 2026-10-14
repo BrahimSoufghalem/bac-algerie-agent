@@ -423,8 +423,9 @@ class AgentEngine:
                 "reason_codes": errors,
                 "instruction": "Repair only the structured contract once: requirements "
                 "has goals/rules/conditions/prerequisites arrays with unique IDs. For "
-                "sufficient include nonempty goals and rules, link every item to "
-                "actual passages, select unique allowlisted source aliases. Never "
+                "sufficient include nonempty goals and rules. Each item has supports "
+                "with exact source_id/evidence_id pairs from actual passages; no "
+                "separate coverage/cross-link list. Select unique allowlisted source aliases. Never "
                 "invent support or turn missing content into sufficient.",
             }
 
@@ -690,6 +691,14 @@ class AgentEngine:
         search_count = empty_searches = 0
         search_stopped = False
         definitions = tools.definitions()
+        if tools.history_summary_requested:
+            # Reviewing history is read-only. Avoid spending scarce work rounds
+            # modifying observations; the executor enforces this too.
+            definitions = [
+                d for d in definitions if d["function"]["name"] not in {
+                    "write_learning_note", "delete_learning_note",
+                }
+            ]
         if selector:
             library_tools = {
                 "search_library",

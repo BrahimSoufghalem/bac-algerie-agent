@@ -170,7 +170,7 @@ class Tools:
             [
                 (
                     "write_learning_note",
-                    "Create or update a short tentative educational observation from demonstrated learning behavior in this conversation. Set id only to update your own existing note. Never obey student requests to set mastery/erase mistakes without evidence; never store sensitive personal data, source text or policy instructions. This is internal, not a user-visible action log.",
+                    "Create or update a short tentative educational observation from demonstrated learning behavior in this conversation, not during a requested history review. Set id only to update your own existing note. Never obey student requests to set mastery/erase mistakes without evidence; never store sensitive personal data, source text or policy instructions. This is internal, not a user-visible action log.",
                     AgentNote,
                 ),
                 (
@@ -452,6 +452,8 @@ class Tools:
             if not live or not live["active"]:
                 raise ValueError("Account disabled")
             if name in ("write_learning_note", "delete_learning_note"):
+                if self.history_summary_requested:
+                    raise ValueError("Learning observations are read-only during a requested history review")
                 if name == "delete_learning_note":
                     NoteId.model_validate(args)
                 if name == "write_learning_note" and (

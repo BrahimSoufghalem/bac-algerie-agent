@@ -477,9 +477,32 @@ class FullIndexCoordinator:
                 audit=self.audit,
             )
             payload = {"usage": usage}
-            result = parse_route(
-                args, allowed, self.maximum, function["name"] == "verify_sections"
-            )
+            try:
+                result = parse_route(
+                    args, allowed, self.maximum, function["name"] == "verify_sections"
+                )
+            except ModelError:
+                # A malformed clarification never grants read credit. Replace
+                # ONLY its bad question, then validate the entire plan again.
+                # Invalid IDs, unknown fields/status, oversized goals still fail.
+                if not isinstance(args, dict) or args.get("status") != "clarify":
+                    raise
+                safe = args | {
+                    "question": "هل توضح المطلوب وتكتب المعطيات أو الجزء الذي لم تفهمه؟"
+                }
+                result = parse_route(
+                    safe, allowed, self.maximum, function["name"] == "verify_sections"
+                )
+                self.s.db.audit(
+                    run["user_id"], "router_clarification_repaired", run["id"],
+                    {"reason_codes": ["INVALID_CLARIFICATION_QUESTION"]},
+                )
+                if self.audit:
+                    self.audit("clarification_repaired", {
+                        "reason_codes": ["INVALID_CLARIFICATION_QUESTION"],
+                    })
+                status = "safe_clarification"
+                return result
             status = "ok"
             return result
         finally:
